@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZ Alpha Vision — 2026</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #03040a;
+            --bg-elevated: #0a0b14;
+            --bg-card: #0f111a;
+            --bg-glass: rgba(15, 17, 26, 0.72);
+            --border: rgba(255,255,255,0.06);
+            --border-hover: rgba(255,255,255,0.12);
+            --text: #e8eaf0;
+            --text-muted: #6b7280;
+            --text-dim: #374151;
+            --accent-cyan: #00f0ff;
+            --accent-cyan-dim: rgba(0, 240, 255, 0.12);
+            --accent-gold: #ffd700;
+            --accent-gold-dim: rgba(255, 215, 0, 0.12);
+            --accent-green: #00e676;
+            --accent-green-dim: rgba(0, 230, 118, 0.12);
+            --accent-red: #ff1744;
+            --accent-red-dim: rgba(255, 23, 68, 0.12);
+            --accent-purple: #b829dd;
+            --accent-purple-dim: rgba(184, 41, 221, 0.12);
+            --accent-orange: #ff9100;
+            --font-body: 'Inter', system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { 
+            background: var(--bg); 
+            color: var(--text); 
+            font-family: var(--font-body);
+            height: 100vh; 
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .bg-mesh {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% 40%, rgba(0,240,255,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 60%, rgba(184,41,221,0.03) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 50% at 50% 100%, rgba(0,230,118,0.02) 0%, transparent 40%);
+        }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+        .glass {
+            background: var(--bg-glass);
+            backdrop-filter: blur(24px) saturate(1.4);
+            -webkit-backdrop-filter: blur(24px) saturate(1.4);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass:hover { border-color: var(--border-hover); }
+
+        .logo-wrap { display: flex; align-items: center; gap: 14px; }
+        .logo-mark {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 18px; color: #000;
+            box-shadow: 0 0 30px rgba(0,240,255,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+            position: relative; overflow: hidden;
+        }
+        .logo-mark::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        .logo-title { font-weight: 800; font-size: 20px; letter-spacing: -0.5px; background: linear-gradient(90deg, #fff 30%, var(--accent-cyan) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .logo-tag { font-size: 9px; color: var(--text-muted); letter-spacing: 4px; font-weight: 500; text-transform: uppercase; }
+
+        .auth-screen {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--bg);
+        }
+        .auth-card {
+            width: 420px; padding: 48px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            position: relative; overflow: hidden;
+        }
+        .auth-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+        }
+        .auth-card h2 { font-size: 26px; font-weight: 700; margin-bottom: 28px; text-align: center; }
+        .auth-card h2 span { color: var(--accent-cyan); }
+        .input-wrap { position: relative; margin-bottom: 14px; }
+        .input-wrap input {
+            width: 100%; padding: 14px 16px; padding-right: 44px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 14px; font-family: var(--font-body);
+            outline: none; transition: all 0.3s;
+        }
+        .input-wrap input:focus { border-color: var(--accent-cyan); background: rgba(0,240,255,0.03); box-shadow: 0 0 0 3px var(--accent-cyan-dim); }
+        .input-wrap .icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 16px; }
+        .btn-primary {
+            width: 100%; padding: 14px; margin-top: 8px;
+            background: linear-gradient(135deg, var(--accent-cyan), #00b8d4);
+            border: none; border-radius: var(--radius-sm);
+            color: #000; font-weight: 700; font-size: 15px; cursor: pointer;
+            position: relative; overflow: hidden; transition: all 0.3s;
+            box-shadow: 0 4px 20px rgba(0,240,255,0.2);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,240,255,0.3); }
+        .btn-primary:active { transform: translateY(0); }
+        .auth-link { text-align: center; margin-top: 20px; color: var(--text-muted); font-size: 13px; cursor: pointer; transition: 0.3s; }
+        .auth-link:hover { color: var(--accent-cyan); }
+        .auth-error { color: var(--accent-red); font-size: 12px; margin-top: 6px; min-height: 16px; text-align: center; }
+
+        .waiting-screen {
+            position: fixed; inset: 0; z-index: 99;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            background: var(--bg); gap: 24px;
+        }
+        .waiting-screen.active { display: flex; }
+        .pulse-ring {
+            width: 80px; height: 80px; border-radius: 50%;
+            border: 2px solid var(--accent-gold);
+            animation: pulse-ring 2s infinite;
+            display: flex; align-items: center; justify-content: center;
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(255,215,0,0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(255,215,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+        }
+        .waiting-screen h2 { font-size: 24px; color: var(--accent-gold); font-weight: 700; }
+        .waiting-screen p { color: var(--text-muted); font-size: 15px; }
+
+        .app-container { display: none; height: 100vh; position: relative; z-index: 1; }
+        .app-container.active { display: flex; }
+
+        .sidebar {
+            width: 300px; background: var(--bg-elevated);
+            border-left: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            padding: 20px; gap: 16px;
+        }
+        .sidebar-header { display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-title { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .trial-pill {
+            padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+            background: var(--accent-gold-dim); color: var(--accent-gold); border: 1px solid rgba(255,215,0,0.2);
+        }
+        .trial-pill.expired { background: var(--accent-red-dim); color: var(--accent-red); border-color: rgba(255,23,68,0.2); }
+
+        .add-stock-form { display: flex; flex-direction: column; gap: 8px; }
+        .add-stock-form input {
+            padding: 10px 14px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 13px; outline: none; font-family: var(--font-mono);
+            transition: 0.3s;
+        }
+        .add-stock-form input:focus { border-color: var(--accent-cyan); }
+        .add-stock-form input::placeholder { color: var(--text-dim); }
+        .btn-add {
+            padding: 10px; background: linear-gradient(135deg, var(--accent-green), #00c853);
+            border: none; border-radius: var(--radius-sm); color: #000;
+            font-weight: 700; font-size: 13px; cursor: pointer;
+            transition: all 0.3s; box-shadow: 0 2px 12px rgba(0,230,118,0.2);
+        }
+        .btn-add:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,230,118,0.3); }
+
+        .watchlist-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .watch-item {
+            padding: 14px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); cursor: pointer; transition: all 0.3s;
+            position: relative; overflow: hidden;
+        }
+        .watch-item::before {
+            content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 3px;
+            background: var(--accent-cyan); opacity: 0; transition: 0.3s;
+        }
+        .watch-item:hover { border-color: var(--border-hover); transform: translateX(-2px); }
+        .watch-item:hover::before { opacity: 1; }
+        .watch-item .sym { font-family: var(--font-mono); font-weight: 700; font-size: 15px; }
+        .watch-item .price { font-family: var(--font-mono); font-weight: 600; font-size: 14px; }
+        .watch-item .pnl { font-family: var(--font-mono); font-size: 12px; }
+        .watch-item .meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+        .watch-item .del { position: absolute; left: 10px; top: 10px; color: var(--text-dim); cursor: pointer; opacity: 0; transition: 0.3s; }
+        .watch-item:hover .del { opacity: 1; }
+        .watch-item .del:hover { color: var(--accent-red); }
+
+        .stats-block {
+            padding: 16px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .stats-block h4 { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+        .stat-row .val { font-family: var(--font-mono); font-weight: 600; }
+        .stat-row .val.pos { color: var(--accent-green); }
+        .stat-row .val.neg { color: var(--accent-red); }
+
+        .btn-logout {
+            padding: 10px; background: transparent; border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-muted); font-size: 13px;
+            cursor: pointer; transition: 0.3s;
+        }
+        .btn-logout:hover { border-color: var(--accent-red); color: var(--accent-red); background: var(--accent-red-dim); }
+
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 24px; border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+        }
+        .topbar-right { display: flex; align-items: center; gap: 16px; }
+        .live-clock {
+            font-family: var(--font-mono); font-size: 13px; color: var(--text-muted);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .live-clock .dot {
+            width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green); animation: blink 2s infinite;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .user-chip {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 14px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: 20px;
+            font-size: 13px; color: var(--text-muted);
+        }
+        .user-chip .avatar {
+            width: 24px; height: 24px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; color: #000;
+        }
+        .btn-upgrade {
+            padding: 8px 18px; background: linear-gradient(135deg, var(--accent-gold), #ff8f00);
+            border: none; border-radius: 20px; color: #000; font-weight: 700; font-size: 12px;
+            cursor: pointer; transition: 0.3s; box-shadow: 0 2px 12px rgba(255,215,0,0.2);
+        }
+        .btn-upgrade:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255,215,0,0.3); }
+
+        .tabs-wrap {
+            display: flex; gap: 4px; padding: 12px 24px;
+            border-bottom: 1px solid var(--border); overflow-x: auto;
+        }
+        .tab-btn {
+            padding: 8px 18px; border-radius: var(--radius-sm);
+            background: transparent; border: 1px solid transparent;
+            color: var(--text-muted); font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all 0.3s; white-space: nowrap;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+        .tab-btn.active {
+            background: var(--accent-cyan-dim); color: var(--accent-cyan);
+            border-color: rgba(0,240,255,0.2); box-shadow: 0 0 20px rgba(0,240,255,0.08);
+        }
+        .tab-btn.admin { color: var(--accent-purple); }
+        .tab-btn.admin.active { background: var(--accent-purple-dim); border-color: rgba(184,41,221,0.2); box-shadow: 0 0 20px rgba(184,41,221,0.08); }
+
+        .content-area { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+        .chart-box {
+            height: 300px; border-radius: var(--radius); margin-bottom: 20px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            position: relative; overflow: hidden;
+        }
+        .chart-box::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+            opacity: 0.5;
+        }
+
+        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+        .data-table thead th {
+            padding: 12px 16px; text-align: right; font-size: 11px;
+            font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated); position: sticky; top: 0; z-index: 2;
+        }
+        .data-table tbody td {
+            padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.03);
+            font-family: var(--font-mono); font-size: 13px;
+        }
+        .data-table tbody tr { transition: all 0.2s; }
+        .data-table tbody tr:hover { background: rgba(0,240,255,0.02); }
+        .data-table .sym { font-weight: 700; color: var(--text); font-size: 14px; }
+        .data-table .sym-sub { font-size: 11px; color: var(--text-muted); font-family: var(--font-body); }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+            font-family: var(--font-body);
+        }
+        .badge-buy { background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0,230,118,0.15); }
+        .badge-sell { background: var(--accent-red-dim); color: var(--accent-red); border: 1px solid rgba(255,23,68,0.15); }
+        .badge-hold { background: rgba(255,145,0,0.1); color: var(--accent-orange); border: 1px solid rgba(255,145,0,0.15); }
+        .badge-strong-buy { background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0,230,118,0.2); box-shadow: 0 0 10px rgba(0,230,118,0.1); }
+        .badge-strong-sell { background: var(--accent-red-dim); color: var(--accent-red); border: 1px solid rgba(255,23,68,0.2); box-shadow: 0 0 10px rgba(255,23,68,0.1); }
+        .badge-a { background: rgba(0,240,255,0.1); color: var(--accent-cyan); border: 1px solid rgba(0,240,255,0.15); }
+        .badge-b { background: rgba(0,230,118,0.1); color: var(--accent-green); border: 1px solid rgba(0,230,118,0.15); }
+        .badge-c { background: rgba(255,215,0,0.1); color: var(--accent-gold); border: 1px solid rgba(255,215,0,0.15); }
+        .badge-d { background: rgba(255,145,0,0.1); color: var(--accent-orange); border: 1px solid rgba(255,145,0,0.15); }
+        .badge-f { background: var(--accent-red-dim); color: var(--accent-red); border: 1px solid rgba(255,23,68,0.15); }
+
+        .screener-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+        }
+        .screener-header h3 { font-size: 18px; font-weight: 700; }
+        .preset-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .preset-btn {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            background: rgba(255,255,255,0.02); color: var(--text-muted); font-size: 12px;
+            font-weight: 600; cursor: pointer; transition: 0.3s;
+        }
+        .preset-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); background: var(--accent-cyan-dim); }
+        .preset-btn.opp { border-color: rgba(0,230,118,0.15); color: var(--accent-green); background: rgba(0,230,118,0.05); }
+        .preset-btn.opp:hover { border-color: var(--accent-green); color: #000; background: var(--accent-green); box-shadow: 0 4px 20px rgba(0,230,118,0.3); }
+
+        .filters-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .filter-box {
+            padding: 14px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); transition: 0.3s;
+        }
+        .filter-box:hover { border-color: var(--border-hover); }
+        .filter-box label {
+            display: block; font-size: 11px; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600;
+        }
+        .filter-box select, .filter-box input {
+            width: 100%; padding: 10px 12px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text); font-size: 13px;
+            outline: none; font-family: var(--font-body); transition: 0.3s;
+        }
+        .filter-box select:focus, .filter-box input:focus { border-color: var(--accent-cyan); }
+        .filter-box select option { background: var(--bg-card); color: var(--text); }
+
+        .scan-actions { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-scan-main {
+            padding: 12px 28px; background: linear-gradient(135deg, var(--accent-cyan), #00b8d4);
+            border: none; border-radius: var(--radius-sm); color: #000;
+            font-weight: 700; font-size: 14px; cursor: pointer;
+            transition: all 0.3s; box-shadow: 0 4px 20px rgba(0,240,255,0.2);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .btn-scan-main:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,240,255,0.3); }
+        .btn-scan-main:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-clear-filters {
+            padding: 12px 20px; background: transparent; border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-muted); font-size: 13px;
+            cursor: pointer; transition: 0.3s;
+        }
+        .btn-clear-filters:hover { border-color: var(--accent-red); color: var(--accent-red); background: var(--accent-red-dim); }
+
+        .progress-track {
+            height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;
+            overflow: hidden; margin-bottom: 16px; display: none;
+        }
+        .progress-track.active { display: block; }
+        .progress-bar-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+            border-radius: 2px; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(0,240,255,0.3);
+        }
+
+        .scan-meta { display: flex; gap: 24px; margin-bottom: 16px; font-size: 12px; color: var(--text-muted); }
+        .scan-meta span { color: var(--accent-cyan); font-family: var(--font-mono); font-weight: 600; }
+
+        .admin-kpi-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px; margin-bottom: 24px;
+        }
+        .kpi-card {
+            padding: 20px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); text-align: center; position: relative; overflow: hidden;
+            transition: 0.3s;
+        }
+        .kpi-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+        .kpi-card .kpi-val {
+            font-size: 32px; font-weight: 800; font-family: var(--font-mono);
+            background: linear-gradient(180deg, #fff, var(--text-muted)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .kpi-card .kpi-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        .kpi-card .kpi-glow {
+            position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+            width: 60px; height: 60px; border-radius: 50%;
+            filter: blur(30px); opacity: 0.15;
+        }
+
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(3,4,10,0.85); backdrop-filter: blur(12px);
+            display: none; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-box {
+            width: 460px; max-height: 90vh; overflow-y: auto;
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 32px;
+            position: relative;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+        }
+        .modal-box::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
+        }
+        .modal-box h2 { font-size: 22px; margin-bottom: 8px; }
+        .modal-box h2 span { color: var(--accent-gold); }
+        .modal-box .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+        .pay-option {
+            padding: 18px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); margin-bottom: 12px; cursor: pointer;
+            transition: 0.3s;
+        }
+        .pay-option:hover { border-color: var(--border-hover); }
+        .pay-option.disabled { opacity: 0.4; cursor: not-allowed; }
+        .pay-option .pay-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+        .pay-option .pay-desc { font-size: 12px; color: var(--text-muted); }
+        .pay-option input[type="file"] {
+            margin-top: 10px; width: 100%; padding: 8px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text); font-size: 12px;
+        }
+        .btn-modal { width: 100%; padding: 12px; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 14px; cursor: pointer; transition: 0.3s; margin-top: 8px; }
+        .btn-modal-confirm { background: linear-gradient(135deg, var(--accent-green), #00c853); color: #000; box-shadow: 0 4px 20px rgba(0,230,118,0.2); }
+        .btn-modal-confirm:hover { box-shadow: 0 6px 24px rgba(0,230,118,0.3); }
+        .btn-modal-cancel { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+        .btn-modal-cancel:hover { border-color: var(--text-muted); color: var(--text); }
+
+        .toast-stack { position: fixed; top: 20px; left: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .toast-item {
+            padding: 14px 20px; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text); font-size: 13px;
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            animation: toastSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 400px;
+        }
+        .toast-item.success { border-right: 3px solid var(--accent-green); }
+        .toast-item.error { border-right: 3px solid var(--accent-red); }
+        .toast-item.warn { border-right: 3px solid var(--accent-gold); }
+        @keyframes toastSlide { from { transform: translateX(-120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .hidden { display: none !important; }
+        .text-green { color: var(--accent-green); }
+        .text-red { color: var(--accent-red); }
+        .text-cyan { color: var(--accent-cyan); }
+        .text-gold { color: var(--accent-gold); }
+        .text-muted { color: var(--text-muted); }
+        .font-mono { font-family: var(--font-mono); }
+
+        .section-title {
+            font-size: 20px; font-weight: 700; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .section-title .line {
+            flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent);
+        }
+
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: var(--text-muted);
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+
+        @media (max-width: 1024px) {
+            .sidebar { width: 260px; }
+            .filters-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        }
+        @media (max-width: 768px) {
+            .app-container.active { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; max-height: 35vh; border-left: none; border-bottom: 1px solid var(--border); }
+            .filters-grid { grid-template-columns: 1fr; }
+            .admin-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .auth-card { width: 90%; padding: 32px 24px; }
+        }
+    
+        .indicators-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .indicator-card {
+            padding: 24px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); position: relative; overflow: hidden;
+            transition: all 0.3s;
+        }
+        .indicator-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+        .indicator-card .ind-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+        }
+        .indicator-card .ind-title { font-size: 16px; font-weight: 700; }
+        .indicator-card .ind-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+        .indicator-card .ind-actions { display: flex; gap: 8px; }
+        .btn-ind {
+            padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+            background: rgba(255,255,255,0.02); color: var(--text-muted); font-size: 12px;
+            font-weight: 600; cursor: pointer; transition: 0.3s;
+        }
+        .btn-ind:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); background: var(--accent-cyan-dim); }
+        .btn-ind.active {
+            background: var(--accent-green-dim); color: var(--accent-green);
+            border-color: rgba(0,230,118,0.2);
+        }
+        .btn-ind.danger:hover { border-color: var(--accent-red); color: var(--accent-red); background: var(--accent-red-dim); }
+
+        .ind-settings-grid { display: flex; flex-direction: column; gap: 14px; }
+        .setting-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .setting-row label { font-size: 13px; color: var(--text); }
+        .setting-row .hint { font-size: 11px; color: var(--text-dim); display: block; }
+        .setting-input {
+            padding: 8px 12px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: 8px;
+            color: var(--text); font-size: 13px; outline: none;
+            min-width: 120px; font-family: var(--font-body);
+        }
+        .setting-input:focus { border-color: var(--accent-cyan); }
+        .setting-select {
+            padding: 8px 12px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: 8px;
+            color: var(--text); font-size: 13px; outline: none;
+            min-width: 140px;
+        }
+        .setting-select option { background: var(--bg-card); }
+        .toggle-switch {
+            width: 44px; height: 24px; border-radius: 12px;
+            background: var(--text-dim); position: relative; cursor: pointer;
+            transition: 0.3s;
+        }
+        .toggle-switch.active { background: var(--accent-cyan); }
+        .toggle-switch::after {
+            content: ''; position: absolute; top: 2px; left: 2px;
+            width: 20px; height: 20px; border-radius: 50%; background: #fff;
+            transition: 0.3s;
+        }
+        .toggle-switch.active::after { left: 22px; }
+        .color-dot {
+            width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+            border: 2px solid transparent; transition: 0.2s;
+        }
+        .color-dot:hover { border-color: #fff; }
+        .color-dot.selected { border-color: var(--accent-cyan); box-shadow: 0 0 10px rgba(0,240,255,0.3); }
+        .fib-levels-preview {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+        }
+        .fib-chip {
+            padding: 4px 10px; border-radius: 20px; font-size: 11px; font-family: var(--font-mono);
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--text-muted);
+        }
+        .fib-chip.active { background: var(--accent-cyan-dim); color: var(--accent-cyan); border-color: rgba(0,240,255,0.2); }
+
+        .admin-subtitle { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 12px; }
+        .receipt-link { color: var(--accent-cyan); font-size: 11px; cursor: pointer; text-decoration: underline; }
+        .admin-btn { padding: 4px 12px; font-size: 11px; border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; font-weight: 600; }
+        .btn-approve { background: var(--accent-green-dim); color: var(--accent-green); border-color: rgba(0,230,118,0.2); }
+        .btn-reject { background: var(--accent-red-dim); color: var(--accent-red); border-color: rgba(255,23,68,0.2); margin-right: 6px; }
+    </style>
+</head>
+<body>
+    <div class="bg-mesh"></div>
+    <div class="toast-stack" id="toastStack"></div>
+
+    <div id="authScreen" class="auth-screen">
+        <div class="auth-card" id="loginCard">
+            <div style="text-align:center; margin-bottom:32px;">
+                <div class="logo-wrap" style="justify-content:center; flex-direction:column; gap:8px;">
+                    <div class="logo-mark">AZ</div>
+                    <div class="logo-title">Alpha Vision</div>
+                    <div class="logo-tag">Smart Trading 2026</div>
+                </div>
+            </div>
+            <h2>تسجيل <span>الدخول</span></h2>
+            <div class="input-wrap">
+                <span class="icon">✉️</span>
+                <input type="email" id="loginEmail" placeholder="البريد الإلكتروني" autocomplete="email">
+            </div>
+            <div class="input-wrap">
+                <span class="icon">🔒</span>
+                <input type="password" id="loginPassword" placeholder="كلمة المرور" autocomplete="current-password">
+            </div>
+            <div class="auth-error" id="loginError"></div>
+            <button class="btn-primary" onclick="handleLogin()">دخول</button>
+            <div class="auth-link" onclick="switchAuth('register')">ليس لديك حساب؟ <span style="color:var(--accent-cyan)">سجل الآن</span></div>
+        </div>
+
+        <div class="auth-card hidden" id="registerCard">
+            <div style="text-align:center; margin-bottom:32px;">
+                <div class="logo-wrap" style="justify-content:center; flex-direction:column; gap:8px;">
+                    <div class="logo-mark">AZ</div>
+                    <div class="logo-title">Alpha Vision</div>
+                    <div class="logo-tag">Smart Trading 2026</div>
+                </div>
+            </div>
+            <h2>إنشاء <span>حساب</span></h2>
+            <div class="input-wrap">
+                <span class="icon">👤</span>
+                <input type="text" id="regName" placeholder="الاسم الكامل">
+            </div>
+            <div class="input-wrap">
+                <span class="icon">✉️</span>
+                <input type="email" id="regEmail" placeholder="البريد الإلكتروني" autocomplete="email">
+            </div>
+            <div class="input-wrap">
+                <span class="icon">🔒</span>
+                <input type="password" id="regPassword" placeholder="كلمة المرور (8 أحرف على الأقل)" autocomplete="new-password">
+            </div>
+            <div class="auth-error" id="regError"></div>
+            <button class="btn-primary" onclick="handleRegister()">تسجيل</button>
+            <div class="auth-link" onclick="switchAuth('login')">لديك حساب؟ <span style="color:var(--accent-cyan)">دخول</span></div>
+        </div>
+    </div>
+
+    <div id="waitingScreen" class="waiting-screen">
+        <div class="pulse-ring">⏳</div>
+        <h2>قائمة الانتظار</h2>
+        <p>تم استلام طلبك. يرجى انتظار موافقة المسؤول.</p>
+        <button class="btn-logout" onclick="location.reload()" style="margin-top:16px;">تحديث الصفحة</button>
+    </div>
+
+    <div id="fibModal" class="modal-overlay">
+        <div class="modal-box" style="width:500px;">
+            <h2>📐 <span>Auto Fib Retracement</span></h2>
+            <div class="sub">ضبط مستويات فيبوناتشي والمظهر</div>
+            <div class="ind-settings-grid">
+                <div class="setting-row">
+                    <div><label>الانحرافات (Swings)</label><span class="hint">عدد الشمعات للبحث عن أعلى/أدنى سعر</span></div>
+                    <input type="number" class="setting-input" id="fibSwings" value="5" min="2" max="50">
+                </div>
+                <div class="setting-row">
+                    <div><label>عمق العمق (Depth)</label><span class="hint">عدد الشمعات للتأكد من القمة/القاع</span></div>
+                    <input type="number" class="setting-input" id="fibDepth" value="8" min="2" max="20">
+                </div>
+                <div class="setting-row">
+                    <div><label>تمديد لليسار</label></div>
+                    <div class="toggle-switch active" id="fibExtendLeft" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>تمديد لليمين</label></div>
+                    <div class="toggle-switch" id="fibExtendRight" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>عرض الأسعار</label></div>
+                    <div class="toggle-switch active" id="fibShowPrices" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>مستويات العرض</label></div>
+                    <select class="setting-select" id="fibLevelsMode"><option value="all">الكل</option><option value="retrace">تراجع فقط</option><option value="ext">امتداد فقط</option></select>
+                </div>
+                <div class="setting-row">
+                    <div><label>ملصقات المركز</label></div>
+                    <select class="setting-select" id="fibLabels"><option value="left">يسار</option><option value="right" selected>يمين</option><option value="center">وسط</option></select>
+                </div>
+                <div class="setting-row">
+                    <div><label>شفافية الخلفية</label></div>
+                    <input type="number" class="setting-input" id="fibBgOpacity" value="85" min="0" max="100">
+                </div>
+                <div class="setting-row" style="flex-direction:column; align-items:flex-start; gap:8px;">
+                    <label>المستويات المفعلة:</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px;" id="fibLevelChecks">
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0"> 0</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0.236"> 0.236</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0.382"> 0.382</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0.5"> 0.5</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0.618"> 0.618</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="0.786"> 0.786</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="1"> 1</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="1.272"> 1.272</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="1.414"> 1.414</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="1.618"> 1.618</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="2"> 2</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked value="2.24"> 2.24</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" value="2.65"> 2.65</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" value="3.65"> 3.65</label>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-modal btn-modal-confirm" onclick="saveIndicatorSettings('fib')" style="margin-top:16px;">💾 حفظ وتطبيق</button>
+            <button class="btn-modal btn-modal-cancel" onclick="closeIndicatorModal('fib')">إلغاء</button>
+        </div>
+    </div>
+
+    <div id="luxModal" class="modal-overlay">
+        <div class="modal-box" style="width:500px;">
+            <h2>🧠 <span>LuxAlgo Smart Money</span></h2>
+            <div class="sub">إعدادات Smart Money Concepts</div>
+            <div class="ind-settings-grid">
+                <div class="setting-row">
+                    <div><label>الوضع (Mode)</label></div>
+                    <select class="setting-select" id="luxMode"><option value="historical" selected>Historical</option><option value="realtime">Real-time</option></select>
+                </div>
+                <div class="setting-row">
+                    <div><label>النمط (Style)</label></div>
+                    <select class="setting-select" id="luxStyle"><option value="colored" selected>Colored</option><option value="solid">Solid</option></select>
+                </div>
+                <div class="setting-row">
+                    <div><label>Color Candles</label></div>
+                    <div class="toggle-switch" id="luxColorCandles" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>إظهار Internal Structure</label></div>
+                    <div class="toggle-switch active" id="luxShowInternal" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>إظهار Swing Structure</label></div>
+                    <div class="toggle-switch active" id="luxShowSwing" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>لون Bullish Structure</label></div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="color-dot selected" style="background:#00e676;" data-color="#00e676" onclick="selectColor(this,'luxBullishColor')"></div>
+                        <div class="color-dot" style="background:#00f0ff;" data-color="#00f0ff" onclick="selectColor(this,'luxBullishColor')"></div>
+                        <div class="color-dot" style="background:#ffd700;" data-color="#ffd700" onclick="selectColor(this,'luxBullishColor')"></div>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div><label>لون Bearish Structure</label></div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="color-dot selected" style="background:#ff1744;" data-color="#ff1744" onclick="selectColor(this,'luxBearishColor')"></div>
+                        <div class="color-dot" style="background:#ff9100;" data-color="#ff9100" onclick="selectColor(this,'luxBearishColor')"></div>
+                        <div class="color-dot" style="background:#b829dd;" data-color="#b829dd" onclick="selectColor(this,'luxBearishColor')"></div>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div><label>Confluence Filter</label></div>
+                    <div class="toggle-switch" id="luxConfluence" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="setting-row">
+                    <div><label>حجم الملصقات</label></div>
+                    <select class="setting-select" id="luxLabelSize"><option value="tiny">Tiny</option><option value="small" selected>Small</option><option value="normal">Normal</option></select>
+                </div>
+            </div>
+            <button class="btn-modal btn-modal-confirm" onclick="saveIndicatorSettings('lux')" style="margin-top:16px;">💾 حفظ وتطبيق</button>
+            <button class="btn-modal btn-modal-cancel" onclick="closeIndicatorModal('lux')">إلغاء</button>
+        </div>
+    </div>
+
+    <div id="atrModal" class="modal-overlay">
+        <div class="modal-box" style="width:500px;">
+            <h2>📉 <span>Trend ATR Moreno</span></h2>
+            <div class="sub">إعدادات مؤشر ATR الاتجاهي</div>
+            <div class="ind-settings-grid">
+                <div class="setting-row">
+                    <div><label>CCI Period</label></div>
+                    <input type="number" class="setting-input" id="atrCCIPeriod" value="20" min="5" max="50">
+                </div>
+                <div class="setting-row">
+                    <div><label>ATR Multiplier</label></div>
+                    <input type="number" class="setting-input" id="atrMultiplier" value="2" min="0.5" max="5" step="0.1">
+                </div>
+                <div class="setting-row">
+                    <div><label>ATR Period</label></div>
+                    <input type="number" class="setting-input" id="atrPeriod" value="14" min="5" max="50">
+                </div>
+                <div class="setting-row">
+                    <div><label>مصدر الحساب</label></div>
+                    <select class="setting-select" id="atrSource"><option value="close" selected>Close</option><option value="high">High</option><option value="low">Low</option><option value="hl2">(High+Low)/2</option><option value="ohlc4">(O+H+L+C)/4</option></select>
+                </div>
+                <div class="setting-row">
+                    <div><label>لون خط الاتجاه الصاعد</label></div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="color-dot selected" style="background:#00e676;" data-color="#00e676" onclick="selectColor(this,'atrBullColor')"></div>
+                        <div class="color-dot" style="background:#00f0ff;" data-color="#00f0ff" onclick="selectColor(this,'atrBullColor')"></div>
+                        <div class="color-dot" style="background:#2196f3;" data-color="#2196f3" onclick="selectColor(this,'atrBullColor')"></div>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div><label>لون خط الاتجاه الهابط</label></div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="color-dot selected" style="background:#ff1744;" data-color="#ff1744" onclick="selectColor(this,'atrBearColor')"></div>
+                        <div class="color-dot" style="background:#ff9100;" data-color="#ff9100" onclick="selectColor(this,'atrBearColor')"></div>
+                        <div class="color-dot" style="background:#f44336;" data-color="#f44336" onclick="selectColor(this,'atrBearColor')"></div>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div><label>عرض الخط</label></div>
+                    <select class="setting-select" id="atrLineWidth"><option value="1">1px</option><option value="2" selected>2px</option><option value="3">3px</option></select>
+                </div>
+            </div>
+            <button class="btn-modal btn-modal-confirm" onclick="saveIndicatorSettings('atr')" style="margin-top:16px;">💾 حفظ وتطبيق</button>
+            <button class="btn-modal btn-modal-cancel" onclick="closeIndicatorModal('atr')">إلغاء</button>
+        </div>
+    </div>
+
+    <div id="signalChartModal" class="modal-overlay">
+        <div class="modal-box" style="width:600px;">
+            <h2 id="signalChartTitle">📈 <span>الشارت</span></h2>
+            <div class="sub">الفاصل اليومي — بيانات حقيقية</div>
+            <div id="signalChartContainer" style="width:100%; height:360px; margin-top:12px;"></div>
+            <button class="btn-modal btn-modal-cancel" onclick="document.getElementById('signalChartModal').classList.remove('active')">إغلاق</button>
+        </div>
+    </div>
+
+    <div id="upgradeModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>ترقية <span>الخطة</span></h2>
+            <div class="sub">اختر طريقة الدفع لتفعيل 60 يوماً إضافية</div>
+            <div class="pay-option disabled">
+                <div class="pay-title">💳 بطاقة ائتمان</div>
+                <div class="pay-desc">غير مفعل حالياً</div>
+            </div>
+            <div class="pay-option">
+                <div class="pay-title">🏦 تحويل بنكي</div>
+                <div class="pay-desc">حول المبلغ وارفع الإيصال</div>
+                <input type="file" id="receiptUpload" accept="image/*">
+                <button class="btn-modal btn-modal-confirm" onclick="submitBankTransfer()" style="margin-top:12px;">رفع الإيصال وطلب الترقية</button>
+            </div>
+            <button class="btn-modal btn-modal-cancel" onclick="closeUpgradeModal()">إلغاء</button>
+        </div>
+    </div>
+
+    <div id="appContainer" class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">المحفظة</span>
+                <span id="trialBadge" class="trial-pill">60 يوم</span>
+            </div>
+            <div class="add-stock-form">
+                <input type="text" id="addSymbolInput" placeholder="رمز السهم (مثال: AAPL)" style="text-transform:uppercase;">
+                <input type="number" id="addEntryPrice" placeholder="سعر الشراء ($)" step="0.01">
+                <button class="btn-add" onclick="addToWatchlist()">+ إضافة للمتابعة</button>
+            </div>
+            <div class="watchlist-scroll" id="watchlistContainer"></div>
+            <div class="stats-block">
+                <h4>📊 عائد محفظتي</h4>
+                <div class="stat-row"><span>الصفقات الرابحة</span><span class="val pos" id="winRecs">0</span></div>
+                <div class="stat-row"><span>الصفقات الخاسرة</span><span class="val neg" id="loseRecs">0</span></div>
+                <div class="stat-row"><span>الربح/خسارة $</span><span class="val" id="recReturn">$0.00</span></div>
+                <div class="stat-row"><span>العائد %</span><span class="val" id="recReturnPct">0.00%</span></div>
+                <div class="stat-row"><span>الاستثمار</span><span class="val text-muted" id="totalInvested">$0.00</span></div>
+                <div class="stat-row"><span>القيمة الحالية</span><span class="val text-cyan" id="totalCurrent">$0.00</span></div>
+            </div>
+            <div class="stats-block" style="margin-top:12px;">
+                <h4>🎯 أداء ترشيحات الموقع</h4>
+                <div class="stat-row"><span>الترشيحات النشطة</span><span class="val text-cyan" id="sitePicksCount">0</span></div>
+                <div class="stat-row"><span>متوسط العائد</span><span class="val" id="siteAvgReturn">0.00%</span></div>
+                <div class="stat-row"><span>نسبة النجاح</span><span class="val pos" id="siteWinRate">0%</span></div>
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:11px; color:var(--text-dim); line-height:1.6;" id="sitePicksDesc">
+                    اضغط "مسح الأسبوع" لحساب أداء الترشيحات
+                </div>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="topbar">
+                <div class="logo-wrap">
+                    <div class="logo-mark" style="width:36px;height:36px;font-size:14px;">AZ</div>
+                    <div class="logo-title" style="font-size:16px;">Alpha Vision</div>
+                </div>
+                <div class="topbar-right">
+                    <div class="live-clock"><span class="dot"></span><span id="liveTime">--:--:--</span></div>
+                    <div class="user-chip">
+                        <div class="avatar" id="userAvatar">U</div>
+                        <span id="userName">--</span>
+                    </div>
+                    <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">ترقية</button>
+                    <button class="btn-logout" onclick="handleLogout()" style="padding:8px 14px; font-size:12px;">🚪 خروج</button>
+                </div>
+            </div>
+
+            <div class="tabs-wrap">
+                <button class="tab-btn active" onclick="switchTab('stocks')" data-tab="stocks">📊 الأسهم الحية</button>
+                <button class="tab-btn" onclick="switchTab('portfolio')" data-tab="portfolio">💼 المحفظة</button>
+                <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener">🔍 فلترة 800+ سهم</button>
+                <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals">🎯 الماسح والتنبيهات</button>
+                <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks">📌 ترشيحات الأسبوع</button>
+                <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators">📈 المؤشرات</button>
+                <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin">🛡️ التحكم</button>
+            </div>
+
+            <div class="content-area">
+                <div id="tab-stocks" class="tab-panel">
+                    <div class="chart-box" id="chartBox">
+                        <div id="chartContainer" style="width:100%;height:100%;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div style="font-size:12px; color:var(--text-muted);">آخر تحديث: <span id="lastUpdate" class="font-mono">--</span></div>
+                        <button class="preset-btn" onclick="runScanner()" style="border-color:var(--accent-cyan); color:var(--accent-cyan);">🔄 تحديث الأسعار</button>
+                    </div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>الرمز</th><th>السعر</th><th>التغيير</th><th>الحجم</th><th>RSI</th><th>الإشارة</th><th></th></tr></thead>
+                            <tbody id="stockTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-portfolio" class="tab-panel hidden">
+                    <div class="section-title">محفظتي <div class="line"></div></div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>الرمز</th><th>الدخول</th><th>الحالي</th><th>الربح $</th><th>الربح %</th><th>مستثمر</th><th>القيمة</th><th></th></tr></thead>
+                            <tbody id="portfolioTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-screener" class="tab-panel hidden">
+                    <div class="screener-header">
+                        <h3>🔍 فلترة متقدمة — <span class="text-cyan">800+</span> سهم</h3>
+                        <div class="preset-btns">
+                            <button class="preset-btn" onclick="loadPreset('growth')">📈 نمو</button>
+                            <button class="preset-btn" onclick="loadPreset('value')">💰 قيمة</button>
+                            <button class="preset-btn" onclick="loadPreset('momentum')">🚀 زخم</button>
+                            <button class="preset-btn" onclick="loadPreset('breakout')">💥 اختراق</button>
+                            <button class="preset-btn" onclick="loadPreset('swing')">🎯 سوينج</button>
+                            <button class="preset-btn" onclick="loadPreset('dividend')">💵 توزيعات</button>
+                            <button class="preset-btn" onclick="loadPreset('penny')">🪙 Penny</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; font-weight:600;">🎯 فلاتر الفرص الجاهزة</div>
+                        <div class="preset-btns">
+                            <button class="preset-btn opp" onclick="loadPreset('opp_buy_dip')">📉 شراء التراجع</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_earnings')">📊 مفاجأة أرباح</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_low_float')">🎈 Float منخفض</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_analyst')">👨‍💼 توصية محللين</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_debt_free')">✅ خالٍ من الديون</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_undervalued')">🏷️ أقل من قيمته</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_tech_bounce')">🔥 ارتداد تقني</button>
+                        </div>
+                    </div>
+
+                    <div class="filters-grid">
+                        <div class="filter-box">
+                            <label>💵 نطاق السعر</label>
+                            <select id="fPrice"><option value="any">أي سعر</option><option value="under5">&lt; $5</option><option value="5to20" selected>$5 — $20</option><option value="20to50">$20 — $50</option><option value="50to100">$50 — $100</option><option value="over100">&gt; $100</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📊 الحجم اليومي</label>
+                            <select id="fVolume"><option value="any">أي حجم</option><option value="over100k">&gt; 100K</option><option value="over300k" selected>&gt; 300K</option><option value="over500k">&gt; 500K</option><option value="over1m">&gt; 1M</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📈 نسبة التغيير</label>
+                            <select id="fChange"><option value="any">أي تغيير</option><option value="up">إيجابي ⬆️</option><option value="up3">+3% فأكثر</option><option value="up5">+5% فأكثر</option><option value="down">سلبي ⬇️</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>🏭 القطاع</label>
+                            <select id="fSector"><option value="any">أي قطاع</option><option value="tech">تكنولوجيا</option><option value="finance">مالي</option><option value="healthcare">صحية</option><option value="consumer">استهلاكي</option><option value="industrial">صناعي</option><option value="energy">طاقة</option><option value="reits">عقارات</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>⚡ RSI (14)</label>
+                            <select id="fRSI"><option value="any">أي قيمة</option><option value="oversold">مباع بإفراط (&lt;30)</option><option value="neutral">محايد (30-70)</option><option value="overbought">مشترى بإفراط (&gt;70)</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📉 SMA 50</label>
+                            <select id="fSMA50"><option value="any">أي</option><option value="above">السعر فوق SMA50</option><option value="below">السعر تحت SMA50</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📊 SMA 200</label>
+                            <select id="fSMA200"><option value="any">أي</option><option value="above">السعر فوق SMA200</option><option value="below">السعر تحت SMA200</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>🔥 الحجم النسبي</label>
+                            <select id="fRelVol"><option value="any">أي</option><option value="over1">&gt; 1x</option><option value="over2">&gt; 2x</option><option value="over3">&gt; 3x</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>💪 التقييم الفني</label>
+                            <select id="fGrade"><option value="any">أي</option><option value="a">A فقط</option><option value="ab">A أو B</option><option value="abc">A أو B أو C</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>🎯 الحد الأقصى</label>
+                            <select id="fLimit"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="500">500</option></select>
+                        </div>
+
+                        <div class="filter-box">
+                            <label>📘 P/B (Price/Book)</label>
+                            <select id="fPB"><option value="any">أي</option><option value="under1">&lt; 1</option><option value="1to3">1 — 3</option><option value="3to5">3 — 5</option><option value="over5">&gt; 5</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📈 EPS Growth هذا العام</label>
+                            <select id="fEPSGrowth"><option value="any">أي</option><option value="over15">&gt; 15%</option><option value="over30">&gt; 30%</option><option value="over50">&gt; 50%</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📊 EPS Growth السنة القادمة</label>
+                            <select id="fEPSNext"><option value="any">أي</option><option value="over15">&gt; 15%</option><option value="over30">&gt; 30%</option><option value="over50">&gt; 50%</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>🎯 EPS Growth 5 سنوات</label>
+                            <select id="fEPS5Y"><option value="any">أي</option><option value="over15">&gt; 15%</option><option value="over30">&gt; 30%</option></select>
+                        </div>
+                        <div class="filter-box" style="opacity:0.5;">
+                            <label>💡 مفاجأة الأرباح 🚧 قريبًا</label>
+                            <select id="fEarnSurprise" disabled><option value="any">لا مصدر بيانات حقيقي بعد</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>⚖️ LT Debt/Equity</label>
+                            <select id="fLTDebt"><option value="any">أي</option><option value="under0.3">&lt; 0.3</option><option value="under0.6">&lt; 0.6</option><option value="under1">&lt; 1</option><option value="over1">&gt; 1</option></select>
+                        </div>
+                        <div class="filter-box" style="opacity:0.5;">
+                            <label>🎈 Float (مليون) 🚧 قريبًا</label>
+                            <select id="fFloat" disabled><option value="any">لا مصدر بيانات حقيقي بعد</option></select>
+                        </div>
+                        <div class="filter-box" style="opacity:0.5;">
+                            <label>👨‍💼 توصية المحللين 🚧 قريبًا</label>
+                            <select id="fAnalyst" disabled><option value="any">لا مصدر بيانات حقيقي بعد</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📅 أداء أسبوعي</label>
+                            <select id="fPerfWeek"><option value="any">أي</option><option value="up">إيجابي</option><option value="up5">+5% فأكثر</option><option value="up10">+10% فأكثر</option><option value="down">سلبي</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>📉 20-Day SMA</label>
+                            <select id="fSMA20"><option value="any">أي</option><option value="above">السعر فوق</option><option value="below">السعر تحت</option></select>
+                        </div>
+                        <div class="filter-box">
+                            <label>🔥 الحجم الحالي</label>
+                            <select id="fCurVol"><option value="any">أي</option><option value="over100k">&gt; 100K</option><option value="over500k">&gt; 500K</option><option value="over1m">&gt; 1M</option><option value="over5m">&gt; 5M</option></select>
+                        </div>
+                        <div class="filter-box" style="opacity:0.5;">
+                            <label>⚡ Beta 🚧 قريبًا</label>
+                            <select id="fBeta" disabled><option value="any">لا مصدر بيانات حقيقي بعد</option></select>
+                        </div>
+                    </div>
+
+                    <div class="scan-actions">
+                        <button class="btn-scan-main" id="scanBtn" onclick="runScreener()">🔍 بدء الفلترة</button>
+                        <button class="btn-clear-filters" onclick="clearScreener()">🗑️ مسح</button>
+                    </div>
+
+                    <div class="progress-track" id="scanProgress"><div class="progress-bar-fill" id="scanBar"></div></div>
+                    <div class="scan-meta" id="scanMeta"></div>
+
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>الرمز</th><th>السعر</th><th>التغيير</th><th>الحجم</th><th>القطاع</th><th>RSI</th><th>EPS</th><th>P/E</th><th>الديون</th><th>التقييم</th><th>الإشارة</th><th></th></tr></thead>
+                            <tbody id="screenerTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-signals" class="tab-panel hidden">
+                    <div class="screener-header">
+                        <h3>🎯 الماسح الحقيقي — محرك توافق 4 إشارات (فايبوناتشي + SMC/ATR + شمعة يابانية + حجم)</h3>
+                    </div>
+                    <div class="preset-btns" style="margin-bottom:16px;">
+                        <button class="preset-btn" onclick="runSignalScan('military')">الفلتر العسكري</button>
+                        <button class="preset-btn" onclick="runSignalScan('quality_value')">قيمة ونوعية</button>
+                        <button class="preset-btn" onclick="runSignalScan('growth')">نمو (Float منخفض)</button>
+                        <button class="preset-btn" onclick="runSignalScan('growth_beta')">نمو (Beta)</button>
+                    </div>
+                    <div class="scan-meta" id="signalsMeta"></div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
+                        <table class="data-table">
+                            <thead><tr><th>الرمز</th><th>الشركة</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
+                            <tbody id="signalsTableBody"><tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
+                        </table>
+                    </div>
+
+                    <div class="section-title">🔔 قائمة التنبيهات (آخر 100) <div class="line"></div></div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
+                        <table class="data-table">
+                            <thead><tr><th>الوقت</th><th>الرمز</th><th>الفلتر</th><th>التنبيه</th><th>السعر</th></tr></thead>
+                            <tbody id="signalsAlertsBody"><tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px;">جاري التحميل...</td></tr></tbody>
+                        </table>
+                    </div>
+
+                    <div class="section-title">📈 أداء الماسح <div class="line"></div></div>
+                    <div class="preset-btns" style="margin-bottom:12px;">
+                        <button class="preset-btn" id="sigPerfTab_month" onclick="renderSignalPerformance('month')">شهري</button>
+                        <button class="preset-btn" id="sigPerfTab_quarter" onclick="renderSignalPerformance('quarter')">ربعي</button>
+                        <button class="preset-btn" id="sigPerfTab_half" onclick="renderSignalPerformance('half')">نصف سنوي</button>
+                        <button class="preset-btn" id="sigPerfTab_year" onclick="renderSignalPerformance('year')">سنوي</button>
+                    </div>
+                    <div id="signalPerformanceBody" class="text-sm"></div>
+                </div>
+
+                <div id="tab-picks" class="tab-panel hidden">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <div class="section-title" style="margin:0;">📌 ترشيحات الأسبوع <div class="line"></div></div>
+                        <button class="preset-btn" onclick="runWeeklyScan()" style="border-color:var(--accent-cyan); color:var(--accent-cyan);">🔄 مسح الأسبوع</button>
+                    </div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>الرمز</th><th>السعر</th><th>القطاع</th><th>الديون</th><th>EPS</th><th>النمو</th><th>التقييم</th></tr></thead>
+                            <tbody id="picksTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-indicators" class="tab-panel hidden">
+                    <div class="chart-box" id="chartBoxIndicators" style="height:250px; margin-bottom:16px;">
+                        <div id="chartContainerIndicators" style="width:100%;height:100%;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <div class="section-title" style="margin:0;">📈 أدوات التحليل الفني <div class="line"></div></div>
+                        <button class="preset-btn danger" onclick="clearAllIndicators()">🗑️ مسح المؤشرات</button>
+                    </div>
+                    <div class="indicators-grid">
+                        <div class="indicator-card">
+                            <div class="ind-header">
+                                <span class="ind-title">📐 Auto Fib Retracement</span>
+                                <span class="badge badge-a" id="fibBadge" style="display:none">مفعل</span>
+                            </div>
+                            <div class="ind-desc">مستويات فيبوناتشي التلقائية مع 14 مستوى قياسي. يحسب تلقائياً من أعلى وأدنى سعر في الفترة المعروضة.</div>
+                            <div class="fib-levels-preview" id="fibPreview">
+                                <span class="fib-chip active">0</span><span class="fib-chip active">0.236</span><span class="fib-chip active">0.382</span>
+                                <span class="fib-chip active">0.5</span><span class="fib-chip active">0.618</span><span class="fib-chip active">0.786</span>
+                                <span class="fib-chip active">1</span><span class="fib-chip active">1.272</span><span class="fib-chip active">1.414</span>
+                                <span class="fib-chip active">1.618</span><span class="fib-chip active">2</span><span class="fib-chip active">2.24</span>
+                            </div>
+                            <div class="ind-actions" style="margin-top:16px;">
+                                <button class="btn-ind" onclick="openIndicatorModal('fib')">⚙️ الإعدادات</button>
+                                <button class="btn-ind" id="fibToggleBtn" onclick="toggleIndicator('fib')">▶️ تفعيل</button>
+                            </div>
+                        </div>
+                        <div class="indicator-card">
+                            <div class="ind-header">
+                                <span class="ind-title">🧠 LuxAlgo Smart Money</span>
+                                <span class="badge badge-a" id="luxBadge" style="display:none">مفعل</span>
+                            </div>
+                            <div class="ind-desc">مفاهيم Smart Money: تحديد البنية الداخلية والسوينج، فلتر التقاء، ونمط الألوان للاتجاه الصاعد/الهابط.</div>
+                            <div class="ind-actions" style="margin-top:16px;">
+                                <button class="btn-ind" onclick="openIndicatorModal('lux')">⚙️ الإعدادات</button>
+                                <button class="btn-ind" id="luxToggleBtn" onclick="toggleIndicator('lux')">▶️ تفعيل</button>
+                            </div>
+                        </div>
+                        <div class="indicator-card">
+                            <div class="ind-header">
+                                <span class="ind-title">📉 Trend ATR Moreno</span>
+                                <span class="badge badge-a" id="atrBadge" style="display:none">مفعل</span>
+                            </div>
+                            <div class="ind-desc">مؤشر الاتجاه ATR مع CCI. يحدد اتجاه السوق باستخدام ATR وCCI مع معاملات قابلة للضبط.</div>
+                            <div class="ind-actions" style="margin-top:16px;">
+                                <button class="btn-ind" onclick="openIndicatorModal('atr')">⚙️ الإعدادات</button>
+                                <button class="btn-ind" id="atrToggleBtn" onclick="toggleIndicator('atr')">▶️ تفعيل</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="glass" style="padding:20px; margin-top:8px;">
+                        <div style="font-size:13px; color:var(--text-muted); line-height:1.7;">
+                            <strong style="color:var(--accent-cyan);">💡 كيفية الاستخدام:</strong><br>
+                            • اختر سهماً من قائمة الأسهم الحية أو أضفه للمحفظة<br>
+                            • فعّل المؤشرات المطلوبة — ستظهر على الرسم البياني العلوي مباشرة<br>
+                            • اضبط الإعدادات من زر "الإعدادات" لكل مؤشر<br>
+                            • يمكن تفعيل أكثر من مؤشر في نفس الوقت
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-admin" class="tab-panel hidden">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <div class="section-title" style="margin:0;">🛡️ لوحة التحكم <div class="line"></div></div>
+                        <button class="preset-btn" onclick="refreshAdminData()" style="border-color:var(--accent-purple); color:var(--accent-purple);">🔄 تحديث</button>
+                    </div>
+                    <div class="admin-kpi-grid">
+                        <div class="kpi-card"><div class="kpi-glow" style="background:var(--accent-cyan);"></div><div class="kpi-val" id="totalUsers">0</div><div class="kpi-label">المشتركين</div></div>
+                        <div class="kpi-card"><div class="kpi-glow" style="background:var(--accent-gold);"></div><div class="kpi-val" id="pendingUsers">0</div><div class="kpi-label">معلق</div></div>
+                        <div class="kpi-card"><div class="kpi-glow" style="background:var(--accent-green);"></div><div class="kpi-val" id="activeUsers">0</div><div class="kpi-label">نشط</div></div>
+                        <div class="kpi-card"><div class="kpi-glow" style="background:var(--accent-red);"></div><div class="kpi-val" id="expiredUsers">0</div><div class="kpi-label">منتهي</div></div>
+                    </div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>الاسم</th><th>البريد</th><th>الحالة</th><th>الصلاحية</th><th>الأسهم</th><th>إجراء</th></tr></thead>
+                            <tbody id="adminTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="admin-subtitle">💳 طلبات الترقية المعلقة</div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
+                        <table class="data-table">
+                            <thead><tr><th>المستخدم</th><th>البريد</th><th>التاريخ</th><th>الإيصال</th><th>إجراء</th></tr></thead>
+                            <tbody id="upgradeRequestsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+name: AZ Alpha Vision - Full Market Scan
+
+on:
+  schedule:
+    # 22:00 UTC كل يوم عمل — بعد إغلاق السوق الأمريكي بوقت كافٍ (أيام الإثنين-الجمعة)
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  full_scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install finvizfinance yfinance pandas numpy requests
+
+      - name: Run full scan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python fetch_market_data.py --mode full

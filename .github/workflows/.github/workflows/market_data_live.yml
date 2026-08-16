@@ -1,0 +1,28 @@
+name: AZ Alpha Vision - Live Quotes
+
+on:
+  schedule:
+    # كل 15 دقيقة أثناء ساعات تداول السوق الأمريكي تقريبًا (13:00–21:00 UTC، أيام العمل)
+    # جدولة GitHub Actions "أفضل جهد" وقد تتأخر بضع دقائق في أوقات الازدحام — هذا متوقع.
+    - cron: '*/15 13-21 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  live_quotes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy requests
+
+      - name: Run quick price refresh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python fetch_market_data.py --mode quick

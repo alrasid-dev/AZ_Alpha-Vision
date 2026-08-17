@@ -291,6 +291,7 @@ def upsert_rows(table, rows):
     if not rows:
         log.warning(f"{table}: لا صفوف لكتابتها")
         return 0
+
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     headers = {
         'apikey': SUPABASE_SERVICE_KEY,
@@ -298,17 +299,43 @@ def upsert_rows(table, rows):
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates',
     }
+
+    # جلب الأعمدة المقبولة حالياً من Supabase لفلترة البيانات فوراً
+    try:
+        check_resp = requests.get(f"{url}?limit=1", headers={'apikey': SUPABASE_SERVICE_KEY, 'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}'})
+        if check_resp.status_code == 200 and check_resp.json():
+            valid_keys = set(check_resp.json()[0].keys())
+            rows = [{k: v for k, v in r.items() if k in valid_keys} for r in rows]
+    except Exception as e:
+        log.warning(f"تنبيه: تعذر جلب أعمدة {table}: {e}")
+
     batch_size = 200
-    written = 0
+    total_written = 0
+
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i + batch_size]
-        resp = requests.post(url, headers=headers, data=json.dumps(batch, default=str), timeout=30)
-        if resp.status_code not in (200, 201):
-            log.error(f"{table}: فشل الحفظ للدفعة {i}: {resp.status_code} {resp.text[:400]}")
-        else:
-            written += len(batch)
-    log.info(f"{table}: تم حفظ {written} صف")
-    return written
+        
+        for _ in range(10):
+            resp = requests.post(url, headers=headers, json=batch)
+            if resp.status_code in (200, 201):
+                total_written += len(batch)
+                break
+            elif resp.status_code == 400 and "column" in resp.text:
+                import re
+                match = re.search(r"Could not find the '([^']+)' column", resp.text)
+                if match:
+                    bad_col = match.group(1)
+                    log.warning(f"استبعاد العمود غير المسجل '{bad_col}' من جدول {table}")
+                    batch = [{k: v for k, v in r.items() if k != bad_col} for r in batch]
+                else:
+                    log.error(f"فشل الحفظ لـ {table}: {resp.status_code} - {resp.text}")
+                    break
+            else:
+                log.error(f"خطأ في {table}: {resp.status_code} - {resp.text}")
+                break
+
+    log.info(f"{table}: تم حفظ {total_written} صف")
+    return total_written
 
 
 def run_full():

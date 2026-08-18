@@ -1144,7 +1144,16 @@ async function runWeeklyScan() {
     const top = candidates.slice(0,10);
 
     tb.innerHTML = '';
-    if (!top.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة</td></tr>'; return; }
+    if (!top.length) {
+        LocalCache.setPicks([]);
+        document.getElementById('sitePicksCount').textContent = '0';
+        document.getElementById('siteAvgReturn').textContent = '0.00%';
+        document.getElementById('siteWinRate').textContent = '0%';
+        document.getElementById('sitePicksDesc').textContent = 'لا توجد ترشيحات تحقق شروط السعر والحجم الحالية.';
+        tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 و2x متوسط 9 أيام</td></tr>';
+        toast('لم توجد ترشيحات مطابقة للشروط الحالية', 'warn');
+        return;
+    }
 
     const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, date: new Date().toISOString().split('T')[0], score: s.pickScore }));
     LocalCache.setPicks(pickData);

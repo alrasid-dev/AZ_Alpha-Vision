@@ -151,8 +151,19 @@ async function initApp(user, profile) {
 
 // ===== WATCHLIST (Supabase — syncs across devices now) =====
 async function loadWatchlist() {
-    const { data, error } = await sb.from('watchlist').select('*').eq('user_id', currentUser.id).order('added_at', { ascending: true });
-    watchlist = error || !data ? [] : data.map(r => ({ id: r.id, symbol: r.symbol, entry_price: Number(r.entry_price), qty: Number(r.qty) || 1, added: new Date(r.added_at).getTime() }));
+    const { data, error } = await sb.from('watchlist').select('*').eq('user_id', currentUser.id);
+    if (error) {
+        console.error('watchlist load error', error);
+        toast('تعذر تحميل المحفظة: ' + error.message, 'error');
+        try { watchlist = JSON.parse(localStorage.getItem(`az_watchlist_${currentUser.id}`) || '[]'); } catch { watchlist = []; }
+    } else {
+        watchlist = (data || []).map(r => ({
+            id: r.id, symbol: String(r.symbol || '').toUpperCase(),
+            entry_price: Number(r.entry_price ?? r.price ?? 0), qty: Number(r.qty) || 1,
+            added: new Date(r.added_at || r.created_at || Date.now()).getTime()
+        })).filter(r => r.symbol && r.entry_price > 0).sort((a,b) => a.added - b.added);
+        localStorage.setItem(`az_watchlist_${currentUser.id}`, JSON.stringify(watchlist));
+    }
     renderWatchlist(); renderPortfolio();
 }
 async function addToWatchlist() {
@@ -160,8 +171,18 @@ async function addToWatchlist() {
     const ep = parseFloat(document.getElementById('addEntryPrice').value);
     if (!sym || !ep || ep<=0) { toast('أدخل رمز وسعر صحيح','error'); return; }
     if (watchlist.find(x=>x.symbol===sym)) { toast('السهم موجود','warn'); return; }
-    const { error } = await sb.from('watchlist').insert({ user_id: currentUser.id, symbol: sym, entry_price: ep, qty: 1 });
-    if (error) { toast('تعذرت الإضافة: ' + error.message, 'error'); return; }
+    const { data: inserted, error } = await sb.from('watchlist').insert({ user_id: currentUser.id, symbol: sym, entry_price: ep, qty: 1 }).select().single();
+    const localItem = { id: inserted?.id || `local-${Date.now()}`, symbol: sym, entry_price: ep, qty: 1, added: Date.now() };
+    if (error) {
+        const localItems = [...watchlist.filter(x => x.symbol !== sym), localItem];
+        watchlist = localItems;
+        localStorage.setItem(`az_watchlist_${currentUser.id}`, JSON.stringify(localItems));
+        renderWatchlist(); renderPortfolio();
+        toast('تمت الإضافة محليًا؛ أصلح سياسات watchlist في Supabase للمزامنة', 'warn');
+        return;
+    }
+    const localItems = [...watchlist.filter(x => x.symbol !== sym), localItem];
+    localStorage.setItem(`az_watchlist_${currentUser.id}`, JSON.stringify(localItems));
     document.getElementById('addSymbolInput').value=''; document.getElementById('addEntryPrice').value='';
     await loadWatchlist();
     toast(`✅ أضيف ${sym}`);
@@ -171,6 +192,8 @@ async function removeFromWatchlist(sym) {
     if (!item) return;
     const { error } = await sb.from('watchlist').delete().eq('id', item.id);
     if (error) { toast('تعذر الحذف: ' + error.message, 'error'); return; }
+    const remaining = watchlist.filter(x => x.symbol !== sym);
+    localStorage.setItem(`az_watchlist_${currentUser.id}`, JSON.stringify(remaining));
     await loadWatchlist();
     toast(`🗑️ حُذف ${sym}`);
 }

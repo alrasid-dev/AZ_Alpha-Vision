@@ -854,7 +854,7 @@ async function runScanner() {
         const live = liveMap[sym];
         if (!base && !live) return null;
         const price = live?.price ?? base?.price ?? null;
-        if (price == null || price < 5 || price > 50 || Number(base?.relVolume9 ?? 0) < 2) return null;
+        if (price == null || price < 5 || price > 50) return null;
         const change = live?.change_pct ?? base?.change ?? null;
         const volume = live?.volume ?? base?.volume ?? null;
         if (price == null) return null;

@@ -191,14 +191,19 @@ async function renderPortfolio() {
     const prices = await Promise.all(watchlist.map(w=>fetchPrice(w.symbol)));
     let totalPnl=0, totalInvested=0, totalCurrent=0;
     watchlist.forEach((item,i)=>{
-        const p=prices[i]; if(!p) return;
+        const p=prices[i];
+        const hasPrice = Number.isFinite(p) && p > 0;
         const qty=item.qty||1;
         const invested=item.entry_price*qty;
-        const current=p*qty;
-        const pnl=current-invested;
-        const pct=(pnl/invested)*100;
-        totalPnl+=pnl; totalInvested+=invested; totalCurrent+=current;
-        tb.innerHTML+=`<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub">${qty} سهم</div></td><td class="font-mono">$${item.entry_price.toFixed(2)}</td><td class="font-mono">$${p.toFixed(2)}</td><td class="font-mono ${pnl>=0?'text-green':'text-red'}">${pnl>=0?'+':''}$${pnl.toFixed(2)}</td><td class="font-mono ${pnl>=0?'text-green':'text-red'}">${pct.toFixed(2)}%</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">$${current.toFixed(2)}</td><td><span style="color:var(--text-dim);cursor:pointer;font-size:16px;" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></td></tr>`;
+        const current=hasPrice ? p*qty : null;
+        const pnl=hasPrice ? current-invested : null;
+        const pct=hasPrice && invested > 0 ? (pnl/invested)*100 : null;
+        totalInvested+=invested;
+        if (hasPrice) { totalPnl+=pnl; totalCurrent+=current; }
+        const currentCell = hasPrice ? `$${p.toFixed(2)}` : '<span class="text-muted">بانتظار السعر</span>';
+        const pnlCell = hasPrice ? `${pnl>=0?'+':''}$${pnl.toFixed(2)}` : '—';
+        const pctCell = hasPrice ? `${pct.toFixed(2)}%` : '—';
+        tb.innerHTML+=`<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub">${qty} سهم</div></td><td class="font-mono">$${item.entry_price.toFixed(2)}</td><td class="font-mono">${currentCell}</td><td class="font-mono ${hasPrice ? (pnl>=0?'text-green':'text-red') : 'text-muted'}">${pnlCell}</td><td class="font-mono ${hasPrice ? (pnl>=0?'text-green':'text-red') : 'text-muted'}">${pctCell}</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">${hasPrice ? `$${current.toFixed(2)}` : '—'}</td><td><span style="color:var(--text-dim);cursor:pointer;font-size:16px;" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></td></tr>`;
     });
     if (watchlist.length > 0) {
         const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;

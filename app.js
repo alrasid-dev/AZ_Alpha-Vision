@@ -762,7 +762,7 @@ function initIndicatorChart() {
 let _universeCache = null; // { t: timestamp, rows: [...] } لتفادي إعادة الجلب الكامل كل ثانية
 
 function mapMarketRow(fund, tech) {
-    const price = tech?.price ?? null;
+    const price = tech?.price ?? fund?.price ?? null;
     const sma50 = tech?.sma50 ?? null;
     const sma200 = tech?.sma200 ?? null;
     const growth = fund?.eps_growth_this_year ?? null;
@@ -822,7 +822,7 @@ async function fetchUniverse(forceRefresh=false) {
     const techMap = Object.fromEntries((techRows || []).map(t => [t.symbol, t]));
     const rows = (fundRows || []).map(f => mapMarketRow(f, techMap[f.symbol])).filter(r => {
         const sector = String(r.sector || '').toLowerCase();
-        const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50 && Number(r.relVolume9 || 0) >= 2;
+        const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50;
         const ordinary = !['finance', 'financial', 'financials', 'reits'].includes(sector);
         const tradable = !EXCLUDED_SYMBOLS.has(String(r.symbol || '').toUpperCase());
         return liquid && ordinary && tradable;

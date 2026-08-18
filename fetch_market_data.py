@@ -183,6 +183,7 @@ def fetch_finviz_fundamentals():
         records[t] = {
             'symbol': t,
             'company': row.get('Company'),
+            'price': safe_num(row.get('Price')),
             'sector': SECTOR_TRANSLATE.get(finviz_sector, 'other'),
             'finviz_sector': finviz_sector,
             'industry': row.get('Industry'),

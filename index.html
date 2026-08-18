@@ -578,6 +578,25 @@
         .admin-btn { padding: 4px 12px; font-size: 11px; border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; font-weight: 600; }
         .btn-approve { background: var(--accent-green-dim); color: var(--accent-green); border-color: rgba(0,230,118,0.2); }
         .btn-reject { background: var(--accent-red-dim); color: var(--accent-red); border-color: rgba(255,23,68,0.2); margin-right: 6px; }
+        /* Mobile responsive fix */
+        @media (max-width: 768px) {
+            html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+            .app-container.active { display: flex; flex-direction: column; min-height: 100vh; height: auto; overflow: visible; }
+            .sidebar { width: 100%; max-height: none; height: auto; flex: 0 0 auto; padding: 12px; border-left: none; border-bottom: 1px solid var(--border); }
+            .main { width: 100%; min-width: 0; height: auto; min-height: 0; overflow: visible; }
+            .topbar { flex-wrap: wrap; gap: 10px; padding: 12px 14px; }
+            .topbar-right { width: 100%; flex-wrap: wrap; gap: 8px; }
+            .tabs-wrap { padding: 8px 12px; overflow-x: auto; }
+            .content-area { width: 100%; min-width: 0; height: auto; overflow: visible; padding: 12px; }
+            .indicators-grid { grid-template-columns: 1fr; }
+            .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+            .chart-box { height: 240px; }
+            .auth-card { width: min(92vw, 420px); padding: 28px 20px; }
+            .data-table { display: block; width: 100%; overflow-x: auto; white-space: nowrap; }
+            .data-table th, .data-table td { padding: 8px 10px; }
+            .card, .glass, .indicator-card, .stats-block { max-width: 100%; }
+            .btn-upgrade, .btn-logout { max-width: 100%; }
+        }
     </style>
 </head>
 <body>

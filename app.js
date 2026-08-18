@@ -1042,6 +1042,37 @@ const SIG_TIER_COLOR = { 'صريح': 'badge-strong-buy', 'أقوى': 'badge-buy'
 const SIG_TIER_COLOR_EXIT = { 'صريح': 'badge-strong-sell', 'أقوى': 'badge-sell', 'أولي': 'badge-hold' };
 const SIG_LABEL = { fibonacci: 'فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'شمعة', volume: 'حجم' };
 const SIG_PRESET_LABEL = { military: 'العسكري', quality_value: 'قيمة ونوعية', growth: 'نمو-Float', growth_beta: 'نمو-Beta' };
+let signalAudioContext = null;
+function playSignalAlertSound() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    try {
+        signalAudioContext ||= new AudioCtx();
+        if (signalAudioContext.state === 'suspended') signalAudioContext.resume();
+        const now = signalAudioContext.currentTime;
+        [0, 0.18, 0.36].forEach((offset, i) => {
+            const oscillator = signalAudioContext.createOscillator();
+            const gain = signalAudioContext.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = i === 2 ? 1046 : 880;
+            gain.gain.setValueAtTime(0.0001, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.14);
+            oscillator.connect(gain).connect(signalAudioContext.destination);
+            oscillator.start(now + offset);
+            oscillator.stop(now + offset + 0.15);
+        });
+    } catch (e) { console.warn('تعذر تشغيل صوت التنبيه', e); }
+}
+function playNewSignalAlertSound(alerts) {
+    const latest = alerts?.[0];
+    if (!latest) return;
+    const key = String(latest.id || `${latest.ts}:${latest.symbol}:${latest.type}`);
+    const previous = localStorage.getItem('az_last_signal_alert');
+    localStorage.setItem('az_last_signal_alert', key);
+    const age = Date.now() - new Date(latest.ts).getTime();
+    if (previous !== key && age >= 0 && age < 15 * 60 * 1000) playSignalAlertSound();
+}
 
 function sigEsc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -1058,6 +1089,7 @@ async function loadSignalsData() {
         if (e1) throw e1;
         SIGNALS_CACHE = sig || [];
         SIGNALS_ALERTS = alerts || [];
+        playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString('ar-SA') : '--'}</span> — اختر فلترًا لعرض النتائج`;
         renderSignalAlerts();

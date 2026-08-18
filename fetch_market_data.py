@@ -149,23 +149,27 @@ def fetch_finviz_fundamentals():
     # أهلية التداول: أسهم مدرجة في سوق رئيسي وليست ETF/صندوقًا أو رمزًا ضعيف السيولة.
     # هذه الحدود قابلة للضبط من متغيرات البيئة.
     allowed_exchanges = {'NYSE', 'NASDAQ', 'AMEX'}
-    min_avg_volume = int(os.environ.get('MIN_AVG_VOLUME', '100000'))
-    min_price = float(os.environ.get('MIN_PRICE', '2'))
+    min_price = float(os.environ.get('MIN_PRICE', '5'))
+    max_price = float(os.environ.get('MAX_PRICE', '50'))
+    excluded_symbols = {'DDV'}
     excluded_industries = {'exchange traded fund', 'etf', 'closed end fund', 'reit'}
     eligible_rows = []
     rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0}
     for _, row in df_ov.iterrows():
+        ticker = str(row.get('Ticker', '')).strip().upper()
         exchange = str(row.get('Exchange', '')).strip().upper()
         industry = str(row.get('Industry', '')).strip().lower()
-        avg_volume = safe_num(row.get('Avg Volume')) or safe_num(row.get('Average Volume')) or 0
         price = safe_num(row.get('Price')) or 0
         if exchange and exchange not in allowed_exchanges:
+            rejected['exchange'] += 1
+            continue
+        if ticker in excluded_symbols:
             rejected['exchange'] += 1
             continue
         if any(token in industry for token in excluded_industries):
             rejected['etf'] += 1
             continue
-        if avg_volume < min_avg_volume or price < min_price:
+        if price < min_price or price > max_price:
             rejected['liquidity'] += 1
             continue
         eligible_rows.append(row)

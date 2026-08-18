@@ -450,6 +450,7 @@ const UNIQUE_STOCKS = [...new Set(STOCK_UNIVERSE)];
 const SECTOR_MAP = {}; // لم يعد يُستخدَم لتصنيف الفحص (ذلك يأتي الآن من Finviz عبر market_fundamentals.sector) — أُبقي فارغًا عمدًا؛ محفوظ فقط لتفادي كسر أي مرجع قديم متبقٍّ.
 
 const EXCLUDED_SYMBOLS = new Set([
+    'DDV',
     'LUCK','TAL','EDU','GSX','STG','FANH','QTT','UXIN','SOGO','QFIN','FINV','YRD','JT','PPDF','XYF',
     'NIO','XPEV','LI','BYD','F','GM','HOG','PII','NKLA','WKHS','RIDE','GOEV','MULN','FSR','LCID','RIVN',
     'AMC','GME','BBBY','M','JCP','BIG','RAD','EXPR','KOSS','NAKD','SNDL','TLRY','ACB','CRON','OGI','HEXO','CGC',
@@ -823,7 +824,8 @@ async function fetchUniverse(forceRefresh=false) {
         const sector = String(r.sector || '').toLowerCase();
         const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50 && Number(r.relVolume9 || 0) >= 2;
         const ordinary = !['finance', 'financial', 'financials', 'reits'].includes(sector);
-        return liquid && ordinary;
+        const tradable = !EXCLUDED_SYMBOLS.has(String(r.symbol || '').toUpperCase());
+        return liquid && ordinary && tradable;
     });
     _universeCache = { t: Date.now(), rows };
     return rows;
@@ -1214,8 +1216,9 @@ async function loadSignalsData(force = false) {
             sb.from('screener_performance').select('*'),
         ]);
         if (e1) throw e1;
-        SIGNALS_CACHE = sig || [];
-        SIGNALS_ALERTS = alerts || [];
+        const blocked = new Set(['DDV']);
+        SIGNALS_CACHE = (sig || []).filter(s => !blocked.has(String(s.symbol || '').toUpperCase()));
+        SIGNALS_ALERTS = (alerts || []).filter(a => !blocked.has(String(a.symbol || '').toUpperCase()));
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         SIGNALS_CACHE_AT = Date.now();

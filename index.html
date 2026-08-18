@@ -623,6 +623,7 @@
             </div>
             <div class="auth-error" id="loginError"></div>
             <button class="btn-primary" onclick="handleLogin()">دخول</button>
+            <div class="auth-link" onclick="requestPasswordReset()">نسيت كلمة المرور؟ <span style="color:var(--accent-cyan)">إرسال رابط استعادة</span></div>
             <div class="auth-link" onclick="switchAuth('register')">ليس لديك حساب؟ <span style="color:var(--accent-cyan)">سجل الآن</span></div>
         </div>
 
@@ -903,10 +904,11 @@
             <div class="tabs-wrap">
                 <button class="tab-btn active" onclick="switchTab('stocks')" data-tab="stocks">📊 الأسهم الحية</button>
                 <button class="tab-btn" onclick="switchTab('portfolio')" data-tab="portfolio">💼 المحفظة</button>
-                <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener">🔍 فلترة 800+ سهم</button>
+                <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener">🔍 فلترة الأسهم</button>
                 <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals">🎯 الماسح والتنبيهات</button>
                 <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks">📌 ترشيحات الأسبوع</button>
                 <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators">📈 المؤشرات</button>
+                <button class="tab-btn" onclick="switchTab('support')" data-tab="support">🎧 الدعم الفني</button>
                 <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin">🛡️ التحكم</button>
             </div>
 
@@ -1074,7 +1076,7 @@
 
                 <div id="tab-signals" class="tab-panel hidden">
                     <div class="screener-header">
-                        <h3>🎯 الماسح الحقيقي — محرك توافق 4 إشارات (فايبوناتشي + SMC/ATR + شمعة يابانية + حجم)</h3>
+                        <h3>🎯 الماسح الحقيقي</h3>
                     </div>
                     <div class="preset-btns" style="margin-bottom:16px;">
                         <button class="preset-btn" onclick="runSignalScan('military')">الفلتر العسكري</button>
@@ -1090,7 +1092,7 @@
                         </table>
                     </div>
 
-                    <div class="section-title">🔔 قائمة التنبيهات (آخر 100) <div class="line"></div></div>
+                    <div class="section-title">🔔 قائمة التنبيهات <div class="line"></div></div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
                         <table class="data-table">
                             <thead><tr><th>الوقت</th><th>الرمز</th><th>الفلتر</th><th>التنبيه</th><th>السعر</th></tr></thead>
@@ -1181,6 +1183,21 @@
                     </div>
                 </div>
 
+                <div id="tab-support" class="tab-panel hidden">
+                    <div class="section-title">🎧 الدعم الفني <div class="line"></div></div>
+                    <div class="glass" style="padding:18px;margin-bottom:18px;">
+                        <div class="form-grid">
+                            <input id="ticketSubject" class="input" placeholder="عنوان المشكلة أو الملاحظة">
+                            <select id="ticketPriority" class="input"><option value="normal">عادية</option><option value="high">مهمة</option><option value="urgent">عاجلة</option></select>
+                        </div>
+                        <textarea id="ticketMessage" class="input" rows="5" placeholder="اكتب تفاصيل المشكلة أو اقتراحك هنا..."></textarea>
+                        <button class="btn-scan-main" onclick="submitSupportTicket()">إرسال التذكرة</button>
+                    </div>
+                    <div class="section-title">تذاكري <div class="line"></div></div>
+                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
+                        <table class="data-table"><thead><tr><th>التاريخ</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>رد المسؤول</th></tr></thead><tbody id="myTicketsBody"></tbody></table>
+                    </div>
+                </div>
                 <div id="tab-admin" class="tab-panel hidden">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                         <div class="section-title" style="margin:0;">🛡️ لوحة التحكم <div class="line"></div></div>
@@ -1197,6 +1214,10 @@
                             <thead><tr><th>الاسم</th><th>البريد</th><th>الحالة</th><th>الصلاحية</th><th>الأسهم</th><th>إجراء</th></tr></thead>
                             <tbody id="adminTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="admin-subtitle">🎧 تذاكر الدعم الفني</div>
+                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:20px;">
+                        <table class="data-table"><thead><tr><th>المستخدم</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody id="adminTicketsBody"></tbody></table>
                     </div>
                     <div class="admin-subtitle">💳 طلبات الترقية المعلقة</div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">

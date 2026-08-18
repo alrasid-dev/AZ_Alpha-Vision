@@ -77,7 +77,27 @@ async function handleLogin() {
     if (error) { err.textContent = translateAuthError(error.message); return; }
     await loadSessionAndEnter();
 }
-
+async function requestPasswordReset() {
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const err = document.getElementById('loginError');
+    if (!email || !email.includes('@')) { err.textContent = 'اكتب بريدك الإلكتروني أولاً'; return; }
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) { err.textContent = 'تعذر إرسال رابط الاستعادة: ' + error.message; return; }
+    err.style.color = 'var(--accent-green)';
+    err.textContent = 'تم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني';
+}
+async function completePasswordRecovery() {
+    const next = prompt('أدخل كلمة المرور الجديدة (8 أحرف على الأقل):');
+    if (next === null) return;
+    const confirmNext = prompt('أعد كتابة كلمة المرور الجديدة:');
+    if (next.length < 8 || next !== confirmNext) { toast('كلمتا المرور غير متطابقتين أو أقل من 8 أحرف', 'error'); return; }
+    const { error } = await sb.auth.updateUser({ password: next });
+    if (error) { toast('تعذر تحديث كلمة المرور: ' + error.message, 'error'); return; }
+    toast('✅ تم تغيير كلمة المرور بنجاح');
+    history.replaceState({}, document.title, window.location.pathname);
+    await loadSessionAndEnter();
+}
 async function loadSessionAndEnter() {
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return;
@@ -118,7 +138,9 @@ async function initApp(user, profile) {
     document.getElementById('userName').textContent = profile.name || profile.email;
     document.getElementById('userAvatar').textContent = (profile.name || profile.email).charAt(0).toUpperCase();
     if (profile.role === 'admin') { document.getElementById('adminTabBtn').classList.remove('hidden'); refreshAdminData(); }
-    await loadWatchlist(); updateTrial(); updateSitePerformance(); setInterval(updateTrial, 60000);
+    await loadWatchlist();
+    await loadMySupportTickets();
+    updateTrial(); updateSitePerformance(); setInterval(updateTrial, 60000);
     document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA');
     setInterval(()=>document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA'), 1000);
     setTimeout(()=>initChart(), 100);
@@ -158,15 +180,18 @@ async function renderWatchlist() {
     const prices = await Promise.all(watchlist.map(w=>fetchPrice(w.symbol)));
     let wins=0, losses=0, totalPnl=0, totalInvested=0, totalCurrent=0;
     watchlist.forEach((item,i)=>{
-        const p=prices[i]; if(!p) return;
+        const p=prices[i];
+        const hasPrice = Number.isFinite(p) && p > 0;
         const qty=item.qty||1;
         const invested=item.entry_price*qty;
-        const current=p*qty;
-        const pnl=current-invested;
-        const pct=(pnl/invested)*100;
-        totalPnl+=pnl; totalInvested+=invested; totalCurrent+=current;
-        pnl>=0?wins++:losses++;
-        c.innerHTML+=`<div class="watch-item"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${pnl>=0?'text-green':'text-red'}">$${p.toFixed(2)}</span></div><div class="meta"><span>دخول $${item.entry_price.toFixed(2)} × ${qty}</span><span class="pnl ${pnl>=0?'text-green':'text-red'}">${pnl>=0?'+':''}$${pnl.toFixed(2)} (${pct.toFixed(1)}%)</span></div><span class="del" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></div>`;
+        const current=hasPrice ? p*qty : null;
+        const pnl=hasPrice ? current-invested : null;
+        const pct=hasPrice && invested > 0 ? (pnl/invested)*100 : null;
+        if (hasPrice) { totalPnl+=pnl; totalInvested+=invested; totalCurrent+=current; pnl>=0?wins++:losses++; }
+        else { totalInvested+=invested; }
+        const priceCell = hasPrice ? `$${p.toFixed(2)}` : '<span class="text-muted">بانتظار السعر</span>';
+        const pnlCell = hasPrice ? `${pnl>=0?'+':''}$${pnl.toFixed(2)} (${pct.toFixed(1)}%)` : '—';
+        c.innerHTML+=`<div class="watch-item"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice ? (pnl>=0?'text-green':'text-red') : 'text-muted'}">${priceCell}</span></div><div class="meta"><span>دخول $${item.entry_price.toFixed(2)} × ${qty}</span><span class="pnl ${hasPrice ? (pnl>=0?'text-green':'text-red') : 'text-muted'}">${pnlCell}</span></div><span class="del" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></div>`;
     });
     updateStats(wins,losses,totalPnl,totalInvested,totalCurrent);
 }
@@ -267,6 +292,60 @@ async function refreshAdminData() {
     });
 
     await refreshUpgradeRequests();
+    await refreshSupportTickets();
+}
+
+const TICKET_STATUS_LABEL = { open: 'مفتوحة', in_progress: 'قيد المعالجة', resolved: 'تم الحل', closed: 'مغلقة' };
+const TICKET_PRIORITY_LABEL = { normal: 'عادية', high: 'مهمة', urgent: 'عاجلة' };
+function ticketBadge(status) {
+    const color = status === 'open' ? 'var(--accent-gold)' : status === 'in_progress' ? 'var(--accent-cyan)' : status === 'resolved' ? 'var(--accent-green)' : 'var(--text-muted)';
+    return `<span class="badge" style="color:${color};border:1px solid ${color};background:transparent;">${TICKET_STATUS_LABEL[status] || status}</span>`;
+}
+async function submitSupportTicket() {
+    const subject = document.getElementById('ticketSubject')?.value.trim();
+    const message = document.getElementById('ticketMessage')?.value.trim();
+    const priority = document.getElementById('ticketPriority')?.value || 'normal';
+    if (!subject || subject.length < 3 || !message || message.length < 5) { toast('اكتب عنوانًا وتفاصيل كافية للتذكرة', 'warn'); return; }
+    const { error } = await sb.from('support_tickets').insert({ user_id: currentUser.id, subject, message, priority });
+    if (error) { toast('تعذر إرسال التذكرة: ' + error.message, 'error'); return; }
+    document.getElementById('ticketSubject').value = '';
+    document.getElementById('ticketMessage').value = '';
+    toast('✅ تم إرسال التذكرة للمسؤول');
+    await loadMySupportTickets();
+}
+async function loadMySupportTickets() {
+    const tb = document.getElementById('myTicketsBody');
+    if (!tb || !currentUser) return;
+    const { data, error } = await sb.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    if (error) { tb.innerHTML = `<tr><td colspan="5" class="text-muted">تعذر تحميل التذاكر</td></tr>`; return; }
+    if (!data?.length) { tb.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:20px;text-align:center;">لا توجد تذاكر حتى الآن</td></tr>'; return; }
+    tb.innerHTML = data.map(t => `<tr><td>${new Date(t.created_at).toLocaleString('ar-SA')}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${TICKET_PRIORITY_LABEL[t.priority] || t.priority}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(t.admin_reply || 'بانتظار رد المسؤول')}</td></tr>`).join('');
+}
+async function refreshSupportTickets() {
+    const tb = document.getElementById('adminTicketsBody');
+    if (!tb || !currentProfile || currentProfile.role !== 'admin') return;
+    const { data: tickets, error } = await sb.from('support_tickets').select('*').order('created_at', { ascending: false });
+    if (error || !tickets?.length) { tb.innerHTML = '<tr><td colspan="6" class="text-muted" style="padding:20px;text-align:center;">لا توجد تذاكر دعم</td></tr>'; return; }
+    const ids = [...new Set(tickets.map(t => t.user_id))];
+    const { data: profs } = await sb.from('profiles').select('id,name,email').in('id', ids);
+    const map = Object.fromEntries((profs || []).map(p => [p.id, p]));
+    tb.innerHTML = tickets.map(t => {
+        const p = map[t.user_id] || {};
+        return `<tr><td>${escapeHtml(p.name || p.email || '-')}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${TICKET_PRIORITY_LABEL[t.priority] || t.priority}</td><td>${ticketBadge(t.status)}</td><td>${new Date(t.created_at).toLocaleDateString('ar-SA')}</td><td><button class="admin-btn btn-approve" onclick="replySupportTicket('${t.id}')">رد</button><button class="admin-btn" onclick="setSupportStatus('${t.id}','in_progress')">قيد المعالجة</button><button class="admin-btn btn-approve" onclick="setSupportStatus('${t.id}','resolved')">حل</button></td></tr>`;
+    }).join('');
+}
+async function replySupportTicket(id) {
+    const reply = prompt('اكتب ردك على التذكرة:');
+    if (reply === null) return;
+    if (reply.trim().length < 2) { toast('الرد قصير جدًا', 'warn'); return; }
+    const { error } = await sb.from('support_tickets').update({ admin_reply: reply.trim(), status: 'in_progress', updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast('تعذر حفظ الرد: ' + error.message, 'error'); return; }
+    toast('✅ تم إرسال الرد'); refreshSupportTickets();
+}
+async function setSupportStatus(id, status) {
+    const { error } = await sb.from('support_tickets').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast('تعذر تحديث الحالة: ' + error.message, 'error'); return; }
+    toast('✅ تم تحديث حالة التذكرة'); refreshSupportTickets();
 }
 
 async function approveUser(uid) {
@@ -305,6 +384,9 @@ async function reviewUpgrade(requestId, status) {
 
 // ===== SESSION RESTORE ON LOAD =====
 document.addEventListener('DOMContentLoaded', async () => {
+    sb.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') setTimeout(() => completePasswordRecovery(), 0);
+    });
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadSessionAndEnter();
 });

@@ -1,11 +1,11 @@
 """
 fetch_market_data.py
-يجلب بيانات حقيقية لقائمة الأسهم الثابتة نفسها المستخدمة في الواجهة (STOCK_UNIVERSE):
+يجلب بيانات حقيقية لأسهم السوق الأمريكي من Finviz، مع حد قابل للضبط عبر MAX_UNIVERSE (الافتراضي 2500 سهم):
   - أساسية (Sector/Industry/PE/EPS Growth/Debt) من Finviz عبر finvizfinance
   - فنية حقيقية (SMA/RSI/ATR/السعر/الحجم) من yfinance
 ثم يكتبها إلى Supabase.
 
---mode full   : كل الأسهم الـ826 (أساسي + فني كامل) — يُشغَّل يوميًا
+--mode full   : أسهم السوق ضمن MAX_UNIVERSE (أساسي + فني كامل) — يُشغّل يوميًا
 --mode quick  : الأسعار فقط لقائمة "الأسهم الحية" الأصغر (~50 سهم) — يُشغَّل كل 15 دقيقة
 
 ⚠️ ملاحظة مهمة: لم يُختبر هذا الملف مقابل Finviz/yfinance الحيّين فعليًا (بيئة
@@ -33,7 +33,7 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     log.error("SUPABASE_URL أو SUPABASE_SERVICE_ROLE_KEY غير موجودين في متغيرات البيئة")
     sys.exit(1)
 
-# ===== نفس القائمتين المستخدمتين في app.js — حافظ على تطابقهما يدويًا عند التعديل =====
+# ===== قائمة احتياطية/مبدئية؛ المصدر الرئيسي للماسح الكامل هو Finviz =====
 STOCK_UNIVERSE = [
     'AAPL','MSFT','GOOGL','GOOG','AMZN','NVDA','META','TSLA','AVGO','PEP','COST','ADBE','NFLX','AMD','INTC','CSCO','CRM','ACN','TXN','QCOM',
     'AMAT','INTU','ADP','MU','LRCX','KLAC','MRVL','NXPI','SNPS','CDNS','ANSS','PTC','FTNT','PANW','CRWD','SNOW','PLTR','DDOG','NET','OKTA',
@@ -141,8 +141,10 @@ def fetch_finviz_fundamentals():
     if df_ov is None or df_ov.empty:
         raise RuntimeError("Finviz Overview لم يُرجع أي بيانات")
     log.info(f"Overview: {len(df_ov)} سهم أمريكي إجمالاً من Finviz")
-    df_ov = df_ov[df_ov['Ticker'].isin(STOCK_UNIVERSE)].copy()
-    log.info(f"بعد التصفية لقائمتنا: {len(df_ov)} من أصل {len(STOCK_UNIVERSE)}")
+    max_universe = max(100, int(os.environ.get('MAX_UNIVERSE', '2500')))
+    # Finviz يعيد النتائج مرتبة افتراضيًا؛ نأخذ أول MAX_UNIVERSE لتفادي تشغيل غير محدود.
+    df_ov = df_ov.head(max_universe).copy()
+    log.info(f"بعد تحديد نطاق الماسح: {len(df_ov)} سهم من أصل {len(df_ov)}+ المتاحة")
 
     records = {}
     for _, row in df_ov.iterrows():
@@ -163,7 +165,7 @@ def fetch_finviz_fundamentals():
         val.set_filter(filters_dict={'Country': 'USA'})
         df_val = val.screener_view()
         if df_val is not None and not df_val.empty:
-            df_val = df_val[df_val['Ticker'].isin(STOCK_UNIVERSE)].copy()
+            df_val = df_val[df_val['Ticker'].isin(records.keys())].copy()
             log.info(f"أعمدة Valuation المستلمة: {list(df_val.columns)}")
             c_pb = find_col(df_val, 'p/b')
             c_eps_ty = find_col(df_val, 'eps', 'this')
@@ -191,7 +193,7 @@ def fetch_finviz_fundamentals():
         fin.set_filter(filters_dict={'Country': 'USA'})
         df_fin = fin.screener_view()
         if df_fin is not None and not df_fin.empty:
-            df_fin = df_fin[df_fin['Ticker'].isin(STOCK_UNIVERSE)].copy()
+            df_fin = df_fin[df_fin['Ticker'].isin(records.keys())].copy()
             log.info(f"أعمدة Financial المستلمة: {list(df_fin.columns)}")
             c_ltdebt = find_col(df_fin, 'ltdebt') or find_col(df_fin, 'lt debt')
             c_debt = find_col(df_fin, 'debt/eq')
@@ -288,54 +290,41 @@ def fetch_prices_and_technicals(tickers, full_history=True):
 
 
 def upsert_rows(table, rows):
+    """إدراج/تحديث دفعات Supabase مع إيقاف واضح عند فشل المخطط أو الصلاحيات."""
     if not rows:
         log.warning(f"{table}: لا صفوف لكتابتها")
         return 0
 
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict=symbol"
     headers = {
         'apikey': SUPABASE_SERVICE_KEY,
         'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}',
         'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates',
+        'Prefer': 'resolution=merge-duplicates, return=minimal',
     }
-
-    # جلب الأعمدة المقبولة حالياً من Supabase لفلترة البيانات فوراً
-    try:
-        check_resp = requests.get(f"{url}?limit=1", headers={'apikey': SUPABASE_SERVICE_KEY, 'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}'})
-        if check_resp.status_code == 200 and check_resp.json():
-            valid_keys = set(check_resp.json()[0].keys())
-            rows = [{k: v for k, v in r.items() if k in valid_keys} for r in rows]
-    except Exception as e:
-        log.warning(f"تنبيه: تعذر جلب أعمدة {table}: {e}")
-
     batch_size = 200
-    total_written = 0
+    written = 0
+    expected_columns = sorted(rows[0].keys())
 
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i + batch_size]
-        
-        for _ in range(10):
-            resp = requests.post(url, headers=headers, json=batch)
-            if resp.status_code in (200, 201):
-                total_written += len(batch)
-                break
-            elif resp.status_code == 400 and "column" in resp.text:
-                import re
-                match = re.search(r"Could not find the '([^']+)' column", resp.text)
-                if match:
-                    bad_col = match.group(1)
-                    log.warning(f"استبعاد العمود غير المسجل '{bad_col}' من جدول {table}")
-                    batch = [{k: v for k, v in r.items() if k != bad_col} for r in batch]
-                else:
-                    log.error(f"فشل الحفظ لـ {table}: {resp.status_code} - {resp.text}")
-                    break
-            else:
-                log.error(f"خطأ في {table}: {resp.status_code} - {resp.text}")
-                break
+        try:
+            resp = requests.post(url, headers=headers, json=batch, timeout=30)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"{table}: فشل الاتصال بـ Supabase في الدفعة {i}: {exc}") from exc
 
-    log.info(f"{table}: تم حفظ {total_written} صف")
-    return total_written
+        if resp.status_code not in (200, 201, 204):
+            detail = resp.text[:1200]
+            log.error(
+                f"{table}: فشل الحفظ في الدفعة {i}; status={resp.status_code}; "
+                f"columns={expected_columns}; response={detail}"
+            )
+            raise RuntimeError(f"فشل حفظ {table}: HTTP {resp.status_code}: {detail}")
+
+        written += len(batch)
+
+    log.info(f"{table}: تم حفظ {written} صف")
+    return written
 
 
 def run_full():
@@ -345,7 +334,7 @@ def run_full():
         sys.exit(1)
 
     tech = fetch_prices_and_technicals(list(fundamentals.keys()), full_history=True)
-    now = pd.Timestamp.utcnow().isoformat()
+    now = pd.Timestamp.now(tz='UTC').isoformat()
 
     fund_rows = [{**v, 'updated_at': now} for v in fundamentals.values()]
     tech_rows = [{'symbol': t, **vals, 'updated_at': now} for t, vals in tech.items()]
@@ -359,7 +348,7 @@ def run_full():
 
 def run_quick():
     tech = fetch_prices_and_technicals(LIVE_TRACKED, full_history=False)
-    now = pd.Timestamp.utcnow().isoformat()
+    now = pd.Timestamp.now(tz='UTC').isoformat()
     rows = [{'symbol': t, 'price': v['price'], 'change_pct': v['change_pct'],
              'volume': v['volume'], 'updated_at': now} for t, v in tech.items()]
     n = upsert_rows('live_quotes', rows)

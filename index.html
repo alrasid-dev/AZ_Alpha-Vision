@@ -969,11 +969,11 @@
                     <div class="filters-grid">
                         <div class="filter-box">
                             <label>💵 نطاق السعر</label>
-                            <select id="fPrice"><option value="any">أي سعر</option><option value="under5">&lt; $5</option><option value="5to20" selected>$5 — $20</option><option value="20to50">$20 — $50</option><option value="50to100">$50 — $100</option><option value="over100">&gt; $100</option></select>
+                            <select id="fPrice"><option value="5to50" selected>$5 — $50</option><option value="5to20">$5 — $20</option><option value="20to50">$20 — $50</option></select>
                         </div>
                         <div class="filter-box">
-                            <label>📊 الحجم اليومي</label>
-                            <select id="fVolume"><option value="any">أي حجم</option><option value="over100k">&gt; 100K</option><option value="over300k" selected>&gt; 300K</option><option value="over500k">&gt; 500K</option><option value="over1m">&gt; 1M</option></select>
+                            <label>📊 الحجم النسبي فقط</label>
+                            <div style="font-size:11px;color:var(--text-muted);padding:8px 0;">يشترط 2x من متوسط 9 أيام</div>
                         </div>
                         <div class="filter-box">
                             <label>📈 نسبة التغيير</label>
@@ -996,8 +996,8 @@
                             <select id="fSMA200"><option value="any">أي</option><option value="above">السعر فوق SMA200</option><option value="below">السعر تحت SMA200</option></select>
                         </div>
                         <div class="filter-box">
-                            <label>🔥 الحجم النسبي</label>
-                            <select id="fRelVol"><option value="any">أي</option><option value="over1">&gt; 1x</option><option value="over2">&gt; 2x</option><option value="over3">&gt; 3x</option></select>
+                            <label>🔥 قوة الحجم (متوسط 9 أيام)</label>
+                            <select id="fRelVol"><option value="over2" selected>&gt; 2x متوسط 9 أيام</option><option value="over3">&gt; 3x متوسط 9 أيام</option></select>
                         </div>
                         <div class="filter-box">
                             <label>💪 التقييم الفني</label>

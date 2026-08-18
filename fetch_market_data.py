@@ -146,6 +146,32 @@ def fetch_finviz_fundamentals():
     df_ov = df_ov.head(max_universe).copy()
     log.info(f"بعد تحديد نطاق الماسح: {len(df_ov)} سهم من أصل {len(df_ov)}+ المتاحة")
 
+    # أهلية التداول: أسهم مدرجة في سوق رئيسي وليست ETF/صندوقًا أو رمزًا ضعيف السيولة.
+    # هذه الحدود قابلة للضبط من متغيرات البيئة.
+    allowed_exchanges = {'NYSE', 'NASDAQ', 'AMEX'}
+    min_avg_volume = int(os.environ.get('MIN_AVG_VOLUME', '100000'))
+    min_price = float(os.environ.get('MIN_PRICE', '2'))
+    excluded_industries = {'exchange traded fund', 'etf', 'closed end fund', 'reit'}
+    eligible_rows = []
+    rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0}
+    for _, row in df_ov.iterrows():
+        exchange = str(row.get('Exchange', '')).strip().upper()
+        industry = str(row.get('Industry', '')).strip().lower()
+        avg_volume = safe_num(row.get('Avg Volume')) or safe_num(row.get('Average Volume')) or 0
+        price = safe_num(row.get('Price')) or 0
+        if exchange and exchange not in allowed_exchanges:
+            rejected['exchange'] += 1
+            continue
+        if any(token in industry for token in excluded_industries):
+            rejected['etf'] += 1
+            continue
+        if avg_volume < min_avg_volume or price < min_price:
+            rejected['liquidity'] += 1
+            continue
+        eligible_rows.append(row)
+    df_ov = pd.DataFrame(eligible_rows)
+    log.info(f"بعد فلتر الإدراج والسيولة: {len(df_ov)} سهم؛ مرفوض exchange={rejected['exchange']}, ETF={rejected['etf']}, liquidity={rejected['liquidity']}")
+
     records = {}
     for _, row in df_ov.iterrows():
         t = row['Ticker']
@@ -273,10 +299,14 @@ def fetch_prices_and_technicals(tickers, full_history=True):
                 prev_close = float(prev['Close']) if pd.notna(prev['Close']) else price
                 change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
                 vol = int(last['Volume']) if pd.notna(last['Volume']) else 0
+                prior_volumes = df_t['Volume'].iloc[:-1].dropna().tail(9)
+                avg_vol_9 = float(prior_volumes.mean()) if len(prior_volumes) else float(vol)
                 avg_vol = int(df_t['Volume'].tail(20).mean()) if len(df_t) >= 5 else vol
                 rec = {
                     'price': round(price, 2), 'change_pct': change_pct, 'volume': vol,
-                    'avg_volume': avg_vol, 'rel_volume': round(vol / avg_vol, 2) if avg_vol else 1.0,
+                    'avg_volume': avg_vol, 'avg_volume_9': round(avg_vol_9, 2),
+                    'rel_volume': round(vol / avg_vol, 2) if avg_vol else 1.0,
+                    'rel_volume_9': round(vol / avg_vol_9, 2) if avg_vol_9 else 1.0,
                 }
                 if full_history:
                     rec.update(compute_technical(df_t))

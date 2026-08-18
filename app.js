@@ -144,7 +144,8 @@ async function initApp(user, profile) {
     document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA');
     setInterval(()=>document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA'), 1000);
     setTimeout(()=>initChart(), 100);
-    runScanner(); setInterval(runScanner, 30000);
+    runScanner(); setInterval(runScanner, 15000);
+    subscribeSignalRealtime();
     const c = LocalCache.getScreener(); if (c && c.t > Date.now()-86400000) { screenerResults = c.r; renderScreener(); }
 }
 
@@ -767,6 +768,7 @@ function mapMarketRow(fund, tech) {
     const ltDebt = fund?.lt_debt_equity ?? null;
     const rsi = tech?.rsi14 ?? null;
     const relVolume = tech?.rel_volume ?? null;
+    const relVolume9 = tech?.rel_volume_9 ?? null;
     const hasIssues = EXCLUDED_SYMBOLS.has(fund.symbol) || (ltDebt !== null && ltDebt > 0.5);
     const hasPlan = growth !== null ? growth > 0 : null;
 
@@ -783,7 +785,7 @@ function mapMarketRow(fund, tech) {
     return {
         symbol: fund.symbol, company: fund.company,
         price, change: tech?.change_pct ?? null,
-        volume: tech?.volume ?? 0, avgVolume: tech?.avg_volume ?? 0, relVolume: relVolume ?? 1,
+        volume: tech?.volume ?? 0, avgVolume: tech?.avg_volume ?? 0, avgVolume9: tech?.avg_volume_9 ?? 0, relVolume: relVolume ?? 1, relVolume9: relVolume9 ?? 1,
         sma20: tech?.sma20 ?? null, sma50, sma200, rsi, atr: tech?.atr14 ?? null,
         sector: fund.sector, pe: fund.pe, pb: fund.pb,
         growth, epsNext: fund.eps_growth_next_year, eps5y: fund.eps_growth_5y, epsGrowthQtr: fund.eps_growth_qtr,
@@ -796,17 +798,33 @@ function mapMarketRow(fund, tech) {
     };
 }
 
+async function fetchAllRows(table, pageSize=1000) {
+    const all = [];
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await sb.from(table).select('*').range(from, from + pageSize - 1);
+        if (error) throw error;
+        all.push(...(data || []));
+        if (!data || data.length < pageSize) break;
+    }
+    return all;
+}
 async function fetchUniverse(forceRefresh=false) {
     if (!forceRefresh && _universeCache && Date.now() - _universeCache.t < 5 * 60000) {
         return _universeCache.rows;
     }
-    const { data: fundRows, error: e1 } = await sb.from('market_fundamentals').select('*');
-    if (e1 || !fundRows) { toast('تعذر تحميل البيانات الأساسية: ' + (e1?.message || ''), 'error'); return []; }
-    const { data: techRows, error: e2 } = await sb.from('market_technicals').select('*');
-    if (e2) { toast('تعذر تحميل البيانات الفنية: ' + e2.message, 'error'); }
-
+    let fundRows, techRows;
+    try {
+        [fundRows, techRows] = await Promise.all([fetchAllRows('market_fundamentals'), fetchAllRows('market_technicals')]);
+    } catch (e) {
+        toast('تعذر تحميل بيانات الماسح: ' + (e?.message || ''), 'error'); return [];
+    }
     const techMap = Object.fromEntries((techRows || []).map(t => [t.symbol, t]));
-    const rows = fundRows.map(f => mapMarketRow(f, techMap[f.symbol]));
+    const rows = (fundRows || []).map(f => mapMarketRow(f, techMap[f.symbol])).filter(r => {
+        const sector = String(r.sector || '').toLowerCase();
+        const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50 && Number(r.relVolume9 || 0) >= 2;
+        const ordinary = !['finance', 'financial', 'financials', 'reits'].includes(sector);
+        return liquid && ordinary;
+    });
     _universeCache = { t: Date.now(), rows };
     return rows;
 }
@@ -834,6 +852,7 @@ async function runScanner() {
         const live = liveMap[sym];
         if (!base && !live) return null;
         const price = live?.price ?? base?.price ?? null;
+        if (price == null || price < 5 || price > 50 || Number(base?.relVolume9 ?? 0) < 2) return null;
         const change = live?.change_pct ?? base?.change ?? null;
         const volume = live?.volume ?? base?.volume ?? null;
         if (price == null) return null;
@@ -857,6 +876,26 @@ async function runScanner() {
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA');
 }
 
+let signalRealtimeChannel = null;
+function subscribeSignalRealtime() {
+    if (signalRealtimeChannel) return;
+    signalRealtimeChannel = sb.channel('az-alpha-signal-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'screener_alerts' }, () => {
+            SIGNALS_CACHE_AT = 0;
+            loadSignalsData(true);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'screener_signals' }, () => {
+            SIGNALS_CACHE_AT = 0;
+            loadSignalsData(true);
+        })
+        .subscribe((status) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.warn('Realtime غير متاح؛ سيستمر التحديث الدوري كل 15 ثانية.');
+            }
+        });
+}
+
+
 function quickAdd(sym, price) {
     document.getElementById('addSymbolInput').value = sym;
     document.getElementById('addEntryPrice').value = price.toFixed(2);
@@ -871,7 +910,7 @@ async function runScreener() {
     const btn = document.getElementById('scanBtn'); btn.disabled = true; btn.textContent = '⏳ جاري الفلترة...';
 
     const filters = {
-        price: document.getElementById('fPrice').value, volume: document.getElementById('fVolume').value,
+        price: document.getElementById('fPrice').value,
         change: document.getElementById('fChange').value, sector: document.getElementById('fSector').value,
         rsi: document.getElementById('fRSI').value, sma50: document.getElementById('fSMA50').value,
         sma200: document.getElementById('fSMA200').value, grade: document.getElementById('fGrade').value,
@@ -897,15 +936,12 @@ async function runScreener() {
         if (d.hasPlan === false) return false;
 
         if (filters.price !== 'any') {
+            if (filters.price === '5to50' && (d.price < 5 || d.price > 50)) return false;
             if (filters.price === 'under5' && d.price >= 5) return false;
             if (filters.price === '5to20' && (d.price < 5 || d.price > 20)) return false;
             if (filters.price === '20to50' && (d.price < 20 || d.price > 50)) return false;
             if (filters.price === '50to100' && (d.price < 50 || d.price > 100)) return false;
             if (filters.price === 'over100' && d.price <= 100) return false;
-        }
-        if (filters.volume !== 'any') {
-            const t = { over100k:100000, over300k:300000, over500k:500000, over1m:1000000 };
-            if ((d.volume ?? 0) < t[filters.volume]) return false;
         }
         if (filters.change !== 'any' && d.change != null) {
             if (filters.change === 'up' && d.change <= 0) return false;
@@ -931,9 +967,11 @@ async function runScreener() {
             if (filters.sma20 === 'above' && d.price <= d.sma20) return false;
             if (filters.sma20 === 'below' && d.price >= d.sma20) return false;
         }
-        if (filters.relVol !== 'any' && d.relVolume != null) {
+        const rel9 = Number(d.relVolume9 ?? 0);
+        if (rel9 < 2) return false;
+        if (filters.relVol !== 'any') {
             const t = { over1:1, over2:2, over3:3 };
-            if (d.relVolume < t[filters.relVol]) return false;
+            if (rel9 < t[filters.relVol]) return false;
         }
         if (filters.pb !== 'any' && d.pb != null) {
             if (filters.pb === 'under1' && d.pb >= 1) return false;
@@ -1008,9 +1046,11 @@ function renderScreener() {
 }
 
 function clearScreener() {
-    ['fPrice','fVolume','fChange','fSector','fRSI','fSMA50','fSMA200','fGrade','fRelVol','fPB','fEPSGrowth','fEPSNext','fEPS5Y','fLTDebt','fPerfWeek','fSMA20','fCurVol'].forEach(id=>{
+    ['fPrice','fChange','fSector','fRSI','fSMA50','fSMA200','fGrade','fPB','fEPSGrowth','fEPSNext','fEPS5Y','fLTDebt','fPerfWeek','fSMA20','fCurVol'].forEach(id=>{
         const el = document.getElementById(id); if (el) el.value = 'any';
     });
+    const relVolEl = document.getElementById('fRelVol'); if (relVolEl) relVolEl.value = 'over2';
+    const priceEl = document.getElementById('fPrice'); if (priceEl) priceEl.value = '5to50';
     document.getElementById('fLimit').value='100';
     document.getElementById('screenerTableBody').innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">اضغط "بدء الفلترة" للبحث</td></tr>';
     document.getElementById('scanMeta').innerHTML='';
@@ -1054,8 +1094,8 @@ async function runWeeklyScan() {
 
     const universe = await fetchUniverse();
     const candidates = universe.filter(d =>
-        d.price != null && d.price >= 1 && d.price <= 100 &&
-        (d.volume ?? 0) >= 100000 &&
+        d.price != null && d.price >= 5 && d.price <= 50 &&
+        Number(d.relVolume9 ?? 0) >= 2 &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
         !d.hasIssues && d.hasPlan !== false
     );
@@ -1066,7 +1106,7 @@ async function runWeeklyScan() {
         if (d.sma200!=null && d.price>d.sma200) score+=2;
         if (d.rsi!=null && d.rsi>40 && d.rsi<60) score+=1;
         if ((d.change??0)>0) score+=1;
-        if ((d.relVolume??0)>1.5) score+=1;
+        if ((d.relVolume9??0)>=2) score+=1;
         if (d.ltDebt!=null && d.ltDebt<0.3) score+=2;
         if (d.growth!=null && d.growth>15) score+=2;
         if (d.pe!=null && d.pe>5 && d.pe<25) score+=1;
@@ -1122,7 +1162,7 @@ async function updateSitePerformance() {
 }
 
 // ===== 🎯 الماسح والتنبيهات (محرك التوافق الحقيقي — من نفس بيانات Supabase) =====
-let SIGNALS_CACHE = null, SIGNALS_ALERTS = null, SIGNALS_PERF = null;
+let SIGNALS_CACHE = null, SIGNALS_ALERTS = null, SIGNALS_PERF = null, SIGNALS_CACHE_AT = 0;
 let signalChartInstance = null;
 
 const SIG_TIER_COLOR = { 'صريح': 'badge-strong-buy', 'أقوى': 'badge-buy', 'أولي': 'badge-hold' };
@@ -1163,8 +1203,8 @@ function playNewSignalAlertSound(alerts) {
 
 function sigEsc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-async function loadSignalsData() {
-    if (SIGNALS_CACHE) return; // مرة واحدة لكل جلسة، البيانات نفسها تتحدث خلفيًا كل جدولة
+async function loadSignalsData(force = false) {
+    if (!force && SIGNALS_CACHE && Date.now() - SIGNALS_CACHE_AT < 10 * 1000) return; // احتياطي سريع عند تعذر أحداث Realtime
     const meta = document.getElementById('signalsMeta');
     meta.innerHTML = 'جاري التحميل من قاعدة البيانات...';
     try {
@@ -1178,6 +1218,7 @@ async function loadSignalsData() {
         SIGNALS_ALERTS = alerts || [];
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
+        SIGNALS_CACHE_AT = Date.now();
         meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString('ar-SA') : '--'}</span> — اختر فلترًا لعرض النتائج`;
         renderSignalAlerts();
         renderSignalPerformance('month');

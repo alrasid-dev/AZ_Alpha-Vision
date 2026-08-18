@@ -746,7 +746,7 @@ async function runScanner() {
     const universeMap = Object.fromEntries(universe.map(r => [r.symbol, r]));
     const liveMap = Object.fromEntries((liveRows || []).map(r => [r.symbol, r]));
 
-    const bannedSectors = new Set(['healthcare', 'energy', 'reits']);
+    const bannedSectors = new Set(['finance', 'financial', 'financials', 'healthcare', 'energy', 'reits']);
     const results = LIVE_TRACKED.map(sym => {
         const base = universeMap[sym];
         const live = liveMap[sym];
@@ -974,7 +974,7 @@ async function runWeeklyScan() {
     const candidates = universe.filter(d =>
         d.price != null && d.price >= 1 && d.price <= 100 &&
         (d.volume ?? 0) >= 100000 &&
-        !['healthcare','energy','reits'].includes(d.sector) &&
+        !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
         !d.hasIssues && d.hasPlan !== false
     );
 

@@ -182,8 +182,8 @@ def fetch_finviz_fundamentals():
         exchange = str(row.get('Exchange', '')).strip().upper()
         industry = str(row.get('Industry', '')).strip().lower()
         price = safe_num(row.get('Price')) or 0
-        avg_volume = safe_quantity(row.get('Avg Volume') or row.get('Average Volume')) or 0
-        current_volume = safe_quantity(row.get('Volume') or row.get('Current Volume')) or 0
+        avg_volume = safe_quantity(row.get('Avg Volume') or row.get('Average Volume'))
+        current_volume = safe_quantity(row.get('Volume') or row.get('Current Volume'))
         float_shares = safe_quantity(row.get('Float'))
         relative_volume = safe_num(row.get('Relative Volume'))
         if exchange and exchange not in allowed_exchanges:
@@ -195,14 +195,12 @@ def fetch_finviz_fundamentals():
         if any(token in industry for token in excluded_industries):
             rejected['etf'] += 1
             continue
-        if price < min_price or price > max_price or avg_volume <= min_avg_volume or current_volume <= min_current_volume:
+        if price < min_price or price > max_price:
             rejected['liquidity'] += 1
             continue
+        # لا يوجد شرط حجم إلزامي؛ تُحفظ قيم الحجم إن وجدت لاستخدامها في العرض فقط.
         if float_shares is not None and float_shares >= max_float:
             rejected['float'] += 1
-            continue
-        if relative_volume is not None and relative_volume <= min_rel_volume:
-            rejected['relative_volume'] += 1
             continue
         eligible_rows.append(row)
     df_ov = pd.DataFrame(eligible_rows)
@@ -409,8 +407,11 @@ def run_full():
     n1 = upsert_rows('market_fundamentals', fund_rows)
     n2 = upsert_rows('market_technicals', tech_rows)
 
-    if n1 == 0 or n2 == 0:
+    if n1 == 0:
+        log.error("لم تُحفظ أي بيانات أساسية — فشل المسح")
         sys.exit(1)
+    if n2 == 0:
+        log.warning("لم تُحفظ بيانات فنية؛ تم حفظ الأساسيات بنجاح وسيُعاد تحديث الفنيات في تشغيل لاحق")
 
 
 def run_quick():

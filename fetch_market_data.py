@@ -129,6 +129,24 @@ def safe_num(val, default=None):
         return default
 
 
+def safe_quantity(val, default=None):
+    """تحويل قيم Finviz مثل 300K و99.5M و1.2B إلى أرقام فعلية."""
+    if val is None or val == '-' or val == '':
+        return default
+    try:
+        s = str(val).strip().replace(',', '').replace('%', '').upper()
+        mult = 1.0
+        if s.endswith('K'):
+            mult, s = 1_000.0, s[:-1]
+        elif s.endswith('M'):
+            mult, s = 1_000_000.0, s[:-1]
+        elif s.endswith('B'):
+            mult, s = 1_000_000_000.0, s[:-1]
+        return float(s) * mult
+    except Exception:
+        return default
+
+
 def fetch_finviz_fundamentals():
     from finvizfinance.screener.overview import Overview
     from finvizfinance.screener.valuation import Valuation
@@ -151,15 +169,23 @@ def fetch_finviz_fundamentals():
     allowed_exchanges = {'NYSE', 'NASDAQ', 'AMEX'}
     min_price = float(os.environ.get('MIN_PRICE', '5'))
     max_price = float(os.environ.get('MAX_PRICE', '50'))
+    min_avg_volume = float(os.environ.get('MIN_AVG_VOLUME', '300000'))
+    min_current_volume = float(os.environ.get('MIN_CURRENT_VOLUME', '500000'))
+    max_float = float(os.environ.get('MAX_FLOAT', '100000000'))
+    min_rel_volume = float(os.environ.get('MIN_REL_VOLUME', '2'))
     excluded_symbols = {'DDV'}
     excluded_industries = {'exchange traded fund', 'etf', 'closed end fund', 'reit'}
     eligible_rows = []
-    rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0}
+    rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0, 'float': 0, 'relative_volume': 0}
     for _, row in df_ov.iterrows():
         ticker = str(row.get('Ticker', '')).strip().upper()
         exchange = str(row.get('Exchange', '')).strip().upper()
         industry = str(row.get('Industry', '')).strip().lower()
         price = safe_num(row.get('Price')) or 0
+        avg_volume = safe_quantity(row.get('Avg Volume') or row.get('Average Volume')) or 0
+        current_volume = safe_quantity(row.get('Volume') or row.get('Current Volume')) or 0
+        float_shares = safe_quantity(row.get('Float'))
+        relative_volume = safe_num(row.get('Relative Volume'))
         if exchange and exchange not in allowed_exchanges:
             rejected['exchange'] += 1
             continue
@@ -169,12 +195,18 @@ def fetch_finviz_fundamentals():
         if any(token in industry for token in excluded_industries):
             rejected['etf'] += 1
             continue
-        if price < min_price or price > max_price:
+        if price < min_price or price > max_price or avg_volume <= min_avg_volume or current_volume <= min_current_volume:
             rejected['liquidity'] += 1
+            continue
+        if float_shares is not None and float_shares >= max_float:
+            rejected['float'] += 1
+            continue
+        if relative_volume is not None and relative_volume <= min_rel_volume:
+            rejected['relative_volume'] += 1
             continue
         eligible_rows.append(row)
     df_ov = pd.DataFrame(eligible_rows)
-    log.info(f"بعد فلتر الإدراج والسيولة: {len(df_ov)} سهم؛ مرفوض exchange={rejected['exchange']}, ETF={rejected['etf']}, liquidity={rejected['liquidity']}")
+    log.info(f"بعد فلاتر Finviz والأهلية: {len(df_ov)} سهم؛ مرفوض exchange={rejected['exchange']}, ETF={rejected['etf']}, liquidity={rejected['liquidity']}, float={rejected['float']}, relvol={rejected['relative_volume']}")
 
     records = {}
     for _, row in df_ov.iterrows():

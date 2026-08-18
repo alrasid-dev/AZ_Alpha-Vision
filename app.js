@@ -992,11 +992,10 @@ async function runScreener() {
             if (filters.sma20 === 'above' && d.price <= d.sma20) return false;
             if (filters.sma20 === 'below' && d.price >= d.sma20) return false;
         }
-        const rel9 = Number(d.relVolume9 ?? 0);
-        if (rel9 < 2) return false;
+        const relVol = Number(d.relVolume ?? 0);
         if (filters.relVol !== 'any') {
             const t = { over1:1, over2:2, over3:3 };
-            if (rel9 < t[filters.relVol]) return false;
+            if (relVol < t[filters.relVol]) return false;
         }
         if (filters.pb !== 'any' && d.pb != null) {
             if (filters.pb === 'under1' && d.pb >= 1) return false;
@@ -1074,7 +1073,7 @@ function clearScreener() {
     ['fPrice','fChange','fSector','fRSI','fSMA50','fSMA200','fGrade','fPB','fEPSGrowth','fEPSNext','fEPS5Y','fLTDebt','fPerfWeek','fSMA20','fCurVol'].forEach(id=>{
         const el = document.getElementById(id); if (el) el.value = 'any';
     });
-    const relVolEl = document.getElementById('fRelVol'); if (relVolEl) relVolEl.value = 'over2';
+    const relVolEl = document.getElementById('fRelVol'); if (relVolEl) relVolEl.value = 'any';
     const priceEl = document.getElementById('fPrice'); if (priceEl) priceEl.value = '5to50';
     document.getElementById('fLimit').value='100';
     document.getElementById('screenerTableBody').innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">اضغط "بدء الفلترة" للبحث</td></tr>';
@@ -1120,8 +1119,9 @@ async function runWeeklyScan() {
     const universe = await fetchUniverse();
     const candidates = universe.filter(d =>
         d.price != null && d.price >= 5 && d.price <= 50 &&
-        Number(d.relVolume9 ?? 0) >= 2 &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
+        (d.sma50 == null || d.price <= d.sma50 * 0.8) &&
+        d.growth != null && d.growth > 0 &&
         !d.hasIssues && d.hasPlan !== false
     );
 
@@ -1131,7 +1131,7 @@ async function runWeeklyScan() {
         if (d.sma200!=null && d.price>d.sma200) score+=2;
         if (d.rsi!=null && d.rsi>40 && d.rsi<60) score+=1;
         if ((d.change??0)>0) score+=1;
-        if ((d.relVolume9??0)>=2) score+=1;
+        if ((d.relVolume??0)>1) score+=1;
         if (d.ltDebt!=null && d.ltDebt<0.3) score+=2;
         if (d.growth!=null && d.growth>15) score+=2;
         if (d.pe!=null && d.pe>5 && d.pe<25) score+=1;
@@ -1149,8 +1149,8 @@ async function runWeeklyScan() {
         document.getElementById('sitePicksCount').textContent = '0';
         document.getElementById('siteAvgReturn').textContent = '0.00%';
         document.getElementById('siteWinRate').textContent = '0%';
-        document.getElementById('sitePicksDesc').textContent = 'لا توجد ترشيحات تحقق شروط السعر والحجم الحالية.';
-        tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 و2x متوسط 9 أيام</td></tr>';
+        document.getElementById('sitePicksDesc').textContent = 'لا توجد ترشيحات تحقق شروط السعر وSMA50 وفلاتر Finviz الحالية.';
+        tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 وSMA50 وفلاتر Finviz</td></tr>';
         toast('لم توجد ترشيحات مطابقة للشروط الحالية', 'warn');
         return;
     }

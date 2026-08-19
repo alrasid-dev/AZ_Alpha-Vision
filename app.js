@@ -99,23 +99,32 @@ async function completePasswordRecovery() {
     await loadSessionAndEnter();
 }
 async function loadSessionAndEnter() {
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) return;
-    const { data: profile, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
-    if (error || !profile) {
-        document.getElementById('loginError').textContent = 'تعذر تحميل بيانات الحساب';
-        return;
+    const err = document.getElementById('loginError');
+    try {
+        err.textContent = 'جارٍ تحميل الحساب…';
+        const { data: { user }, error: userError } = await sb.auth.getUser();
+        if (userError) throw userError;
+        if (!user) { err.textContent = 'انتهت الجلسة، أعد تسجيل الدخول'; return; }
+        const { data: profileData, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
+        if (error || !profileData) throw error || new Error('PROFILE_NOT_FOUND');
+        if (!profileData.approved && profileData.role !== 'admin') {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('waitingScreen').classList.add('active');
+            return;
+        }
+        // استخدم let/نسخة قابلة للتحديث؛ كان const يسبب توقف الدخول عند تحديث trial_end.
+        let profile = await ensureTrialPeriod(profileData);
+        if (profile.trial_end && new Date(profile.trial_end).getTime() < Date.now() && profile.role !== 'admin') {
+            profile.subscription_status = 'expired';
+        }
+        err.textContent = '';
+        await initApp(user, profile);
+    } catch (e) {
+        console.error('loadSessionAndEnter error:', e);
+        err.textContent = e?.message === 'PROFILE_NOT_FOUND'
+            ? 'لم يتم العثور على ملف الحساب؛ تواصل مع المسؤول'
+            : 'تعذر إكمال تسجيل الدخول: ' + (e?.message || 'خطأ غير معروف');
     }
-    if (!profile.approved && profile.role !== 'admin') {
-        document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('waitingScreen').classList.add('active');
-        return;
-    }
-    profile = await ensureTrialPeriod(profile);
-    if (profile.trial_end && new Date(profile.trial_end).getTime() < Date.now() && profile.role !== 'admin') {
-        profile.subscription_status = 'expired';
-    }
-    initApp(user, profile);
 }
 
 function handleLogout() {

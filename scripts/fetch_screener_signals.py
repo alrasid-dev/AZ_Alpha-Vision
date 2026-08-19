@@ -35,6 +35,11 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     log.error("SUPABASE_URL أو SUPABASE_SERVICE_ROLE_KEY غير موجودين في متغيرات البيئة")
     sys.exit(1)
 
+EXCLUDED_SYMBOLS = {
+    'DDV', 'CCDE', 'CCODA', 'AASYS', 'CCRSR', 'AAI', 'AAIRG', 'AAMRZ', 'AAOUT', 'AAPEI', 'BBKKT',
+    'USAU', 'AATEN', 'NNHP', 'SSWV', 'NNRDS', 'HHYMC', 'RRTB', 'CCLMB', 'XMAX', 'OCC',
+}
+
 SB_HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
     "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -107,6 +112,11 @@ def fetch_preset_tickers(preset_key, preset_cfg, cfg):
         log.warning(f"[{preset_key}] لا نتائج من Finviz")
         return pd.DataFrame()
 
+    if "Ticker" not in df.columns:
+        log.warning(f"[{preset_key}] لا يوجد عمود Ticker — تجاهل الفلتر")
+        return pd.DataFrame()
+    df["Ticker"] = df["Ticker"].astype(str).str.strip().str.upper()
+    df = df[~df["Ticker"].isin(EXCLUDED_SYMBOLS)].copy()
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
     price_min, price_max = cfg["price"]["min"], cfg["price"]["max"]
     override = preset_cfg.get("price_override")
@@ -122,55 +132,71 @@ def fetch_preset_tickers(preset_key, preset_cfg, cfg):
 
 
 def fetch_technicals(tickers):
-    """يجلب تاريخ الأسعار عبر yfinance ويحسب المؤشرات الحقيقية — مرة واحدة فقط لكل رمز فريد.
-    يرجع (المؤشرات لكل سهم، وسلسلة OHLC مختصرة لكل سهم لعرض الشارت عند الطلب)."""
+    """يجلب المؤشرات، ويتجاهل الرموز المنتهية أو التي لا تعيد بيانات."""
     import yfinance as yf
-    results = {}
-    charts = {}
-    chunk_size = 40
-    CHART_DAYS = 180  # كافٍ لسياق مفيد على الفاصل اليومي دون تضخيم حجم الملف
+    results, charts = {}, {}
+    skipped = []
+    chunk_size = 25
+    chart_days = 180
 
     for i in range(0, len(tickers), chunk_size):
-        chunk = tickers[i:i + chunk_size]
+        chunk = [t for t in tickers[i:i + chunk_size] if t not in EXCLUDED_SYMBOLS]
+        if not chunk:
+            continue
         log.info(f"yfinance دفعة {i // chunk_size + 1}: {len(chunk)} سهم")
-        try:
-            data = yf.download(chunk, period="1y", group_by="ticker", threads=True,
-                                auto_adjust=False, progress=False)
-        except Exception as e:
-            log.warning(f"فشلت الدفعة: {e}")
-            time.sleep(10)
+        data = None
+        for attempt in range(1, 4):
+            try:
+                # التشغيل المتسلسل يمنع قفل cache المحلي في GitHub Actions.
+                data = yf.download(chunk, period="1y", group_by="ticker", threads=False,
+                                   auto_adjust=False, progress=False, timeout=60)
+                if data is not None and not data.empty:
+                    break
+            except Exception as exc:
+                log.warning(f"فشلت دفعة yfinance ({attempt}/3): {exc}")
+            time.sleep(5 * attempt)
+        if data is None or data.empty:
+            skipped.extend(chunk)
+            log.warning(f"تخطي دفعة كاملة بعد 3 محاولات: {chunk[:5]}")
             continue
 
-        for t in chunk:
+        for ticker in chunk:
             try:
-                df_t = data[t].dropna() if len(chunk) > 1 else data.dropna()
-                if df_t is None or df_t.empty or len(df_t) < 30:
+                if len(chunk) > 1:
+                    if not hasattr(data, "columns") or ticker not in data.columns.get_level_values(0):
+                        skipped.append(ticker)
+                        continue
+                    df_t = data[ticker].dropna(how="all")
+                else:
+                    df_t = data.dropna(how="all")
+                if df_t.empty or len(df_t) < 30 or "Close" not in df_t.columns:
+                    skipped.append(ticker)
                     continue
                 ind = compute_all(df_t)
-                last = df_t.iloc[-1]
-                prev = df_t.iloc[-2] if len(df_t) > 1 else last
+                last, prev = df_t.iloc[-1], df_t.iloc[-2] if len(df_t) > 1 else df_t.iloc[-1]
                 price = float(last["Close"])
+                if not np.isfinite(price) or price <= 0:
+                    skipped.append(ticker)
+                    continue
                 prev_close = float(prev["Close"]) if pd.notna(prev["Close"]) else price
                 vol = int(last["Volume"]) if pd.notna(last["Volume"]) else 0
                 avg_vol = int(df_t["Volume"].tail(20).mean()) if len(df_t) >= 5 else vol
-                results[t] = {
+                results[ticker] = {
                     "price": round(price, 2),
                     "change": round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0,
-                    "volume": vol,
-                    "avgVolume": avg_vol,
+                    "volume": vol, "avgVolume": avg_vol,
                     "relVolume": round(vol / avg_vol, 2) if avg_vol else 1.0,
                     **ind,
                 }
-
-                chart_df = df_t.tail(CHART_DAYS)
-                charts[t] = [
-                    [idx.strftime("%Y-%m-%d"), round(float(r["Open"]), 2), round(float(r["High"]), 2),
-                     round(float(r["Low"]), 2), round(float(r["Close"]), 2)]
-                    for idx, r in chart_df.iterrows()
-                ]
-            except Exception as e:
-                log.warning(f"تعذر معالجة {t}: {e}")
-        time.sleep(2)
+                chart_df = df_t.tail(chart_days)
+                charts[ticker] = [[idx.strftime("%Y-%m-%d"), round(float(r["Open"]), 2),
+                                   round(float(r["High"]), 2), round(float(r["Low"]), 2),
+                                   round(float(r["Close"]), 2)] for idx, r in chart_df.iterrows()]
+            except Exception as exc:
+                skipped.append(ticker)
+                log.warning(f"تخطي {ticker} — لا بيانات قابلة للمعالجة: {exc}")
+        time.sleep(1)
+    log.info(f"تم تخطي {len(set(skipped))} رمزًا بلا بيانات أو منتهيًا؛ نجح {len(results)} رمزًا")
     return results, charts
 
 
@@ -353,8 +379,8 @@ def main():
         all_tickers.update(df["Ticker"].tolist() if not df.empty else [])
 
     if not all_tickers:
-        log.error("لا أسهم مطابقة من أي فلتر — إيقاف")
-        sys.exit(1)
+        log.warning("لا أسهم مطابقة من أي فلتر — انتهاء ناجح بلا نتائج جديدة")
+        return
 
     log.info(f"إجمالي الرموز الفريدة عبر كل الفلاتر: {len(all_tickers)}")
     technicals, charts = fetch_technicals(sorted(all_tickers))
@@ -401,7 +427,8 @@ def main():
     log.info(f"screener_performance: {n_perf} فترة | صفقات مُقفلة: {len(performance['trades'])} | مفتوحة: {len(performance['openPositions'])}")
 
     if n_sig == 0:
-        sys.exit(1)
+        log.warning("لم تُنشأ إشارات جديدة أو لا توجد أسهم بدرجة 2+/4؛ لا يُعد ذلك فشلًا للمهمة")
+    log.info("اكتمل محرك الإشارات بنجاح")
 
 
 if __name__ == "__main__":

@@ -69,9 +69,10 @@ async function handleRegister() {
     if (data.session) {
         await loadSessionAndEnter();
     } else {
-        toast('✅ تم التسجيل — تحقق من بريدك لتأكيد الحساب، ثم انتظر موافقة المسؤول', 'warn');
-        document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('waitingScreen').classList.add('active');
+        // لا توجد موافقة إدارية بعد التسجيل. قد يطلب Supabase تأكيد البريد فقط.
+        toast('✅ تم إنشاء الحساب. تحقق من بريدك إذا طلب النظام ذلك، ثم سجّل الدخول.', 'success');
+        switchAuth('login');
+        document.getElementById('loginEmail').value = email;
     }
 }
 
@@ -121,11 +122,9 @@ async function loadSessionAndEnter() {
         if (!user) { err.textContent = 'انتهت الجلسة، أعد تسجيل الدخول'; return; }
         const { data: profileData, error } = await withTimeout(sb.from('profiles').select('*').eq('id', user.id).single(), 10000);
         if (error || !profileData) throw error || new Error('PROFILE_NOT_FOUND');
-        if (!profileData.approved && profileData.role !== 'admin') {
-            document.getElementById('authScreen').style.display = 'none';
-            document.getElementById('waitingScreen').classList.add('active');
-            return;
-        }
+        // تم إلغاء نظام موافقة المسؤول؛ الحساب يدخل مباشرة بعد نجاح المصادقة.
+        // نعتبر السجلات القديمة غير المحدثة مفعّلة في الواجهة، وتُصلح قاعدة البيانات عبر ملف SQL المرفق.
+        profileData.approved = true;
         // استخدم let/نسخة قابلة للتحديث؛ كان const يسبب توقف الدخول عند تحديث trial_end.
         let profile = await ensureTrialPeriod(profileData);
         if (profile.trial_end && new Date(profile.trial_end).getTime() < Date.now() && profile.role !== 'admin') {
@@ -169,7 +168,12 @@ async function initApp(user, profile) {
     setTimeout(()=>initChart(), 100);
     runScanner(); setInterval(runScanner, 15000);
     subscribeSignalRealtime();
-    const c = LocalCache.getScreener(); if (c && c.t > Date.now()-86400000) { screenerResults = c.r; renderScreener(); }
+    const c = LocalCache.getScreener();
+    if (c && c.t > Date.now()-86400000) {
+        screenerResults = (c.r || []).filter(isCommonStockRow);
+        LocalCache.setScreener({ t: Date.now(), r: screenerResults });
+        renderScreener();
+    }
 }
 
 // ===== WATCHLIST (Supabase — syncs across devices now) =====
@@ -318,9 +322,10 @@ async function refreshAdminData() {
     if (error || !users) { toast('تعذر تحميل بيانات الأدمن: ' + (error?.message||''), 'error'); return; }
 
     document.getElementById('totalUsers').textContent=users.length;
-    document.getElementById('pendingUsers').textContent=users.filter(u=>!u.approved).length;
-    document.getElementById('activeUsers').textContent=users.filter(u=>u.approved&&(!u.trial_end||new Date(u.trial_end).getTime()>Date.now())).length;
-    document.getElementById('expiredUsers').textContent=users.filter(u=>u.approved&&u.trial_end&&new Date(u.trial_end).getTime()<=Date.now()).length;
+    // نظام الموافقة الإدارية ملغى؛ جميع الحسابات المصادق عليها تظهر مفعّلة.
+    document.getElementById('pendingUsers').textContent='0';
+    document.getElementById('activeUsers').textContent=users.filter(u=>(!u.trial_end||new Date(u.trial_end).getTime()>Date.now())).length;
+    document.getElementById('expiredUsers').textContent=users.filter(u=>u.trial_end&&new Date(u.trial_end).getTime()<=Date.now()).length;
 
     const { data: wl } = await sb.from('watchlist').select('user_id');
     const wlCount = {};
@@ -328,13 +333,12 @@ async function refreshAdminData() {
 
     const tb = document.getElementById('adminTableBody'); tb.innerHTML='';
     users.forEach(u=>{
-        const st=!u.approved?'<span class="badge" style="background:rgba(255,215,0,0.1);color:var(--accent-gold);border:1px solid rgba(255,215,0,0.15);">معلق</span>':(u.trial_end&&new Date(u.trial_end).getTime()<=Date.now())?'<span class="badge" style="background:var(--accent-red-dim);color:var(--accent-red);border:1px solid rgba(255,23,68,0.15);">منتهي</span>':'<span class="badge" style="background:var(--accent-green-dim);color:var(--accent-green);border:1px solid rgba(0,230,118,0.15);">نشط</span>';
+        const st=(u.trial_end&&new Date(u.trial_end).getTime()<=Date.now())?'<span class="badge" style="background:var(--accent-red-dim);color:var(--accent-red);border:1px solid rgba(255,23,68,0.15);">منتهي</span>':'<span class="badge" style="background:var(--accent-green-dim);color:var(--accent-green);border:1px solid rgba(0,230,118,0.15);">نشط</span>';
         const td = u.trial_end ? Math.ceil((new Date(u.trial_end).getTime()-Date.now())/86400000) : null;
-        const tt = u.role==='admin' ? 'غير محدود' : (td!==null ? (td>0?td+' يوم':'منتهي') : 'لم يُفعَّل بعد');
+        const tt = u.role==='admin' ? 'غير محدود' : (td!==null ? (td>0?td+' يوم':'منتهي') : 'جارٍ إعداد التجربة');
         let act='';
-        if(!u.approved&&u.role!=='admin')act=`<button class="admin-btn btn-approve" onclick="approveUser('${u.id}')">قبول</button>`;
-        else if(u.role==='admin')act='<span style="color:var(--accent-purple);font-size:11px;">🛡️ مسؤول</span>';
-        else act='<span style="color:var(--accent-green);font-size:11px;">✓ مفعل</span>';
+        if(u.role==='admin')act='<span style="color:var(--accent-purple);font-size:11px;">🛡️ مسؤول</span>';
+        else act='<span style="color:var(--accent-green);font-size:11px;">✓ مفعل تلقائيًا</span>';
         tb.innerHTML+=`<tr><td style="font-weight:600;">${escapeHtml(u.name||'-')}</td><td style="font-size:11px;color:var(--text-muted);">${escapeHtml(u.email)}</td><td>${st}</td><td style="font-size:11px;">${tt}</td><td class="font-mono text-cyan">${wlCount[u.id]||0}</td><td>${act}</td></tr>`;
     });
 
@@ -496,7 +500,7 @@ const UNIQUE_STOCKS = [...new Set(STOCK_UNIVERSE)];
 const SECTOR_MAP = {}; // لم يعد يُستخدَم لتصنيف الفحص (ذلك يأتي الآن من Finviz عبر market_fundamentals.sector) — أُبقي فارغًا عمدًا؛ محفوظ فقط لتفادي كسر أي مرجع قديم متبقٍّ.
 
 const EXCLUDED_SYMBOLS = new Set([
-    'DDV',
+    'DDV','CCDE','CCODA','AASYS','CCRSR','AAI','AAIRG','AAMRZ','AAOUT','AAPEI','BBKKT',
     'LUCK','TAL','EDU','GSX','STG','FANH','QTT','UXIN','SOGO','QFIN','FINV','YRD','JT','PPDF','XYF',
     'NIO','XPEV','LI','BYD','F','GM','HOG','PII','NKLA','WKHS','RIDE','GOEV','MULN','FSR','LCID','RIVN',
     'AMC','GME','BBBY','M','JCP','BIG','RAD','EXPR','KOSS','NAKD','SNDL','TLRY','ACB','CRON','OGI','HEXO','CGC',
@@ -800,6 +804,16 @@ function initIndicatorChart() {
     series.setData(data); window.indicatorChart.timeScale().fitContent();
     window.addEventListener('resize', () => { if(window.indicatorChart&&cont)window.indicatorChart.resize(cont.clientWidth,cont.clientHeight); });
 }
+function isCommonStockRow(row) {
+    const symbol = String(row?.symbol || '').trim().toUpperCase();
+    const exchange = String(row?.exchange || '').trim().toUpperCase();
+    const text = [row?.industry, row?.company, row?.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
+    if (!symbol || EXCLUDED_SYMBOLS.has(symbol)) return false;
+    if (!['NYSE','NASDAQ'].includes(exchange)) return false;
+    if (/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text)) return false;
+    return Number(row?.price || 0) > 0;
+}
+
 // ===== REAL MARKET DATA (Supabase — replaces the old fake REAL_PRICES/getLivePrice/fetchYahooData) =====
 // أربعة حقول لا مصدر حقيقي لها بعد فعُطِّلت في الواجهة بدل أن تُحاكى: توصية المحللين، Beta،
 // Float، مفاجأة الأرباح. حين يتوفر مصدر حقيقي لها لاحقًا، أضِفها لجدول market_fundamentals
@@ -839,6 +853,8 @@ function mapMarketRow(fund, tech) {
         ltDebt, debtRatio: ltDebt,
         perfWeek: tech?.perf_week ?? null,
         hasIssues, hasPlan, missedEarnings: false,
+        exchange: String(fund.exchange || '').toUpperCase(),
+        industry: fund.industry || '', company: fund.company || '', finviz_sector: fund.finviz_sector || '',
         grade, score,
         // غير مربوطة ببيانات حقيقية بعد (انظر التعليق أعلى الملف) — الفلاتر المقابلة معطّلة بالواجهة
         analystScore: null, beta: null, floatShares: null, earnSurprise: null, revSurprise: null,
@@ -870,8 +886,7 @@ async function fetchUniverse(forceRefresh=false) {
         const sector = String(r.sector || '').toLowerCase();
         const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50;
         const ordinary = !['finance', 'financial', 'financials', 'reits'].includes(sector);
-        const tradable = !EXCLUDED_SYMBOLS.has(String(r.symbol || '').toUpperCase());
-        return liquid && ordinary && tradable;
+        return liquid && ordinary && isCommonStockRow(r);
     });
     _universeCache = { t: Date.now(), rows };
     return rows;
@@ -898,7 +913,8 @@ async function runScanner() {
     const results = LIVE_TRACKED.map(sym => {
         const base = universeMap[sym];
         const live = liveMap[sym];
-        if (!base && !live) return null;
+        if (!base || !live) return null;
+        if (!isCommonStockRow(base)) return null;
         const price = live?.price ?? base?.price ?? null;
         if (price == null || price < 5 || price > 50) return null;
         const change = live?.change_pct ?? base?.change ?? null;
@@ -1143,6 +1159,7 @@ async function runWeeklyScan() {
     const candidates = universe.filter(d =>
         d.price != null && d.price >= 5 && d.price <= 50 &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
+        isCommonStockRow(d) &&
         (d.sma50 == null || d.price <= d.sma50 * 0.8) &&
         d.growth != null && d.growth > 0 &&
         !d.hasIssues && d.hasPlan !== false
@@ -1178,7 +1195,7 @@ async function runWeeklyScan() {
         return;
     }
 
-    const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, date: new Date().toISOString().split('T')[0], score: s.pickScore }));
+    const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, exchange: s.exchange, industry: s.industry, company: s.company, date: new Date().toISOString().split('T')[0], score: s.pickScore }));
     LocalCache.setPicks(pickData);
     updateSitePerformance();
 
@@ -1192,8 +1209,17 @@ async function runWeeklyScan() {
 }
 
 async function updateSitePerformance() {
-    const picks = LocalCache.getPicks();
+    let picks = LocalCache.getPicks();
     if (!picks) return;
+    // الترشيحات القديمة بلا exchange/industry غير موثوقة؛ تُمسح بدل عرض رموز أدوات مالية.
+    if (picks.some(p => !['NYSE','NASDAQ'].includes(String(p.exchange || '').toUpperCase()))) {
+        LocalCache.setPicks([]);
+        document.getElementById('sitePicksCount').textContent = '0';
+        document.getElementById('sitePicksDesc').textContent = 'تم حذف ترشيحات قديمة غير موثوقة؛ شغّل مسح الأسبوع لإنشاء قائمة جديدة.';
+        return;
+    }
+    picks = picks.filter(p => isCommonStockRow(p));
+    LocalCache.setPicks(picks);
     document.getElementById('sitePicksCount').textContent = picks.length;
 
     const prices = await Promise.all(picks.map(p => fetchPrice(p.symbol)));
@@ -1472,7 +1498,7 @@ async function isTradableMarketSymbol(symbol) {
     if (error || !data) return false;
     const exchange = String(data.exchange || '').toUpperCase();
     const industry = String(data.industry || '').toLowerCase();
-    return Number(data.price) > 0 && ['NYSE','NASDAQ'].includes(exchange) && !/etf|reit|closed end|warrant|unit|preferred|fund|trust/.test(industry);
+    return Number(data.price) > 0 && ['NYSE','NASDAQ'].includes(exchange) && !EXCLUDED_SYMBOLS.has(s) && !/etf|reit|closed end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(industry);
 }
 const originalAddToWatchlist = addToWatchlist;
 addToWatchlist = async function() {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AZ Alpha Vision — 2026</title>
+    <title>AZ Alpha Vision — محاكي طرق واستراتيجيات التداول</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -609,8 +609,9 @@
                 <div class="logo-wrap" style="justify-content:center; flex-direction:column; gap:8px;">
                     <div class="logo-mark">AZ</div>
                     <div class="logo-title">Alpha Vision</div>
-                    <div class="logo-tag">Smart Trading 2026</div>
+                    <div class="logo-tag">محاكي طرق واستراتيجيات التداول — 2026</div>
                 </div>
+                <div style="margin-top:16px; padding:12px; border:1px solid rgba(255,193,7,.35); border-radius:10px; color:var(--accent-gold); font-size:11px; line-height:1.7;">منصة تعليمية ومحاكاة فقط — البيانات نظرية وليست أسعارًا أو نتائج تداول حقيقية، وليست توصية مالية.</div>
             </div>
             <h2>تسجيل <span>الدخول</span></h2>
             <div class="input-wrap">
@@ -632,8 +633,9 @@
                 <div class="logo-wrap" style="justify-content:center; flex-direction:column; gap:8px;">
                     <div class="logo-mark">AZ</div>
                     <div class="logo-title">Alpha Vision</div>
-                    <div class="logo-tag">Smart Trading 2026</div>
+                    <div class="logo-tag">محاكي طرق واستراتيجيات التداول — 2026</div>
                 </div>
+                <div style="margin-top:16px; padding:12px; border:1px solid rgba(255,193,7,.35); border-radius:10px; color:var(--accent-gold); font-size:11px; line-height:1.7;">إنشاء الحساب يعني أنك ستستخدم برنامجًا تعليميًا ومحاكيًا فقط، وليس خدمة تداول حقيقية.</div>
             </div>
             <h2>إنشاء <span>حساب</span></h2>
             <div class="input-wrap">
@@ -834,13 +836,46 @@
         </div>
     </div>
 
+    <div id="educationDisclaimerModal" class="modal-overlay" style="z-index:1200;">
+        <div class="modal-box" style="max-width:680px; max-height:90vh; overflow:auto;">
+            <h2>إقرار الاستخدام التعليمي والمحاكاة</h2>
+            <p class="sub">AZ Alpha Vision — محاكي لطرق واستراتيجيات التداول</p>
+            <div style="line-height:1.9; color:var(--text-muted); font-size:13px;">
+                <p>هذا الموقع والتطبيق منصة تعليمية وتطبيقية للمحاكاة فقط. البيانات والرسوم والإشارات والنتائج نظرية أو قد تكون متأخرة، ولا تمثل تنفيذًا حقيقيًا في السوق، ولا تُعد عرضًا أو توصية أو ضمانًا للربح أو دعوة لشراء أو بيع أي أصل.</p>
+                <p>لا ينفذ الموقع أوامر تداول حقيقية ولا يحتفظ بأموال المستخدمين. يجب إجراء أي تداول حقيقي، إن اختاره المستخدم خارج المنصة، عبر جهة مرخصة وبعد فهم المخاطر والرسوم والملاءمة.</p>
+            </div>
+            <label style="display:block;margin:12px 0;"><input type="checkbox" id="consentAge18"> أقر بأن عمري 18 سنة أو أكثر.</label>
+            <label style="display:block;margin:12px 0;"><input type="checkbox" id="consentSimulation"> أفهم أن البرنامج محاكي وأن البيانات ليست أسعار تنفيذ حقيقية.</label>
+            <label style="display:block;margin:12px 0;"><input type="checkbox" id="consentEducation"> أوافق على استخدامه للتعلم والتجربة فقط، وأتحمل مسؤولية أي قرار خارج المنصة.</label>
+            <button class="btn-modal btn-modal-confirm" onclick="acceptEducationConsent()">أوافق وأتابع إلى المنصة</button>
+            <button class="btn-modal btn-modal-cancel" onclick="closeEducationDisclaimer()">خروج</button>
+        </div>
+    </div>
+
+    <div id="courseModal" class="modal-overlay">
+        <div class="modal-box" style="max-width:820px; max-height:90vh; overflow:auto;">
+            <h2>دورة AZ Alpha Vision <span>التعليمية التطبيقية</span></h2>
+            <div id="courseLessonCount" class="sub">الدرس 1 من 10</div>
+            <h3 id="courseLessonTitle" style="margin-top:18px;"></h3>
+            <div id="courseLessonBody" style="line-height:1.95; color:var(--text-muted);"></div>
+            <div id="courseLessonSource" style="margin-top:16px; padding:12px; border-right:3px solid var(--accent-cyan); color:var(--text-dim); font-size:12px;"></div>
+            <input type="hidden" id="courseLessonIndex" value="0">
+            <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
+                <button id="coursePrev" class="btn-modal btn-modal-cancel" onclick="courseMove(-1)">الدرس السابق</button>
+                <button id="courseNext" class="btn-modal btn-modal-confirm" onclick="courseMove(1)">الدرس التالي</button>
+                <button class="btn-modal btn-modal-cancel" onclick="closeCourse()">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
     <div id="upgradeModal" class="modal-overlay">
         <div class="modal-box">
-            <h2>ترقية <span>الخطة</span></h2>
-            <div class="sub">اختر طريقة الدفع لتفعيل 60 يوماً إضافية</div>
-            <div class="pay-option disabled">
-                <div class="pay-title">💳 بطاقة ائتمان</div>
-                <div class="pay-desc">غير مفعل حالياً</div>
+            <h2>أرغب بالترقية <span>والاستمرار بالتعلم</span></h2>
+            <div class="sub">اشتراك شهري للوصول إلى المحتوى التعليمي المتقدم. لا تُخزن بيانات البطاقة داخل AZ Alpha Vision.</div>
+                <div class="pay-option">
+                <div class="pay-title">💳 الدفع بالبطاقة</div>
+                <div class="pay-desc">سيتم ربطها بصفحة دفع مستضافة من مزود الدفع بعد تحديد الحساب التجاري.</div>
+                <button class="btn-modal btn-modal-confirm" onclick="toast('واجهة الدفع جاهزة — يلزم ربط مزود الدفع التجاري أولًا','warn')">المتابعة إلى الدفع</button>
             </div>
             <div class="pay-option">
                 <div class="pay-title">🏦 تحويل بنكي</div>
@@ -888,7 +923,7 @@
             <div class="topbar">
                 <div class="logo-wrap">
                     <div class="logo-mark" style="width:36px;height:36px;font-size:14px;">AZ</div>
-                    <div class="logo-title" style="font-size:16px;">Alpha Vision</div>
+                    <div class="logo-title" style="font-size:16px;">Alpha Vision <span style="font-size:10px;color:var(--accent-cyan);">محاكي تعليمي</span></div>
                 </div>
                 <div class="topbar-right">
                     <div class="live-clock"><span class="dot"></span><span id="liveTime">--:--:--</span></div>
@@ -896,7 +931,7 @@
                         <div class="avatar" id="userAvatar">U</div>
                         <span id="userName">--</span>
                     </div>
-                    <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">ترقية</button>
+                    <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">أرغب بالترقية والاستمرار بالتعلم</button>
                     <button class="btn-logout" onclick="handleLogout()" style="padding:8px 14px; font-size:12px;">🚪 خروج</button>
                 </div>
             </div>
@@ -908,6 +943,7 @@
                 <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals">🎯 الماسح والتنبيهات</button>
                 <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks">📌 ترشيحات الأسبوع</button>
                 <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators">📈 المؤشرات</button>
+                <button class="tab-btn" onclick="switchTab('course'); openCourse()" data-tab="course">📚 الدورة التعليمية</button>
                 <button class="tab-btn" onclick="switchTab('support')" data-tab="support">🎧 الدعم الفني</button>
                 <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin">🛡️ التحكم</button>
             </div>
@@ -1183,6 +1219,14 @@
                     </div>
                 </div>
 
+                <div id="tab-course" class="tab-panel hidden">
+                    <div class="section-title">📚 دورة المحاكاة التعليمية <div class="line"></div></div>
+                    <div class="chart-box" style="height:auto; min-height:160px; padding:24px; line-height:1.9;">
+                        <h3>محاكي طرق واستراتيجيات التداول</h3>
+                        <p class="text-muted">دورة تطبيقية من 10 دروس: قراءة السعر، الاتجاه، الدعم والمقاومة، المتوسطات، RSI، السيولة، المخاطر، بناء خطة اختبار، فهم الإشارات، والاختبار النهائي.</p>
+                        <button class="btn-scan-main" onclick="openCourse()">بدء الدورة وفتح الدروس</button>
+                    </div>
+                </div>
                 <div id="tab-support" class="tab-panel hidden">
                     <div class="section-title">🎧 الدعم الفني <div class="line"></div></div>
                     <div class="glass" style="padding:18px;margin-bottom:18px;">

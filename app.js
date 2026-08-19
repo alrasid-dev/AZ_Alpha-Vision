@@ -111,10 +111,9 @@ async function loadSessionAndEnter() {
         document.getElementById('waitingScreen').classList.add('active');
         return;
     }
+    profile = await ensureTrialPeriod(profile);
     if (profile.trial_end && new Date(profile.trial_end).getTime() < Date.now() && profile.role !== 'admin') {
-        document.getElementById('loginError').textContent = 'انتهت صلاحية الاشتراك — يرجى الترقية';
-        await sb.auth.signOut();
-        return;
+        profile.subscription_status = 'expired';
     }
     initApp(user, profile);
 }
@@ -138,6 +137,7 @@ async function initApp(user, profile) {
     document.getElementById('userName').textContent = profile.name || profile.email;
     document.getElementById('userAvatar').textContent = (profile.name || profile.email).charAt(0).toUpperCase();
     if (profile.role === 'admin') { document.getElementById('adminTabBtn').classList.remove('hidden'); refreshAdminData(); }
+    ensureEducationConsent();
     await loadWatchlist();
     await loadMySupportTickets();
     updateTrial(); updateSitePerformance(); setInterval(updateTrial, 60000);
@@ -269,7 +269,7 @@ function updateTrial() {
     if (!currentProfile.trial_end) { b.textContent='بانتظار التفعيل'; b.classList.add('expired'); btn.style.display='none'; return; }
     const diff = new Date(currentProfile.trial_end).getTime() - Date.now();
     if (diff<=0) { b.textContent='منتهي'; b.classList.add('expired'); btn.style.display='inline-block'; }
-    else { const d=Math.ceil(diff/86400000); b.textContent=d+' يوم'; b.classList.remove('expired'); btn.style.display='none'; }
+    else { const d=Math.ceil(diff/86400000); b.textContent=d+' يوم متبقي'; b.classList.remove('expired'); btn.style.display='inline-block'; btn.textContent='أرغب بالترقية والاستمرار بالتعلم'; }
 }
 function openUpgradeModal(){document.getElementById('upgradeModal').classList.add('active');}
 function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('active');}
@@ -399,8 +399,8 @@ async function refreshUpgradeRequests() {
 }
 
 async function reviewUpgrade(requestId, status) {
-    if(!confirm(status==='approved' ? 'تفعيل 60 يوماً إضافية لهذا المستخدم؟' : 'رفض الطلب؟'))return;
-    const { error } = await sb.rpc('review_upgrade_request', { request_id: requestId, new_status: status, extend_days: 60 });
+    if(!confirm(status==='approved' ? 'تفعيل اشتراك شهري لمدة 30 يومًا لهذا المستخدم؟' : 'رفض الطلب؟'))return;
+    const { error } = await sb.rpc('review_upgrade_request', { request_id: requestId, new_status: status, extend_days: 30 });
     if (error) { toast('فشل الإجراء: ' + error.message, 'error'); return; }
     toast(status==='approved' ? '✅ تم التفعيل' : '❌ تم الرفض');
     refreshAdminData();
@@ -1370,3 +1370,90 @@ async function openSignalChart(symbol) {
     series.setData(data.data.map(([time, open, high, low, close]) => ({ time, open, high, low, close })));
     signalChartInstance.timeScale().fitContent();
 }
+
+
+// ===== EDUCATION, SIMULATION CONSENT & 60-DAY TRIAL =====
+const TRIAL_DAYS = 60;
+function ensureEducationConsent() {
+    const key = `az_education_consent_${currentUser?.id || 'guest'}`;
+    if (localStorage.getItem(key) === 'accepted') return true;
+    const modal = document.getElementById('educationDisclaimerModal');
+    if (modal) modal.classList.add('active');
+    return false;
+}
+async function acceptEducationConsent() {
+    const age = document.getElementById('consentAge18')?.checked;
+    const simulation = document.getElementById('consentSimulation')?.checked;
+    const education = document.getElementById('consentEducation')?.checked;
+    if (!age || !simulation || !education) {
+        toast('يجب تأكيد جميع بنود الإقرار قبل المتابعة', 'warn');
+        return;
+    }
+    const key = `az_education_consent_${currentUser?.id || 'guest'}`;
+    localStorage.setItem(key, JSON.stringify({ accepted: 'accepted', age18: true, at: new Date().toISOString() }));
+    if (currentUser?.id) {
+        // يعمل حتى لو لم تُضف أعمدة الموافقة بعد؛ لا يمنع دخول المستخدم عند اختلاف المخطط.
+        await sb.from('profiles').update({ age_confirmed: true, education_consent_at: new Date().toISOString() }).eq('id', currentUser.id);
+    }
+    document.getElementById('educationDisclaimerModal')?.classList.remove('active');
+    toast('تم قبول الإقرار التعليمي والمحاكاة');
+}
+function closeEducationDisclaimer() {
+    toast('لا يمكن استخدام المنصة دون قبول الإقرار التعليمي', 'warn');
+}
+async function ensureTrialPeriod(profile) {
+    if (!profile || profile.role === 'admin' || profile.trial_end) return profile;
+    const base = profile.created_at ? new Date(profile.created_at) : new Date();
+    const end = new Date(base.getTime() + TRIAL_DAYS * 86400000).toISOString();
+    const { error } = await sb.from('profiles').update({ trial_end: end }).eq('id', profile.id);
+    if (!error) profile.trial_end = end;
+    else console.warn('تعذر إنشاء فترة التجربة تلقائيًا:', error.message);
+    return profile;
+}
+const COURSE_LESSONS = [
+    { title: 'مقدمة: ما هي المحاكاة؟', body: '<p>هذه المنصة بيئة تعليمية تحاكي قراءة السوق ولا تنفذ أوامر شراء أو بيع حقيقية. الهدف هو التدريب على بناء الفرضية وقياسها، لا تقديم توصية.</p><p><strong>مثال تطبيقي:</strong> سجّل سبب اختيار سهم افتراضي، مستوى الدخول الافتراضي، نقطة الإلغاء، ثم راقب النتيجة دون أموال حقيقية.</p>', source: 'SEC Investor.gov — https://www.investor.gov/' },
+    { title: 'قراءة السعر والاتجاه', body: '<p>تعلّم الفرق بين الاتجاه الصاعد والهابط والجانبي، وكيف تستخدم القمم والقيعان بدل مطاردة حركة قصيرة.</p><p><strong>تمرين:</strong> حدّد آخر قمتين وقاعين على الرسم، واكتب هل البنية تصنع قممًا أعلى أم أدنى.</p>', source: 'CME Group — Technical Analysis https://www.cmegroup.com/education.html' },
+    { title: 'الدعم والمقاومة', body: '<p>الدعم منطقة يزداد فيها اهتمام المشترين، والمقاومة منطقة يزداد فيها ضغط البائعين. لا تُعامل الخط كحقيقة دقيقة؛ استخدم منطقة وسيناريو إلغاء.</p><p><strong>مثال:</strong> إذا كُسر الدعم وأغلق السعر تحته، اكتب سيناريو عدم استمرار الفكرة بدل افتراض الارتداد.</p>', source: 'CFA Institute — Technical Analysis https://rpc.cfainstitute.org/' },
+    { title: 'المتوسطات المتحركة', body: '<p>تُستخدم SMA20 وSMA50 وSMA200 لوصف الاتجاه والزخم، وليست ضمانًا للنتيجة. تقاطع المتوسطات إشارة متأخرة ويجب دمجه مع السعر وإدارة المخاطر.</p><p><strong>تمرين:</strong> قارن السعر مع SMA50 وسجّل ما إذا كان الاتجاه متوافقًا أو متعارضًا.</p>', source: 'CFA Institute — Investment Foundations https://www.cfainstitute.org/insights' },
+    { title: 'RSI والزخم', body: '<p>يقيس RSI زخم الحركة ضمن نطاق. التشبع لا يعني أن السعر سينعكس فورًا؛ قد يبقى السهم في حالة زخم فترة طويلة.</p><p><strong>مثال:</strong> لا تستخدم RSI وحده؛ اكتب تأكيدًا إضافيًا من بنية السعر قبل تسجيل فرضية محاكاة.</p>', source: 'Fidelity Learning Center — RSI https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI' },
+    { title: 'الحجم والسيولة', body: '<p>الحجم يساعد على فهم قابلية تنفيذ الفكرة نظريًا، لكن بيانات المنصة قد تكون متأخرة أو محدودة. لذلك لا نعرض المحاكاة على أنها سعر تنفيذ حقيقي.</p><p><strong>تمرين:</strong> قارن حجم اليوم بمتوسطه وسجّل ملاحظة عن السيولة دون تحويلها إلى وعد بالربح.</p>', source: 'FINRA — Investing Basics https://www.finra.org/investors/investing' },
+    { title: 'إدارة المخاطر', body: '<p>حدّد قبل أي تجربة افتراضية: نقطة الإلغاء، حجم الصفقة الافتراضي، والخسارة الافتراضية المقبولة. لا تستخدم مالًا لا تستطيع تحمل خسارته في الواقع.</p><p><strong>مثال:</strong> اكتب خطة تتوقف عند تحقق شرط الإلغاء بدل تعديل الخطة بعد ظهور الخسارة.</p>', source: 'SEC — Investor Alerts https://www.investor.gov/introduction-investing' },
+    { title: 'بناء خطة اختبار', body: '<p>الخطة القابلة للاختبار تحتوي على شروط دخول وخروج ومدة وبيانات ونتيجة. لا تخلط بين نتيجة تجربة قصيرة وصلاحية استراتيجية طويلة.</p><p><strong>مشروع الدورة:</strong> أنشئ عشر فرضيات محاكاة، سجّلها، ثم قيّم الالتزام والنتيجة والمتوسط والانحراف.</p>', source: 'CFA Institute — Portfolio Management https://www.cfainstitute.org/' },
+    { title: 'فهم الإشارات والماسح', body: '<p>الإشارة داخل AZ Alpha Vision وصف تعليمي آلي، وليست أمرًا أو توصية. قد تفشل بسبب نقص البيانات أو تأخرها أو تغير السوق.</p><p><strong>تمرين:</strong> افتح سبب الإشارة، تحقق من السعر والاتجاه والبيانات، ثم اكتب سبب قبولها أو رفضها في دفتر التدريب.</p>', source: 'SEC — Day Trading Risk Disclosure https://www.sec.gov/investor/pubs/daytips.htm' },
+    { title: 'اختبار نهائي وقواعد الاستخدام', body: '<p>لا تنتقل من المحاكاة إلى المال الحقيقي لمجرد ظهور نتائج إيجابية. راجع التكاليف والضرائب والملاءمة والمخاطر واستشر مختصًا مرخصًا عند الحاجة.</p><p><strong>الاختبار:</strong> اشرح الفرق بين البيانات النظرية والسعر القابل للتنفيذ، وبين الإشارة التعليمية والتوصية المالية.</p>', source: 'FINRA — Smart Investing https://www.finra.org/investors' }
+];
+function renderCourseLesson(index = 0) {
+    const lesson = COURSE_LESSONS[Math.max(0, Math.min(index, COURSE_LESSONS.length - 1))];
+    const title = document.getElementById('courseLessonTitle');
+    const body = document.getElementById('courseLessonBody');
+    const source = document.getElementById('courseLessonSource');
+    const count = document.getElementById('courseLessonCount');
+    if (!title || !body) return;
+    title.textContent = lesson.title;
+    body.innerHTML = lesson.body;
+    source.innerHTML = `<strong>مصدر للمطالعة:</strong> <a href="${lesson.source.split(' — ')[1] || '#'}" target="_blank" rel="noopener">${lesson.source.split(' — ')[0]}</a>`;
+    count.textContent = `الدرس ${index + 1} من ${COURSE_LESSONS.length}`;
+    document.getElementById('coursePrev').disabled = index === 0;
+    document.getElementById('courseNext').disabled = index === COURSE_LESSONS.length - 1;
+    document.getElementById('courseLessonIndex').value = index;
+}
+function openCourse() { document.getElementById('courseModal')?.classList.add('active'); renderCourseLesson(0); }
+function closeCourse() { document.getElementById('courseModal')?.classList.remove('active'); }
+function courseMove(delta) { renderCourseLesson(Number(document.getElementById('courseLessonIndex').value || 0) + delta); }
+
+// ضابط أولي للرموز: لا يُقبل الرمز إلا إذا وُجد في بيانات السوق الموثوقة وله سعر موجب.
+async function isTradableMarketSymbol(symbol) {
+    const s = String(symbol || '').trim().toUpperCase();
+    if (!s || EXCLUDED_SYMBOLS.has(s)) return false;
+    const { data, error } = await sb.from('market_fundamentals').select('symbol,price,exchange,industry').eq('symbol', s).maybeSingle();
+    if (error || !data) return false;
+    const exchange = String(data.exchange || '').toUpperCase();
+    const industry = String(data.industry || '').toLowerCase();
+    return Number(data.price) > 0 && ['NYSE','NASDAQ'].includes(exchange) && !/etf|reit|closed end|warrant|unit|preferred|fund|trust/.test(industry);
+}
+const originalAddToWatchlist = addToWatchlist;
+addToWatchlist = async function() {
+    const sym = document.getElementById('addSymbolInput').value.trim().toUpperCase();
+    if (!(await isTradableMarketSymbol(sym))) { toast('هذا الرمز غير موجود كسهم عادي قابل للتداول في قاعدة السوق', 'error'); return; }
+    return originalAddToWatchlist();
+};

@@ -166,7 +166,7 @@ def fetch_finviz_fundamentals():
 
     # أهلية التداول: أسهم مدرجة في سوق رئيسي وليست ETF/صندوقًا أو رمزًا ضعيف السيولة.
     # هذه الحدود قابلة للضبط من متغيرات البيئة.
-    allowed_exchanges = {'NYSE', 'NASDAQ', 'AMEX'}
+    allowed_exchanges = {'NYSE', 'NASDAQ'}
     min_price = float(os.environ.get('MIN_PRICE', '5'))
     max_price = float(os.environ.get('MAX_PRICE', '50'))
     min_avg_volume = float(os.environ.get('MIN_AVG_VOLUME', '300000'))
@@ -186,7 +186,7 @@ def fetch_finviz_fundamentals():
         current_volume = safe_quantity(row.get('Volume') or row.get('Current Volume'))
         float_shares = safe_quantity(row.get('Float'))
         relative_volume = safe_num(row.get('Relative Volume'))
-        if exchange and exchange not in allowed_exchanges:
+        if exchange not in allowed_exchanges:
             rejected['exchange'] += 1
             continue
         if ticker in excluded_symbols:
@@ -214,6 +214,7 @@ def fetch_finviz_fundamentals():
             'symbol': t,
             'company': row.get('Company'),
             'price': safe_num(row.get('Price')),
+            'exchange': str(row.get('Exchange', '')).strip().upper(),
             'sector': SECTOR_TRANSLATE.get(finviz_sector, 'other'),
             'finviz_sector': finviz_sector,
             'industry': row.get('Industry'),

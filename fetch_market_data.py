@@ -1,318 +1,146 @@
 """
-fetch_market_data.py
-يجلب بيانات حقيقية لأسهم السوق الأمريكي من Finviz، مع حد قابل للضبط عبر MAX_UNIVERSE (الافتراضي 2500 سهم):
-  - أساسية (Sector/Industry/PE/EPS Growth/Debt) من Finviz عبر finvizfinance
-  - فنية حقيقية (SMA/RSI/ATR/السعر/الحجم) من yfinance
-ثم يكتبها إلى Supabase.
+AZ Alpha Vision — Free Market Scan
+مصدر الرموز الرسمي: Nasdaq Trader (NASDAQ وNYSE فقط).
+مصدر السعر والتاريخ والحجم والمؤشرات: yfinance للاستخدام التعليمي.
+لا يعتمد المسح على Finviz ولا على قائمة ثابتة قصيرة.
 
---mode full   : أسهم السوق ضمن MAX_UNIVERSE (أساسي + فني كامل) — يُشغّل يوميًا
---mode quick  : الأسعار فقط لقائمة "الأسهم الحية" الأصغر (~50 سهم) — يُشغَّل كل 15 دقيقة
-
-⚠️ ملاحظة مهمة: لم يُختبر هذا الملف مقابل Finviz/yfinance الحيّين فعليًا (بيئة
-التطوير التي كتبته فيها لا تصل لتلك الشبكات). شغّله يدويًا أول مرة (workflow_dispatch)
-وراجع السجلات — أي عمود لم يُطابَق من Finviz سيُطبع كتحذير بدل أن يُسقط الفحص كله.
+--mode full  : يمسح حتى MAX_UNIVERSE رمزًا مؤهلًا ويكتب fundamentals/technicals.
+--mode quick : يجلب الأسعار فقط لقائمة LIVE_TRACKED ويكتب live_quotes.
 """
-import os
-import sys
-import json
-import time
+from __future__ import annotations
+
 import argparse
 import logging
+import os
+import re
+import sys
+import time
+from typing import Any
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger(__name__)
+log = logging.getLogger("az-alpha-free-scan")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    log.error("SUPABASE_URL أو SUPABASE_SERVICE_ROLE_KEY غير موجودين في متغيرات البيئة")
+    log.error("SUPABASE_URL أو SUPABASE_SERVICE_ROLE_KEY غير موجودين")
     sys.exit(1)
 
-# ===== قائمة احتياطية/مبدئية؛ المصدر الرئيسي للماسح الكامل هو Finviz =====
-STOCK_UNIVERSE = [
-    'AAPL','MSFT','GOOGL','GOOG','AMZN','NVDA','META','TSLA','AVGO','PEP','COST','ADBE','NFLX','AMD','INTC','CSCO','CRM','ACN','TXN','QCOM',
-    'AMAT','INTU','ADP','MU','LRCX','KLAC','MRVL','NXPI','SNPS','CDNS','ANSS','PTC','FTNT','PANW','CRWD','SNOW','PLTR','DDOG','NET','OKTA',
-    'ZS','SPLK','VEEV','WDAY','NOW','TEAM','DOCU','ZM','U','RBLX','ABNB','UBER','LYFT','DASH','SQ','PYPL','SHOP','SPOT','TWLO','SNAP','PINS',
-    'MTCH','BMBL','RDFN','Z','OPEN','EXPE','BKNG','TRIP','GDRX','RXRX','TDOC','AMGN','GILD','BIIB','REGN','VRTX','ILMN','DXCM','TMO','DHR',
-    'ISRG','ZBH','BSX','ABT','SYK','BDX','MDT','EW','HOLX','IDXX','WAT','A','MTD','PKI','BRKR','WST','COO','ALGN','SGEN','MRNA','BNTX',
-    'NVAX','JNJ','MRK','PFE','ABBV','BMY','LLY','NVO','AZN','GSK','SNY','RPRX','VTRS','CTLT','DVA','FMS','UHS','CYH','LPNT','HCA','THC',
-    'MPW','OHI','WELL','VTR','PEAK','HCP','SBRA','HR','RHP','SLG','BXP','VNO','ARE','QTS','DLR','CCI','AMT','SBAC','WY','RYN','PCH',
-    'CLF','NUE','STLD','MT','X','RS','CMC','TMST','ATI','KALU','SCHN','WOR','ZEUS','ASTL','CENX','AA','KGC','NEM','GOLD','AEM','FNV',
-    'WPM','RGLD','OR','AUY','EGO','AGI','BTG','HL','CDE','PAAS','SSRM','MAG','SVM','EXK','GPL','LODE','TRX','THM','NGD','MUX','GORO',
-    'DRD','SA','SAND','ORLA','FVI','SILV','AG','FSM','HYMC','GROY','MTA','REVG','OSK','NAV','WNC','PACCAR','CMI','PCAR','REV','MGA',
-    'LEA','ALV','GNTX','DLPH','BWA','TEN','VC','AXL','MOD','SMP','DORM','STRT','SUP','CTB','GT','RGR','SWBI','VSTO','AOUT','POWW','RBC',
-    'TWI','CUB','KWR','HAYN','FUBO','AMC','BBBY','GME','M','NOK','PFE','BAC','C','WFC','CSCO','INTC','AMD','MU','T','VZ','TMUS','CMCSA',
-    'SIRI','TWLO','RIVN','LCID','PLUG','FSLR','ENPH','SPWR','NIO','XPEV','BYND','JMIA','SKLZ','U','CRNC','DOCU','ZM','WORK','DKNG','RBLX',
-    'ABNB','UBER','WBD','PARA','FOXA','NWSA','NYT','META','SNAP','PINS','MTCH','BMBL','RDFN','Z','OPEN','EXPE','BKNG','TRIP','UBER','LYFT',
-    'DASH','GDRX','RXRX','TDOC','AMZN','WMT','TGT','KSS','JCP','BIG','RAD','DPZ','PZZA','YUM','MCD','CMG','MRNA','BNTX','NVAX','AZN',
-    'GSK','ILMN','DXCM','TMO','DHR','BRKR','VEEV','CDNS','SNPS','ANSS','ADSK','ADBE','INTU','NOW','CRM','TEAM','WORK','FSLY','FTNT','PANW',
-    'NET','ZS','OKTA','PSTG','MDB','DDOG','CONN','IOT','AI','SOUN','NVDA','CRWD','HUBS','TWLO','S','ZUO','EGHT','AVGO','MRVL','TXN','ADI',
-    'QCOM','NXPI','SWKS','QRVO','TECH','AMD','INTC','MU','NTAP','PSTG','WDC','STX','SE','PINS','TTD','MGNI','PUBM','CMPR','LDI','BIGC',
-    'ETSY','WISH','CART','EBAY','AMZN','WMT','TGT','ROST','TJX','BOOT','BKE','DDS','M','JWN','GES','ANF','URBN','ZUMZ','CPRI','PVH','RL',
-    'KORS','COH','OXM','SHOO','CWH','GIII','LEVI','SCVL','HIBB','GPS','DBI','KTB','CAL','CROX','WHR','ARHS','WSM','RH','BYON','NWHM',
-    'TDOC','MDU','LNT','CMS','D','ED','ES','EIX','EXC','FE','DTE','XEL','AEP','PEG','ETR','NEE','SO','DUK','BK','RY','TD','PNC','USB',
-    'TFC','COF','SYF','ALLY','DFS','FITB','KEY','HBAN','ZION','CMA','PB','TCF','UMB','IBKR','SCHW','MS','GS','JPM','C','BAC','WFC','MTB',
-    'PPBI','FRC','WAL','PACW','SIVB','MUFG','SMFG','JEF','RJF','FHI','NTRS','STT','RF','VLY','TBBK','BSBR','ITUB','BBD','SBS','ABEV',
-    'BRFS','ERJ','GOL','AZUL','BZ','VALE','GGB','CSAN','RAD','SU','HMC','TM','STLA','F','GM','TSLA','RIVN','LCID','NIO','XPEV','BYD',
-    'HOG','PII','NTLA','BEAM','CRSP','NKTR','AZN','GSK','MRNA','BNTX','NVAX','JNJ','MRK','PFE','ABBV','BMY','GILD','AMGN','BIIB','REGN',
-    'VRTX','QRTEA','TDOC','HUM','UNH','CNC','ANTM','WBA','CVS','TGT','AAP','KMX','AZO','ORLY','GPC','PAG','GPI','ABG','SAH','LAD','MUSA',
-    'BC','ALSN','OSK','REV','PATK','BLD','OC','LPX','BECN','EPC','BUR','CARR','AA','ALB','AA','FMC','ECL','DD','DOW','RPM','SHW','PPG',
-    'HXL','WLK','CE','LYB','EMN','ALB','NTR','CTVA','BA','RTX','LMT','NOC','GD','LHX','AXE','MRCY','HXL','TEL','APH','ROL','HII','SPR',
-    'WWD','CW','NOC','GD','RTX','LMT','BHE','PNR','ITW','GWW','FAST','SNA','LECO','CAT','DE','CNHI','AGCO','TEX','MTW','ASTE','POWL',
-    'DORM','WNC','SUPV','HTZ','CAR','AAL','DAL','UAL','JBLU','ALK','SAVE','HA','ASIX','AHCO','MDT','BSX','ABT','SYK','BDX','BAX','DHR',
-    'TMO','ZBH','CNMD','VAR','ANIK','ATRC','BDX','BSX','MDT','SYK','ABT','ZBH','TMO','DHR','NEO','LIVN','NVRO','SIBN','HOLX','NOVT',
-    'TWST','ATOM','EXAS','QGEN','NEO','FMI','GH','EXEL','AUTL','ALXN','CBM','IOVA','BMRN','DAWN','CYTK','ACAD','CNCE','ARNA','EYPT',
-    'ACHV','ADVM','AGEN','ALLO','ALXN','AMRN','AMRS','ARPO','AVRO','BGNE','BHVN','BLUE','CALA','CLVS','CRIS','CRMD','CRTX','CTMX','CVAC',
-    'CYRX','DVAX','EIGR','EMRA','EPZM','ESPR','EVFN','FBIO','FGEN','FOLD','GERN','GLUE','HARP','HGEN','HLGN','IMGN','IMTX','INO','JAGX',
-    'KALA','KPTI','LGVN','LOGC','LXRX','MBIO','MESO','MGNX','MRNS','MVC','NDVA','OCGN','OLMA','ONCE','ORGS','PDSB','PTC','RAPT','REPL',
-    'REPT','SAGE','SCPH','SGEN','SLNO','SRPT','STOK','TAK','TCBP','TCRX','TH','TKAI','TLSA','URGN','VANI','VERU','VIRC','VIRX','VSTM',
-    'XBIT','XENE','XNCR','ZLAB','ALT','AMC','CWH','DDS','GES','HIBB','JWN','KSS','M','URBN','WISH','GME','BBBY','M','JCP','BIG','RAD',
-    'KSS','JWN','ANF','GES','HIBB','URBN','ZUMZ','CHS','CWH','DDS','GES','JWN','KSS','M','URBN','WISH','GME','BBBY','SOFI','AFRM','UPST',
-    'HOOD','COIN','PLTR','SNOW','DDOG','NET','CRWD','OKTA','ZS','S','MDB','ESTC','SMAR','ASAN','MNDY','AI','SOUN','BBAI','AMST','DUOT',
-    'LTRX','RXT','SSTI','VRNS','RPD','TENB','CYBR','QLYS','SUMO','DOMO','PLAN','MOND','BABA','JD','PDD','NTES','BIDU','TCEHY','TCOM',
-    'VIPS','MOMO','YY','HUYA','DOYU','FUTU','TIGR','LU','FINV','QFIN','LX','YRD','JT','PPDF','XYF','LI','FSR','GOEV','MULN','NKLA','WKHS',
-    'RIDE','QS','SPWR','SEDG','RUN','NOVA','CWEN','AY','SRE','WEC','ATO','SWX','NFG','OGS','SR','SPH','FGP','APU','SUG','CMLP','DPM',
-    'EPD','ETP','KMP','MMP','MWE','BPL','BWP','CPNO','DCP','ENLK','EXLP','GLP','HEP','MMLP','NS','OKS','PAA','SXL','TCP','TLP','WES',
-    'WPZ','XTEX','APL','ATLS','EEP','ETP','GEL','CGC','TLRY','ACB','CRON','SNDL','GTBIF','TCNNF','CURLF','CRLBF','PLNHF','VRNOF','GDNSF',
-    'AYRWF','JUSHF','MSOS','MJ','YOLO','POTX','THCX','TOKE','ACT','SPCE','RKLB','ASTS','MNTS','VORB','REDWIRE','SATL','BKSY','MYNA','SPIR',
-    'ASTR','LLAP','SIDU','SATS','GSAT','IRDM','VSAT','MAXR','DDD','SSYS','DM','MKFG','VLD','MTLS','NNDM','XONE','PRLB','ATVI','EA','TTWO',
-    'PLTK','SCPL','GLUU','ZNGA','XOM','CVX','COP','EOG','SLB','OXY','MPC','VLO','PSX','MRO','DVN','FANG','PXD','OVV','APA','CHRD','SM',
-    'MTDR','PE','GPOR','RRC','AR','SWN','CTRA','EQT','CNX','RICE','NFG','UPS','FDX','CHRW','EXPD','XPO','SAIA','ODFL','LSTR','ARCB','HTLD',
-    'MRTN','WERN','KNX','JBHT','SWFT','CGNX','ZTO','YMM','DIDI','GRUB','TKAY','GETR','DADA','GOGO','ATSG','ABSTS','AIR','AIRT','MOS','CF',
-    'GE','HON','MMM'
+MIN_PRICE = float(os.environ.get("MIN_PRICE", "5"))
+MAX_PRICE = float(os.environ.get("MAX_PRICE", "50"))
+MAX_UNIVERSE = max(100, int(os.environ.get("MAX_UNIVERSE", "5000")))
+BATCH_SIZE = max(10, int(os.environ.get("YF_BATCH_SIZE", "50")))
+
+LIVE_TRACKED = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "AMD", "NFLX", "CRM", "SHOP", "SQ", "UBER",
+    "ABNB", "COIN", "ROKU", "SNAP", "PINS", "ETSY", "TWLO", "DDOG", "NET", "OKTA", "ZS", "CRWD", "PLTR",
+    "SNOW", "FSLR", "ENPH", "RUN", "RBLX", "SOFI", "AFRM", "HOOD", "UPST", "AI", "SOUN", "BBAI",
 ]
-STOCK_UNIVERSE = sorted(set(STOCK_UNIVERSE))
 
-LIVE_TRACKED = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','AMD','NFLX','CRM','SHOP','SQ','UBER',
-                 'ABNB','COIN','ROKU','SNAP','PINS','ETSY','TWLO','DDOG','NET','OKTA','ZS','CRWD','PLTR',
-                 'SNOW','FSLR','ENPH','RUN','U','RBLX','SOFI','AFRM','HOOD','UPST','AI','SOUN','BBAI',
-                 'PLUG','QS','SPCE','RKLB','ASTS','LLAP','BABA','JD','PDD','FUTU','TIGR']
-
-# Finviz's real 11 sectors -> the app's simplified categories (unchanged from the original UI)
-SECTOR_TRANSLATE = {
-    'Technology': 'tech',
-    'Financial': 'finance',
-    'Healthcare': 'healthcare',
-    'Consumer Cyclical': 'consumer',
-    'Consumer Defensive': 'consumer',
-    'Industrials': 'industrial',
-    'Energy': 'energy',
-    'Utilities': 'energy',
-    'Real Estate': 'reits',
-    'Basic Materials': 'other',
-    'Communication Services': 'other',
+# رموز ظهرت سابقًا كأدوات غير عادية أو غير مرغوبة في المنصة.
+EXCLUDED_SYMBOLS = {
+    "DDV", "CCDE", "CCODA", "AASYS", "CCRSR", "AAI", "AAIRG", "AAMRZ", "AAOUT", "AAPEI", "BBKKT",
+    "LUCK", "TAL", "EDU", "GSX", "STG", "FANH", "QTT", "UXIN", "SOGO", "QFIN", "FINV", "YRD", "JT", "PPDF", "XYF",
+    "NIO", "XPEV", "LI", "BYD", "F", "GM", "HOG", "PII", "NKLA", "WKHS", "RIDE", "GOEV", "MULN", "FSR", "LCID", "RIVN",
+    "AMC", "GME", "BBBY", "M", "JCP", "BIG", "RAD", "EXPR", "KOSS", "NAKD", "SNDL", "TLRY", "ACB", "CRON", "OGI", "HEXO", "CGC",
+    "CGC", "TLRY", "ACB", "CRON", "SNDL", "GTBIF", "TCNNF", "CURLF", "CRLBF", "PLNHF", "VRNOF", "GDNSF", "AYRWF", "JUSHF", "MSOS", "MJ", "YOLO", "POTX", "THCX", "TOKE", "ACT",
+    "SPCE", "RKLB", "ASTS", "MNTS", "VORB", "REDWIRE", "SATL", "BKSY", "MYNA", "SPIR", "ASTR", "LLAP", "SIDU",
 }
 
+INSTRUMENT_RE = re.compile(
+    r"etf|exchange traded|reit|closed[- ]?end|warrant|unit|preferred|fund|trust|spac|right|rights|note|debenture|depositary|acquisition|when[- ]issued|convertible",
+    re.I,
+)
+FINANCE_RE = re.compile(
+    r"bank|banc|financial|finance|insurance|insur|capital|credit|mortgage|broker|asset management|investment management|reinsurance|life insurance|savings|morgan|chase|blackrock|citigroup|schwab|state street|american express|discover financial",
+    re.I,
+)
 
-def find_col(df, *keywords):
-    """أول عمود يحتوي كل الكلمات المفتاحية (غير حساس لحالة الأحرف) — دفاعي لأن أسماء
-    أعمدة Finviz لم تُتحقق مقابل الموقع الحي وقت كتابة هذا الملف."""
-    for col in df.columns:
-        low = str(col).lower()
-        if all(k.lower() in low for k in keywords):
-            return col
-    return None
 
-
-def safe_num(val, default=None):
+def safe_num(value: Any, default=None):
     try:
-        if val is None or val == '-' or val == '' or (isinstance(val, float) and np.isnan(val)):
+        if value is None or value == "" or value == "-":
             return default
-        s = str(val).replace('%', '').replace(',', '')
-        return float(s)
+        return float(str(value).replace(",", "").replace("%", ""))
     except Exception:
         return default
 
 
-def safe_quantity(val, default=None):
-    """تحويل قيم Finviz مثل 300K و99.5M و1.2B إلى أرقام فعلية."""
-    if val is None or val == '-' or val == '':
-        return default
-    try:
-        s = str(val).strip().replace(',', '').replace('%', '').upper()
-        mult = 1.0
-        if s.endswith('K'):
-            mult, s = 1_000.0, s[:-1]
-        elif s.endswith('M'):
-            mult, s = 1_000_000.0, s[:-1]
-        elif s.endswith('B'):
-            mult, s = 1_000_000_000.0, s[:-1]
-        return float(s) * mult
-    except Exception:
-        return default
+def is_common_security(symbol: str, name: str, etf: str = "N", test_issue: str = "N") -> bool:
+    symbol = str(symbol or "").strip().upper()
+    name = str(name or "").strip()
+    if not symbol or symbol in EXCLUDED_SYMBOLS:
+        return False
+    if str(etf).upper() == "Y" or str(test_issue).upper() == "Y":
+        return False
+    if INSTRUMENT_RE.search(name):
+        return False
+    # يمنع رموز الفئات ذات اللاحقة الطويلة وأسماء الأدوات المركبة دون منع BRK.B مثلًا.
+    if len(symbol) > 6 and "-" in symbol:
+        return False
+    return True
 
 
-def load_primary_exchange_symbols():
-    """تحميل رموز NYSE وNASDAQ الرسمية؛ يستبعد NYSE American/AMEX وArca وغيرها."""
-    symbols = {}
+def load_primary_exchange_symbols() -> dict[str, dict[str, str]]:
+    """يحمل ملفات Nasdaq Trader الرسمية ويقبل NASDAQ وNYSE فقط، لا AMEX/NYSE MKT/ARCA."""
+    result: dict[str, dict[str, str]] = {}
     sources = [
-        ('NASDAQ', 'https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt'),
-        ('NYSE', 'https://www.nasdaqtrader.com/dynamic/symdir/otherlisted.txt'),
+        ("NASDAQ", "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"),
+        ("NYSE", "https://www.nasdaqtrader.com/dynamic/symdir/otherlisted.txt"),
     ]
-    for exchange_name, url in sources:
+    session = requests.Session()
+    session.headers.update({"User-Agent": "AZ-Alpha-Vision-Educational/1.0"})
+    for exchange, url in sources:
         try:
-            text = requests.get(url, timeout=30, headers={'User-Agent': 'AZ-Alpha-Vision/1.0'}).text
-            lines = [line for line in text.splitlines() if line and not line.startswith('File Creation')]
+            response = session.get(url, timeout=45)
+            response.raise_for_status()
+            lines = [line for line in response.text.splitlines() if line and not line.startswith("File Creation")]
             for line in lines[1:]:
-                parts = line.split('|')
-                if exchange_name == 'NASDAQ':
-                    ticker = parts[0].strip().upper() if parts else ''
-                    if ticker and ticker != 'SYMBOL':
-                        symbols[ticker] = 'NASDAQ'
+                parts = line.split("|")
+                if exchange == "NASDAQ":
+                    symbol = parts[0].strip().upper() if len(parts) > 0 else ""
+                    name = parts[1].strip() if len(parts) > 1 else ""
+                    test_issue = parts[3].strip().upper() if len(parts) > 3 else "Y"
+                    etf = parts[6].strip().upper() if len(parts) > 6 else "Y"
                 else:
-                    ticker = parts[0].strip().upper() if parts else ''
-                    exchange_code = parts[2].strip().upper() if len(parts) > 2 else ''
-                    if ticker and ticker != 'ACT SYMBOL' and exchange_code == 'N':
-                        symbols[ticker] = 'NYSE'
+                    symbol = parts[0].strip().upper() if len(parts) > 0 else ""
+                    name = parts[1].strip() if len(parts) > 1 else ""
+                    exchange_code = parts[2].strip().upper() if len(parts) > 2 else ""
+                    etf = parts[4].strip().upper() if len(parts) > 4 else "Y"
+                    test_issue = parts[6].strip().upper() if len(parts) > 6 else "Y"
+                    if exchange_code != "N":
+                        continue
+                if is_common_security(symbol, name, etf, test_issue):
+                    result[symbol] = {"symbol": symbol, "company": name, "exchange": exchange}
         except Exception as exc:
-            log.warning(f'تعذر تحميل قائمة {exchange_name} الرسمية: {exc}')
-    log.info(f'تم تحميل {len(symbols)} رمزًا من قوائم NYSE/NASDAQ الرسمية')
-    return symbols
+            log.error("تعذر تحميل قائمة %s الرسمية: %s", exchange, exc)
+    log.info("تم تحميل %s رمز سهم عادي من NASDAQ/NYSE بعد الاستبعاد", len(result))
+    return result
 
 
-def fetch_finviz_fundamentals():
-    from finvizfinance.screener.overview import Overview
-    from finvizfinance.screener.valuation import Valuation
-    from finvizfinance.screener.financial import Financial
-
-    log.info("جلب Overview من Finviz (قد يستغرق عدة دقائق بسبب صفحات Finviz المتعددة)...")
-    ov = Overview()
-    ov.set_filter(filters_dict={'Country': 'USA'})
-    df_ov = ov.screener_view()
-    if df_ov is None or df_ov.empty:
-        raise RuntimeError("Finviz Overview لم يُرجع أي بيانات")
-    log.info(f"Overview: {len(df_ov)} سهم أمريكي إجمالاً من Finviz")
-    max_universe = max(100, int(os.environ.get('MAX_UNIVERSE', '2500')))
-    # Finviz يعيد النتائج مرتبة افتراضيًا؛ نأخذ أول MAX_UNIVERSE لتفادي تشغيل غير محدود.
-    df_ov = df_ov.head(max_universe).copy()
-    log.info(f"بعد تحديد نطاق الماسح: {len(df_ov)} سهم من أصل {len(df_ov)}+ المتاحة")
-
-    # أهلية التداول: أسهم مدرجة في سوق رئيسي وليست ETF/صندوقًا أو رمزًا ضعيف السيولة.
-    # هذه الحدود قابلة للضبط من متغيرات البيئة.
-    allowed_exchanges = {'NYSE', 'NASDAQ'}
-    min_price = float(os.environ.get('MIN_PRICE', '5'))
-    max_price = float(os.environ.get('MAX_PRICE', '50'))
-    min_avg_volume = float(os.environ.get('MIN_AVG_VOLUME', '300000'))
-    min_current_volume = float(os.environ.get('MIN_CURRENT_VOLUME', '500000'))
-    max_float = float(os.environ.get('MAX_FLOAT', '100000000'))
-    min_rel_volume = float(os.environ.get('MIN_REL_VOLUME', '2'))
-    excluded_symbols = {'DDV'}
-    excluded_industries = {'exchange traded fund', 'etf', 'closed end fund', 'reit'}
-    primary_exchange_symbols = load_primary_exchange_symbols()
-    eligible_rows = []
-    rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0, 'float': 0, 'relative_volume': 0}
-    for _, row in df_ov.iterrows():
-        ticker = str(row.get('Ticker', '')).strip().upper()
-        finviz_exchange = str(row.get('Exchange', '')).strip().upper()
-        exchange = primary_exchange_symbols.get(ticker, finviz_exchange if finviz_exchange in allowed_exchanges else '')
-        industry = str(row.get('Industry', '')).strip().lower()
-        price = safe_num(row.get('Price')) or 0
-        avg_volume = safe_quantity(row.get('Avg Volume') or row.get('Average Volume'))
-        current_volume = safe_quantity(row.get('Volume') or row.get('Current Volume'))
-        float_shares = safe_quantity(row.get('Float'))
-        relative_volume = safe_num(row.get('Relative Volume'))
-        if exchange not in allowed_exchanges:
-            rejected['exchange'] += 1
-            continue
-        if ticker in excluded_symbols:
-            rejected['exchange'] += 1
-            continue
-        if any(token in industry for token in excluded_industries):
-            rejected['etf'] += 1
-            continue
-        if price < min_price or price > max_price:
-            rejected['liquidity'] += 1
-            continue
-        # لا يوجد شرط حجم إلزامي؛ تُحفظ قيم الحجم إن وجدت لاستخدامها في العرض فقط.
-        if float_shares is not None and float_shares >= max_float:
-            rejected['float'] += 1
-            continue
-        eligible_rows.append(row)
-    df_ov = pd.DataFrame(eligible_rows)
-    log.info(f"بعد فلاتر Finviz والأهلية: {len(df_ov)} سهم؛ مرفوض exchange={rejected['exchange']}, ETF={rejected['etf']}, liquidity={rejected['liquidity']}, float={rejected['float']}, relvol={rejected['relative_volume']}")
-
-    records = {}
-    for _, row in df_ov.iterrows():
-        t = row['Ticker']
-        finviz_sector = str(row.get('Sector', ''))
-        records[t] = {
-            'symbol': t,
-            'company': row.get('Company'),
-            'price': safe_num(row.get('Price')),
-            'exchange': str(row.get('Exchange', '')).strip().upper(),
-            'sector': SECTOR_TRANSLATE.get(finviz_sector, 'other'),
-            'finviz_sector': finviz_sector,
-            'industry': row.get('Industry'),
-            'pe': safe_num(row.get('P/E')),
-        }
-
-    try:
-        log.info("جلب Valuation من Finviz...")
-        val = Valuation()
-        val.set_filter(filters_dict={'Country': 'USA'})
-        df_val = val.screener_view()
-        if df_val is not None and not df_val.empty:
-            df_val = df_val[df_val['Ticker'].isin(records.keys())].copy()
-            log.info(f"أعمدة Valuation المستلمة: {list(df_val.columns)}")
-            c_pb = find_col(df_val, 'p/b')
-            c_eps_ty = find_col(df_val, 'eps', 'this')
-            c_eps_ny = find_col(df_val, 'eps', 'next', 'y')
-            c_eps_5y = find_col(df_val, 'eps', 'past', '5')
-            c_eps_n5y = find_col(df_val, 'eps', 'next', '5')
-            for c_name, label in [(c_pb,'P/B'),(c_eps_ty,'EPS this Y'),(c_eps_ny,'EPS next Y'),(c_eps_5y,'EPS past 5Y'),(c_eps_n5y,'EPS next 5Y')]:
-                if not c_name:
-                    log.warning(f"لم يُطابَق عمود Valuation المتوقع: {label} — سيبقى فارغًا")
-            for _, row in df_val.iterrows():
-                t = row['Ticker']
-                if t not in records:
-                    continue
-                records[t]['pb'] = safe_num(row.get(c_pb)) if c_pb else None
-                records[t]['eps_growth_this_year'] = safe_num(row.get(c_eps_ty)) if c_eps_ty else None
-                records[t]['eps_growth_next_year'] = safe_num(row.get(c_eps_ny)) if c_eps_ny else None
-                records[t]['eps_growth_5y'] = safe_num(row.get(c_eps_5y)) if c_eps_5y else None
-                records[t]['eps_growth_next_5y'] = safe_num(row.get(c_eps_n5y)) if c_eps_n5y else None
-    except Exception as e:
-        log.warning(f"تعذر جلب Valuation (سيُتخطى — الحقول المرتبطة تبقى فارغة): {e}")
-
-    try:
-        log.info("جلب Financial من Finviz...")
-        fin = Financial()
-        fin.set_filter(filters_dict={'Country': 'USA'})
-        df_fin = fin.screener_view()
-        if df_fin is not None and not df_fin.empty:
-            df_fin = df_fin[df_fin['Ticker'].isin(records.keys())].copy()
-            log.info(f"أعمدة Financial المستلمة: {list(df_fin.columns)}")
-            c_ltdebt = find_col(df_fin, 'ltdebt') or find_col(df_fin, 'lt debt')
-            c_debt = find_col(df_fin, 'debt/eq')
-            c_earn_qtr = find_col(df_fin, 'eps', 'qtr') or find_col(df_fin, 'earnings')
-            if not (c_ltdebt or c_debt):
-                log.warning("لم يُطابَق أي عمود دين — lt_debt_equity سيبقى فارغًا")
-            for _, row in df_fin.iterrows():
-                t = row['Ticker']
-                if t not in records:
-                    continue
-                debt_val = safe_num(row.get(c_ltdebt)) if c_ltdebt else safe_num(row.get(c_debt)) if c_debt else None
-                records[t]['lt_debt_equity'] = debt_val
-                records[t]['eps_growth_qtr'] = safe_num(row.get(c_earn_qtr)) if c_earn_qtr else None
-    except Exception as e:
-        log.warning(f"تعذر جلب Financial (سيُتخطى — الحقول المرتبطة تبقى فارغة): {e}")
-
-    log.info(f"إجمالي السجلات الأساسية المجمّعة: {len(records)}")
-    return records
+def sector_from_name(company: str) -> tuple[str, str]:
+    name = str(company or "")
+    if FINANCE_RE.search(name):
+        return "finance", "Financial"
+    if re.search(r"real estate|properties|reit", name, re.I):
+        return "reits", "Real Estate"
+    return "other", "Other"
 
 
-def compute_technical(hist_df):
-    close = hist_df['Close']
-    high = hist_df['High']
-    low = hist_df['Low']
+def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
+    close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+    high = pd.to_numeric(df["High"], errors="coerce").reindex(close.index)
+    low = pd.to_numeric(df["Low"], errors="coerce").reindex(close.index)
+    volume = pd.to_numeric(df["Volume"], errors="coerce").fillna(0).reindex(close.index)
+    if close.empty:
+        return {}
 
-    def sma(n):
-        return round(float(close.rolling(n).mean().iloc[-1]), 4) if len(close) >= n else None
+    def sma(period: int):
+        return round(float(close.rolling(period).mean().iloc[-1]), 4) if len(close) >= period else None
 
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
@@ -320,146 +148,172 @@ def compute_technical(hist_df):
     rs = gain / loss.replace(0, np.nan)
     rsi_series = 100 - (100 / (1 + rs))
     rsi = rsi_series.iloc[-1] if len(rsi_series) >= 15 else None
-    rsi = round(float(rsi), 2) if rsi is not None and pd.notna(rsi) else None
-
     prev_close = close.shift(1)
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
-    atr_series = tr.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    atr_series = tr.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
     atr = atr_series.iloc[-1] if len(atr_series) >= 14 else None
-    atr = round(float(atr), 4) if atr is not None and pd.notna(atr) else None
-
+    current_volume = float(volume.iloc[-1]) if len(volume) else 0
+    avg9 = float(volume.iloc[:-1].tail(9).mean()) if len(volume) > 1 else current_volume
+    avg20 = float(volume.tail(20).mean()) if len(volume) else current_volume
+    price = float(close.iloc[-1])
+    previous = float(close.iloc[-2]) if len(close) > 1 else price
     perf_week = None
-    if len(close) >= 6:
-        wk_ago = float(close.iloc[-6])
-        if wk_ago:
-            perf_week = round(((float(close.iloc[-1]) - wk_ago) / wk_ago) * 100, 2)
+    if len(close) >= 6 and float(close.iloc[-6]) != 0:
+        perf_week = round((price / float(close.iloc[-6]) - 1) * 100, 2)
+    return {
+        "price": round(price, 2),
+        "change_pct": round((price / previous - 1) * 100, 2) if previous else 0,
+        "volume": int(current_volume),
+        "avg_volume": int(avg20),
+        "avg_volume_9": round(avg9, 2),
+        "rel_volume": round(current_volume / avg20, 2) if avg20 else 1.0,
+        "rel_volume_9": round(current_volume / avg9, 2) if avg9 else 1.0,
+        "sma20": round(float(close.rolling(20).mean().iloc[-1]), 4) if len(close) >= 20 else None,
+        "sma50": sma(50),
+        "sma200": sma(200),
+        "rsi14": round(float(rsi), 2) if rsi is not None and pd.notna(rsi) else None,
+        "atr14": round(float(atr), 4) if atr is not None and pd.notna(atr) else None,
+        "perf_week": perf_week,
+    }
 
-    return {'sma20': sma(20), 'sma50': sma(50), 'sma200': sma(200), 'rsi14': rsi, 'atr14': atr, 'perf_week': perf_week}
 
-
-def fetch_prices_and_technicals(tickers, full_history=True):
-    import yfinance as yf
-    results = {}
-    chunk_size = 40
-    period = '1y' if full_history else '5d'
-
-    for i in range(0, len(tickers), chunk_size):
-        chunk = tickers[i:i + chunk_size]
-        log.info(f"yfinance دفعة {i // chunk_size + 1}/{(len(tickers)-1)//chunk_size + 1}: {len(chunk)} سهم")
+def download_chunk_with_retry(yf, chunk: list[str], period: str) -> pd.DataFrame | None:
+    for attempt in range(1, 4):
         try:
-            data = yf.download(chunk, period=period, group_by='ticker', threads=True,
-                                auto_adjust=False, progress=False)
-        except Exception as e:
-            log.warning(f"فشلت دفعة yfinance بالكامل، سيُعاد المحاولة بعد تأخير: {e}")
-            time.sleep(10)
+            # threads=False مهم لتجنب قفل SQLite/crumb cache في GitHub Actions.
+            data = yf.download(chunk, period=period, group_by="ticker", threads=False, auto_adjust=False, progress=False, timeout=60)
+            if data is not None and not data.empty:
+                return data
+            log.warning("دفعة فارغة (%s/%s)", attempt, 3)
+        except Exception as exc:
+            log.warning("فشل تنزيل الدفعة (%s/3): %s", attempt, exc)
+        time.sleep(5 * attempt)
+    return None
+
+
+def fetch_prices_and_technicals(tickers: list[str], full_history=True) -> dict[str, dict[str, Any]]:
+    import yfinance as yf
+    results: dict[str, dict[str, Any]] = {}
+    period = "1y" if full_history else "5d"
+    chunks = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
+    for index, chunk in enumerate(chunks, 1):
+        log.info("yfinance دفعة %s/%s: %s سهم", index, len(chunks), len(chunk))
+        data = download_chunk_with_retry(yf, chunk, period)
+        if data is None:
+            log.error("تخطي الدفعة بعد 3 محاولات: %s", ",".join(chunk[:5]))
             continue
-
-        for t in chunk:
+        for ticker in chunk:
             try:
-                df_t = data[t].dropna() if len(chunk) > 1 else data.dropna()
-                if df_t is None or df_t.empty or 'Close' not in df_t.columns:
+                if len(chunk) > 1:
+                    if ticker not in data.columns.get_level_values(0):
+                        continue
+                    frame = data[ticker].dropna(how="all")
+                else:
+                    frame = data.dropna(how="all")
+                if frame.empty or "Close" not in frame.columns:
                     continue
-                last = df_t.iloc[-1]
-                prev = df_t.iloc[-2] if len(df_t) > 1 else last
-                price = float(last['Close'])
-                prev_close = float(prev['Close']) if pd.notna(prev['Close']) else price
-                change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
-                vol = int(last['Volume']) if pd.notna(last['Volume']) else 0
-                prior_volumes = df_t['Volume'].iloc[:-1].dropna().tail(9)
-                avg_vol_9 = float(prior_volumes.mean()) if len(prior_volumes) else float(vol)
-                avg_vol = int(df_t['Volume'].tail(20).mean()) if len(df_t) >= 5 else vol
-                rec = {
-                    'price': round(price, 2), 'change_pct': change_pct, 'volume': vol,
-                    'avg_volume': avg_vol, 'avg_volume_9': round(avg_vol_9, 2),
-                    'rel_volume': round(vol / avg_vol, 2) if avg_vol else 1.0,
-                    'rel_volume_9': round(vol / avg_vol_9, 2) if avg_vol_9 else 1.0,
-                }
-                if full_history:
-                    rec.update(compute_technical(df_t))
-                results[t] = rec
-            except Exception as e:
-                log.warning(f"تعذر معالجة {t}: {e}")
-        time.sleep(2)
-
-    log.info(f"نجح جلب أسعار/فنيات {len(results)} من أصل {len(tickers)} سهم")
+                rec = compute_technical(frame)
+                price = rec.get("price")
+                if price is None or price < MIN_PRICE or price > MAX_PRICE:
+                    continue
+                results[ticker] = rec
+            except Exception as exc:
+                log.warning("تعذر معالجة %s: %s", ticker, exc)
+        time.sleep(1)
+    log.info("نجح جلب بيانات %s من أصل %s سهم", len(results), len(tickers))
     return results
 
 
-def upsert_rows(table, rows):
-    """إدراج/تحديث دفعات Supabase مع إيقاف واضح عند فشل المخطط أو الصلاحيات."""
-    if not rows:
-        log.warning(f"{table}: لا صفوف لكتابتها")
-        return 0
+def build_fundamentals(symbols: dict[str, dict[str, str]], technicals: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    records = {}
+    for symbol, meta in symbols.items():
+        if symbol not in technicals:
+            continue
+        sector, finviz_sector = sector_from_name(meta.get("company", ""))
+        if sector in {"finance", "reits"}:
+            continue
+        records[symbol] = {
+            "symbol": symbol,
+            "company": meta.get("company"),
+            "price": technicals[symbol].get("price"),
+            "exchange": meta.get("exchange"),
+            "sector": sector,
+            "finviz_sector": finviz_sector,
+            "industry": meta.get("company", ""),
+            "pe": None,
+            "pb": None,
+            "eps_growth_this_year": None,
+            "eps_growth_next_year": None,
+            "eps_growth_5y": None,
+            "eps_growth_next_5y": None,
+            "lt_debt_equity": None,
+            "eps_growth_qtr": None,
+        }
+    return records
 
+
+def upsert_rows(table: str, rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        log.warning("%s: لا صفوف لكتابتها", table)
+        return 0
     url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict=symbol"
     headers = {
-        'apikey': SUPABASE_SERVICE_KEY,
-        'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}',
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates, return=minimal',
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates, return=minimal",
     }
-    batch_size = 200
     written = 0
-    expected_columns = sorted(rows[0].keys())
-
-    for i in range(0, len(rows), batch_size):
-        batch = rows[i:i + batch_size]
-        try:
-            resp = requests.post(url, headers=headers, json=batch, timeout=30)
-        except requests.RequestException as exc:
-            raise RuntimeError(f"{table}: فشل الاتصال بـ Supabase في الدفعة {i}: {exc}") from exc
-
-        if resp.status_code not in (200, 201, 204):
-            detail = resp.text[:1200]
-            log.error(
-                f"{table}: فشل الحفظ في الدفعة {i}; status={resp.status_code}; "
-                f"columns={expected_columns}; response={detail}"
-            )
-            raise RuntimeError(f"فشل حفظ {table}: HTTP {resp.status_code}: {detail}")
-
-        written += len(batch)
-
-    log.info(f"{table}: تم حفظ {written} صف")
+    for start in range(0, len(rows), 200):
+        batch = rows[start:start + 200]
+        for attempt in range(1, 4):
+            try:
+                response = requests.post(url, headers=headers, json=batch, timeout=45)
+                if response.status_code in (200, 201, 204):
+                    written += len(batch)
+                    break
+                log.warning("%s دفعة %s فشلت HTTP %s (%s/3): %s", table, start, response.status_code, attempt, response.text[:300])
+            except requests.RequestException as exc:
+                log.warning("%s دفعة %s فشلت (%s/3): %s", table, start, attempt, exc)
+            if attempt == 3:
+                raise RuntimeError(f"فشل حفظ {table} بعد 3 محاولات")
+            time.sleep(3 * attempt)
+    log.info("%s: تم حفظ %s صف", table, written)
     return written
 
 
 def run_full():
-    fundamentals = fetch_finviz_fundamentals()
+    symbols = load_primary_exchange_symbols()
+    if not symbols:
+        raise RuntimeError("لم تُحمّل قائمة NASDAQ/NYSE")
+    # ترتيب ثابت يجعل إعادة التشغيل قابلة للتتبع، ثم نأخذ نطاقًا أكبر من القائمة السابقة.
+    universe = sorted(symbols)[:MAX_UNIVERSE]
+    log.info("الكون المرشح قبل السعر والفنيات: %s رمزًا من %s رمزًا رسميًا", len(universe), len(symbols))
+    technicals = fetch_prices_and_technicals(universe, full_history=True)
+    fundamentals = build_fundamentals({s: symbols[s] for s in technicals}, technicals)
+    log.info("بعد كل الشروط: %s سهمًا عاديًا بسعر %s–%s في NYSE/NASDAQ", len(fundamentals), MIN_PRICE, MAX_PRICE)
     if not fundamentals:
-        log.error("لا بيانات أساسية — إيقاف")
-        sys.exit(1)
-
-    tech = fetch_prices_and_technicals(list(fundamentals.keys()), full_history=True)
-    now = pd.Timestamp.now(tz='UTC').isoformat()
-
-    fund_rows = [{**v, 'updated_at': now} for v in fundamentals.values()]
-    tech_rows = [{'symbol': t, **vals, 'updated_at': now} for t, vals in tech.items()]
-
-    n1 = upsert_rows('market_fundamentals', fund_rows)
-    n2 = upsert_rows('market_technicals', tech_rows)
-
+        raise RuntimeError("لم ينجح أي سهم في شروط السعر/البورصة/الأهلية")
+    now = pd.Timestamp.now(tz="UTC").isoformat()
+    fund_rows = [{**row, "updated_at": now} for row in fundamentals.values()]
+    tech_rows = [{"symbol": symbol, **technicals[symbol], "updated_at": now} for symbol in fundamentals]
+    n1 = upsert_rows("market_fundamentals", fund_rows)
+    n2 = upsert_rows("market_technicals", tech_rows)
     if n1 == 0:
-        log.error("لم تُحفظ أي بيانات أساسية — فشل المسح")
-        sys.exit(1)
-    if n2 == 0:
-        log.warning("لم تُحفظ بيانات فنية؛ تم حفظ الأساسيات بنجاح وسيُعاد تحديث الفنيات في تشغيل لاحق")
+        raise RuntimeError("لم تُحفظ أي بيانات أساسية")
+    log.info("اكتمل المسح المجاني: fundamentals=%s, technicals=%s", n1, n2)
 
 
 def run_quick():
-    tech = fetch_prices_and_technicals(LIVE_TRACKED, full_history=False)
-    now = pd.Timestamp.now(tz='UTC').isoformat()
-    rows = [{'symbol': t, 'price': v['price'], 'change_pct': v['change_pct'],
-             'volume': v['volume'], 'updated_at': now} for t, v in tech.items()]
-    n = upsert_rows('live_quotes', rows)
-    if n == 0:
-        sys.exit(1)
+    technicals = fetch_prices_and_technicals(LIVE_TRACKED, full_history=False)
+    now = pd.Timestamp.now(tz="UTC").isoformat()
+    rows = [{"symbol": symbol, "price": values["price"], "change_pct": values["change_pct"], "volume": values["volume"], "updated_at": now} for symbol, values in technicals.items()]
+    if upsert_rows("live_quotes", rows) == 0:
+        raise RuntimeError("لم تُحفظ أي أسعار حية")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['full', 'quick'], default='full')
+    parser.add_argument("--mode", choices=["full", "quick"], default="full")
     args = parser.parse_args()
-    if args.mode == 'full':
-        run_full()
-    else:
-        run_quick()
+    run_full() if args.mode == "full" else run_quick()

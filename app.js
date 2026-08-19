@@ -1299,7 +1299,11 @@ async function loadSignalsData(force = false) {
         if (e1) throw e1;
         const blocked = new Set(['DDV']);
         SIGNALS_CACHE = (sig || []).filter(s => !blocked.has(String(s.symbol || '').toUpperCase()));
-        SIGNALS_ALERTS = (alerts || []).filter(a => !blocked.has(String(a.symbol || '').toUpperCase()));
+        SIGNALS_ALERTS = (alerts || []).filter(a => {
+            const symbol = String(a.symbol || '').toUpperCase();
+            const price = Number(a.price);
+            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price > 0;
+        });
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         SIGNALS_CACHE_AT = Date.now();
@@ -1336,8 +1340,8 @@ function renderSignalsTable(stocks) {
         return;
     }
     tb.innerHTML = stocks.map(s => {
-        const entryBadge = s.entry_tier ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">دخول ${s.entry_tier} (${s.entry_score}/4)</span>` : '<span class="text-muted">—</span>';
-        const exitBadge = s.exit_tier ? `<span class="badge ${SIG_TIER_COLOR_EXIT[s.exit_tier]}">خروج ${s.exit_tier} (${s.exit_score}/4)</span>` : '<span class="text-muted">—</span>';
+        const entryBadge = s.entry_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">إشارة دخول تعليمية عند $${Number(s.price).toFixed(2)} — ${s.entry_tier} (${s.entry_score}/4)</span>` : '<span class="text-muted">—</span>';
+        const exitBadge = s.exit_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? `<span class="badge ${SIG_TIER_COLOR_EXIT[s.exit_tier]}">إشارة خروج تعليمية عند $${Number(s.price).toFixed(2)} — ${s.exit_tier} (${s.exit_score}/4)</span>` : '<span class="text-muted">—</span>';
         return `<tr>
             <td class="sym">${sigEsc(s.symbol)}</td>
             <td>${sigEsc(s.company)}</td>
@@ -1363,8 +1367,8 @@ function renderSignalAlerts() {
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString('ar-SA')}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? 'دخول' : 'خروج'} ${a.tier} (${a.score}/4)</span></td>
-            <td class="font-mono">$${Number(a.price).toFixed(2)}</td>
+            <td><span class="badge ${badge}">${isEntry ? 'إشارة دخول تعليمية' : 'إشارة خروج تعليمية'} ${a.tier} (${a.score}/4)</span></td>
+            <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? 'دخول عند' : 'خروج عند'} $${Number(a.price).toFixed(2)}</td>
         </tr>`;
     }).join('');
 }

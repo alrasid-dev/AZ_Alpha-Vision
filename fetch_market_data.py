@@ -147,6 +147,34 @@ def safe_quantity(val, default=None):
         return default
 
 
+def load_primary_exchange_symbols():
+    """تحميل رموز NYSE وNASDAQ الرسمية؛ يستبعد NYSE American/AMEX وArca وغيرها."""
+    symbols = {}
+    sources = [
+        ('NASDAQ', 'https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt'),
+        ('NYSE', 'https://www.nasdaqtrader.com/dynamic/symdir/otherlisted.txt'),
+    ]
+    for exchange_name, url in sources:
+        try:
+            text = requests.get(url, timeout=30, headers={'User-Agent': 'AZ-Alpha-Vision/1.0'}).text
+            lines = [line for line in text.splitlines() if line and not line.startswith('File Creation')]
+            for line in lines[1:]:
+                parts = line.split('|')
+                if exchange_name == 'NASDAQ':
+                    ticker = parts[0].strip().upper() if parts else ''
+                    if ticker and ticker != 'SYMBOL':
+                        symbols[ticker] = 'NASDAQ'
+                else:
+                    ticker = parts[0].strip().upper() if parts else ''
+                    exchange_code = parts[2].strip().upper() if len(parts) > 2 else ''
+                    if ticker and ticker != 'ACT SYMBOL' and exchange_code == 'N':
+                        symbols[ticker] = 'NYSE'
+        except Exception as exc:
+            log.warning(f'تعذر تحميل قائمة {exchange_name} الرسمية: {exc}')
+    log.info(f'تم تحميل {len(symbols)} رمزًا من قوائم NYSE/NASDAQ الرسمية')
+    return symbols
+
+
 def fetch_finviz_fundamentals():
     from finvizfinance.screener.overview import Overview
     from finvizfinance.screener.valuation import Valuation
@@ -175,11 +203,13 @@ def fetch_finviz_fundamentals():
     min_rel_volume = float(os.environ.get('MIN_REL_VOLUME', '2'))
     excluded_symbols = {'DDV'}
     excluded_industries = {'exchange traded fund', 'etf', 'closed end fund', 'reit'}
+    primary_exchange_symbols = load_primary_exchange_symbols()
     eligible_rows = []
     rejected = {'exchange': 0, 'etf': 0, 'liquidity': 0, 'float': 0, 'relative_volume': 0}
     for _, row in df_ov.iterrows():
         ticker = str(row.get('Ticker', '')).strip().upper()
-        exchange = str(row.get('Exchange', '')).strip().upper()
+        finviz_exchange = str(row.get('Exchange', '')).strip().upper()
+        exchange = primary_exchange_symbols.get(ticker, finviz_exchange if finviz_exchange in allowed_exchanges else '')
         industry = str(row.get('Industry', '')).strip().lower()
         price = safe_num(row.get('Price')) or 0
         avg_volume = safe_quantity(row.get('Avg Volume') or row.get('Average Volume'))

@@ -23,6 +23,12 @@ function toast(msg, type='success') {
 function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function withTimeout(promise, ms = 15000) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
+    ]);
+}
 
 // ===== LOCAL CACHE (screener results / weekly picks only — not accounts, not security-sensitive) =====
 const LocalCache = {
@@ -73,9 +79,17 @@ async function handleLogin() {
     const email = document.getElementById('loginEmail').value.trim().toLowerCase();
     const pass = document.getElementById('loginPassword').value;
     const err = document.getElementById('loginError');
-    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-    if (error) { err.textContent = translateAuthError(error.message); return; }
-    await loadSessionAndEnter();
+    try {
+        err.textContent = 'جارٍ التحقق من بيانات الدخول…';
+        const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password: pass }), 15000);
+        if (error) { err.textContent = translateAuthError(error.message); return; }
+        await withTimeout(loadSessionAndEnter(), 20000);
+    } catch (e) {
+        console.error('login timeout/error:', e);
+        err.textContent = e?.message === 'TIMEOUT'
+            ? 'انتهت مهلة الاتصال بـSupabase؛ تحقق من الإنترنت ثم أعد المحاولة'
+            : 'تعذر إكمال الدخول: ' + (e?.message || 'خطأ غير معروف');
+    }
 }
 async function requestPasswordReset() {
     const email = document.getElementById('loginEmail').value.trim().toLowerCase();
@@ -102,10 +116,10 @@ async function loadSessionAndEnter() {
     const err = document.getElementById('loginError');
     try {
         err.textContent = 'جارٍ تحميل الحساب…';
-        const { data: { user }, error: userError } = await sb.auth.getUser();
+        const { data: { user }, error: userError } = await withTimeout(sb.auth.getUser(), 10000);
         if (userError) throw userError;
         if (!user) { err.textContent = 'انتهت الجلسة، أعد تسجيل الدخول'; return; }
-        const { data: profileData, error } = await sb.from('profiles').select('*').eq('id', user.id).single();
+        const { data: profileData, error } = await withTimeout(sb.from('profiles').select('*').eq('id', user.id).single(), 10000);
         if (error || !profileData) throw error || new Error('PROFILE_NOT_FOUND');
         if (!profileData.approved && profileData.role !== 'admin') {
             document.getElementById('authScreen').style.display = 'none';

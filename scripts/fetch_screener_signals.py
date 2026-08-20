@@ -233,12 +233,13 @@ def evaluate_signals(stock, df_t):
     }
 
     def tier(score):
-        if score >= 4:
-            return "صريح"
+        # سلم موحد: 1 من 4 = دخول/خروج، 2 من 4 = مؤكد، 3 أو 4 من 4 = صريح.
         if score >= 3:
-            return "أقوى"
-        if score >= 2:
-            return "أولي"
+            return "صريح"
+        if score == 2:
+            return "مؤكد"
+        if score == 1:
+            return "دخول"
         return None
 
     entry_score = sum(bullish.values())

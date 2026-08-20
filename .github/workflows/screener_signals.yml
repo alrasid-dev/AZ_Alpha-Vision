@@ -25,3 +25,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python scripts/fetch_screener_signals.py
+
+      - name: Send browser push and email notifications
+        if: ${{ secrets.NOTIFY_RUN_KEY != '' }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+        run: |
+          curl --fail-with-body --request POST \
+            --url "${SUPABASE_URL}/functions/v1/send-signal-notifications?minutes=120" \
+            --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}'

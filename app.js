@@ -8,7 +8,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_TMew47Ce-t8NuuJ-4Mpw5w_sa6ckPjf";
 // مفتاح VAPID العام فقط؛ المفتاح الخاص يبقى داخل Supabase Edge Function Secrets.
 const WEB_PUSH_PUBLIC_KEY = "BLCSJ98tUAcH2QNuzmjdf2wdAZ0eKTRob4yhDM5-QrEPPhmkdz1cSz2aAEUdKxXKMFLriTcIcXH96dqRPBYU49M";
 const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { experimental: { passkey: true } } });
 
 let currentUser = null, currentProfile = null, chartInstance = null, watchlist = [], screenerResults = [], isScanning = false;
 
@@ -78,6 +78,36 @@ async function handleRegister() {
     }
 }
 
+function passkeySupported() {
+    return window.isSecureContext && !!window.PublicKeyCredential && !!sb.auth?.signInWithPasskey;
+}
+function passkeyErrorMessage(error) {
+    const msg = String(error?.message || error || '');
+    if (/cancel|abort|notallowed/i.test(msg)) return 'تم إلغاء عملية البصمة أو لم تتم الموافقة عليها';
+    if (/passkey_disabled/i.test(msg)) return 'يجب تفعيل Passkeys أولًا من Supabase → Authentication → Passkeys';
+    if (/not supported|secure context/i.test(msg)) return 'هذا المتصفح أو الرابط لا يدعم Passkey؛ استخدم HTTPS ومتصفحًا حديثًا';
+    return 'تعذر استخدام مفتاح المرور: ' + (msg || 'خطأ غير معروف');
+}
+async function handlePasskeyLogin() {
+    const err = document.getElementById('loginError');
+    if (!passkeySupported()) { err.textContent = 'مفتاح المرور يحتاج HTTPS ومتصفحًا حديثًا وميزة Passkeys مفعّلة في Supabase'; return; }
+    try {
+        err.textContent = 'تحقق من البصمة أو Face ID أو قفل الجهاز…';
+        const { error } = await withTimeout(sb.auth.signInWithPasskey(), 30000);
+        if (error) { err.textContent = passkeyErrorMessage(error); return; }
+        await withTimeout(loadSessionAndEnter(), 20000);
+    } catch (e) { console.error('passkey login error:', e); err.textContent = passkeyErrorMessage(e); }
+}
+async function registerPasskeyForCurrentUser() {
+    if (!currentUser) return toast('سجّل الدخول بكلمة المرور أولًا، ثم فعّل مفتاح المرور من زر أعلى الصفحة', 'warn');
+    if (!passkeySupported() || !sb.auth?.registerPasskey) return toast('ميزة Passkey غير متاحة؛ تأكد من HTTPS وتفعيلها في Supabase', 'warn');
+    try {
+        const { data, error } = await withTimeout(sb.auth.registerPasskey(), 30000);
+        if (error) throw error;
+        toast('✅ تم تسجيل مفتاح المرور. يمكنك استخدام البصمة أو Face ID في الدخول القادم');
+        return data;
+    } catch (e) { console.error('passkey registration error:', e); toast(passkeyErrorMessage(e), 'error'); }
+}
 async function handleLogin() {
     const email = document.getElementById('loginEmail').value.trim().toLowerCase();
     const pass = document.getElementById('loginPassword').value;
@@ -218,6 +248,7 @@ async function initApp(user, profile) {
         screenerResults = (c.r || []).filter(isCommonStockRow);
         LocalCache.setScreener({ t: Date.now(), r: screenerResults });
         renderScreener();
+        if (typeof runVirtualTrader === 'function') runVirtualTrader('auto');
     }
 }
 
@@ -396,18 +427,23 @@ const TICKET_STATUS_LABEL = { open: 'مفتوحة', in_progress: 'قيد الم�
 const TICKET_PRIORITY_LABEL = { normal: 'عادية', high: 'مهمة', urgent: 'عاجلة' };
 function ticketBadge(status) {
     const color = status === 'open' ? 'var(--accent-gold)' : status === 'in_progress' ? 'var(--accent-cyan)' : status === 'resolved' ? 'var(--accent-green)' : 'var(--text-muted)';
-    return `<span class="badge" style="color:${color};border:1px solid ${color};background:transparent;">${TICKET_STATUS_LABEL[status] || status}</span>`;
+    return `<span class="badge" style="color:${color};border:1px solid ${color};background:transparent;">${escapeHtml(TICKET_STATUS_LABEL[status] || status)}</span>`;
 }
 async function submitSupportTicket() {
     const subject = document.getElementById('ticketSubject')?.value.trim();
     const message = document.getElementById('ticketMessage')?.value.trim();
     const priority = document.getElementById('ticketPriority')?.value || 'normal';
     if (!subject || subject.length < 3 || !message || message.length < 5) { toast('اكتب عنوانًا وتفاصيل كافية للتذكرة', 'warn'); return; }
-    const { error } = await sb.from('support_tickets').insert({ user_id: currentUser.id, subject, message, priority });
+    const { data: ticket, error } = await sb.from('support_tickets').insert({ user_id: currentUser.id, subject, message, priority }).select('id').single();
     if (error) { toast('تعذر إرسال التذكرة: ' + error.message, 'error'); return; }
     document.getElementById('ticketSubject').value = '';
     document.getElementById('ticketMessage').value = '';
     toast('✅ تم إرسال التذكرة للمسؤول');
+    const { error: notifyError } = await sb.functions.invoke('notify-support-ticket', { body: { ticketId: ticket.id } });
+    if (notifyError) {
+        console.error('support email notification error:', notifyError);
+        toast('تم حفظ التذكرة، لكن تعذر إرسال بريد التنبيه للمسؤول حاليًا', 'warn');
+    }
     await loadMySupportTickets();
 }
 async function loadMySupportTickets() {
@@ -416,7 +452,7 @@ async function loadMySupportTickets() {
     const { data, error } = await sb.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (error) { tb.innerHTML = `<tr><td colspan="5" class="text-muted">تعذر تحميل التذاكر</td></tr>`; return; }
     if (!data?.length) { tb.innerHTML = '<tr><td colspan="5" class="text-muted" style="padding:20px;text-align:center;">لا توجد تذاكر حتى الآن</td></tr>'; return; }
-    tb.innerHTML = data.map(t => `<tr><td>${new Date(t.created_at).toLocaleString('ar-SA')}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${TICKET_PRIORITY_LABEL[t.priority] || t.priority}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(t.admin_reply || 'بانتظار رد المسؤول')}</td></tr>`).join('');
+    tb.innerHTML = data.map(t => `<tr><td>${new Date(t.created_at).toLocaleString('ar-SA')}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(t.admin_reply || 'بانتظار رد المسؤول')}</td></tr>`).join('');
 }
 async function refreshSupportTickets() {
     const tb = document.getElementById('adminTicketsBody');
@@ -428,7 +464,7 @@ async function refreshSupportTickets() {
     const map = Object.fromEntries((profs || []).map(p => [p.id, p]));
     tb.innerHTML = tickets.map(t => {
         const p = map[t.user_id] || {};
-        return `<tr><td>${escapeHtml(p.name || p.email || '-')}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${TICKET_PRIORITY_LABEL[t.priority] || t.priority}</td><td>${ticketBadge(t.status)}</td><td>${new Date(t.created_at).toLocaleDateString('ar-SA')}</td><td><button class="admin-btn btn-approve" onclick="replySupportTicket('${t.id}')">رد</button><button class="admin-btn" onclick="setSupportStatus('${t.id}','in_progress')">قيد المعالجة</button><button class="admin-btn btn-approve" onclick="setSupportStatus('${t.id}','resolved')">حل</button></td></tr>`;
+        return `<tr><td>${escapeHtml(p.name || p.email || '-')}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td>${new Date(t.created_at).toLocaleDateString('ar-SA')}</td><td><button class="admin-btn btn-approve" onclick="replySupportTicket('${t.id}')">رد</button><button class="admin-btn" onclick="setSupportStatus('${t.id}','in_progress')">قيد المعالجة</button><button class="admin-btn btn-approve" onclick="setSupportStatus('${t.id}','resolved')">حل</button></td></tr>`;
     }).join('');
 }
 async function replySupportTicket(id) {
@@ -1138,6 +1174,7 @@ async function runScreener() {
     btn.disabled = false; btn.textContent = '🔍 بدء الفلترة';
     meta.innerHTML = `<span>إجمالي القاعدة: ${universe.length}</span><span class="text-green">النتائج: ${screenerResults.length}</span>`;
     renderScreener();
+    if (typeof runVirtualTrader === 'function') runVirtualTrader('auto');
     toast(`✅ ${screenerResults.length} سهم مطابق`);
     isScanning = false;
 }
@@ -1645,10 +1682,17 @@ function virtualPrice(row) { const p = Number(row?.price ?? row?.current_price ?
 function virtualSignalKind(row) { return String(row?.signal || row?.type || row?.action || row?.direction || row?.entry_signal || row?.entrySignal || row?.entry_tier || row?.exit_tier || '').toLowerCase(); }
 function virtualTierScore(row, action = 'buy') { return Number(action === 'sell' ? (row?.exit_score ?? row?.exitScore ?? row?.score ?? 0) : (row?.entry_score ?? row?.entryScore ?? row?.signal_score ?? 0)); }
 function virtualReason(row, action) {
+    const symbol = String(row?.symbol || '').toUpperCase();
+    const company = String(row?.company || row?.name || row?.company_name || symbol);
+    const price = virtualPrice(row);
+    const grade = virtualGrade(row);
+    const source = String(row?.source || '').includes('filter_scan') && String(row?.source || '').includes('final_scan') ? 'الماسحين' : String(row?.source || '').includes('filter_scan') ? 'ماسح الفلاتر' : 'الماسح النهائي';
+    const tier = virtualTierLabel(row, action);
     const raw = row?.[action === 'buy' ? 'entry_signals' : 'exit_signals'] ?? row?.signals;
-    const signals = Array.isArray(raw) ? raw.filter(Boolean) : (raw && typeof raw === 'object' ? Object.entries(raw).filter(([,v]) => Boolean(v)).map(([k]) => ({ fibonacci: 'منطقة فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'شمعة', volume: 'حجم' }[k] || k)) : []);
-    const text = signals.length ? signals.join('، ') : (row?.reason || row?.catalyst || 'توافق شروط الماسح والفلاتر الجاهزة');
-    return action === 'buy' ? `دخول محاكى لأن ${text}` : `خروج محاكى لأن ${text}`;
+    const signals = Array.isArray(raw) ? raw.filter(Boolean) : (raw && typeof raw === 'object' ? Object.entries(raw).filter(([,v]) => Boolean(v)).map(([k]) => ({ fibonacci: 'فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'الشموع', volume: 'الحجم' }[k] || k)) : []);
+    const text = signals.length ? signals.join('، ') : (row?.reason || row?.catalyst || 'توافق شروط الإشارة');
+    if (action === 'buy') return `دخلت ${company} (${symbol}) عند $${Number(price || 0).toFixed(2)}؛ السبب: ${tier} وتقييم ${grade} من ${source} — ${text}`;
+    return `خرجت من ${company} (${symbol}) عند $${Number(price || 0).toFixed(2)}؛ السبب: ${tier} من ${source} — ${text}`;
 }
 function virtualTierLabel(row, action) {
     const n = Math.max(1, Math.min(4, Math.round(virtualTierScore(row, action)) || (Array.isArray(row?.signals) ? row.signals.length : 1)));
@@ -1681,23 +1725,81 @@ function virtualExecuteSell(row) {
     delete virtualTrader.positions[symbol];
     return true;
 }
+function virtualFilterSignalRow(row) {
+    const price = virtualPrice(row);
+    const change = Number(row?.change ?? row?.change_pct ?? 0);
+    const rsi = Number(row?.rsi);
+    const aboveTrend = Number.isFinite(Number(row?.sma50)) && Number.isFinite(Number(row?.sma200)) && price > Number(row.sma50) && price > Number(row.sma200) && change > 2;
+    const belowTrend = Number.isFinite(Number(row?.sma50)) && Number.isFinite(Number(row?.sma200)) && price < Number(row.sma50) && price < Number(row.sma200) && change < -2;
+    const strongBuy = Number.isFinite(rsi) && rsi < 30 && change > 0;
+    const strongSell = Number.isFinite(rsi) && rsi > 70 && change < 0;
+    const isBuy = strongBuy || aboveTrend;
+    const isSell = strongSell || belowTrend;
+    if (!isBuy && !isSell) return null;
+    const signal = isBuy ? (strongBuy ? 'شراء قوي' : 'دخول') : (strongSell ? 'بيع قوي' : 'خروج');
+    const score = Math.max(1, Number(row?.score) || (strongBuy || strongSell ? 3 : 1));
+    return {
+        ...row,
+        signal,
+        source: 'filter_scan',
+        entry_score: isBuy ? score : 0,
+        exit_score: isSell ? score : 0,
+        entry_tier: isBuy ? (score >= 3 ? 'Explicit' : 'Entry') : null,
+        exit_tier: isSell ? (score >= 3 ? 'Explicit' : 'Exit') : null,
+        reason: `فرصة من ماسح الفلاتر: ${signal}`,
+    };
+}
 function virtualRowsFromSignals() {
-    const signalRows = Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : [];
-    const screenRows = Array.isArray(screenerResults) ? screenerResults : [];
-    return [...signalRows, ...screenRows].filter(r => r && r.symbol && virtualPrice(r));
+    // يجمع المتداول الافتراضي بين الماسح النهائي وماسح الفلاتر.
+    // عند تكرار الرمز نحتفظ بسجل واحد ونضم مصدرَي الفرصة ودرجاتهما.
+    const merged = new Map();
+    const add = (row, source) => {
+        const symbol = String(row?.symbol || '').toUpperCase();
+        const price = virtualPrice(row);
+        if (!symbol || !price || !isCommonStockRow({ ...row, symbol, price })) return;
+        const current = merged.get(symbol);
+        if (!current) { merged.set(symbol, { ...row, symbol, source }); return; }
+        merged.set(symbol, {
+            ...current,
+            ...row,
+            symbol,
+            source: `${current.source}+${source}`,
+            entry_score: Math.max(Number(current.entry_score || 0), Number(row.entry_score || 0)),
+            exit_score: Math.max(Number(current.exit_score || 0), Number(row.exit_score || 0)),
+            entry_tier: current.entry_tier || row.entry_tier,
+            exit_tier: current.exit_tier || row.exit_tier,
+            reason: [current.reason, row.reason].filter(Boolean).join('؛ '),
+        });
+    };
+    (Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : []).forEach(row => add(row, 'final_scan'));
+    (Array.isArray(screenerResults) ? screenerResults : []).map(virtualFilterSignalRow).filter(Boolean).forEach(row => add(row, 'filter_scan'));
+    return [...merged.values()].filter(row => Number(row.entry_score || 0) > 0 || Number(row.exit_score || 0) > 0);
+}
+function virtualGrade(row) {
+    const explicit = String(row?.grade ?? row?.Grade ?? row?.rating ?? '').trim().toUpperCase();
+    if (['A', 'B', 'C', 'D', 'F'].includes(explicit)) return explicit;
+    const score = Number(row?.entry_score ?? row?.entryScore ?? row?.score ?? 0);
+    // محرك الإشارات النهائي لا يرسل grade؛ نطابق درجات التوافق مع تصنيف الفرص.
+    return score >= 4 ? 'A' : score >= 3 ? 'B' : score >= 2 ? 'C' : 'D';
+}
+function virtualBuyEligible(row) {
+    return ['A', 'B'].includes(virtualGrade(row));
 }
 function runVirtualTrader(mode = 'manual') {
     const rows = virtualRowsFromSignals();
     let buys = 0, sells = 0;
     rows.forEach(row => {
         const kind = virtualSignalKind(row);
-        const hasExitTier = Boolean(row?.exit_tier || row?.exitTier) && Number(row?.exit_score ?? row?.exitScore ?? 0) > 0;
-        const hasEntryTier = Boolean(row?.entry_tier || row?.entryTier) && Number(row?.entry_score ?? row?.entryScore ?? 0) > 0;
-        const isExit = hasExitTier || /sell|exit|خروج|بيع/.test(kind) || row?.exit_signal;
-        const isEntry = hasEntryTier || /buy|entry|دخول|شراء/.test(kind) || row?.entry_signal || row?.entrySignal;
-        if (isExit && virtualTrader.positions[String(row.symbol).toUpperCase()]) { if (virtualExecuteSell(row)) sells++; }
-        else if (isEntry && !virtualTrader.positions[String(row.symbol).toUpperCase()]) { if (virtualExecuteBuy(row)) buys++; }
-        const pos = virtualTrader.positions[String(row.symbol || '').toUpperCase()]; if (pos && virtualPrice(row)) pos.lastPrice = virtualPrice(row);
+        const entryScore = Number(row?.entry_score ?? row?.entryScore ?? 0);
+        const exitScore = Number(row?.exit_score ?? row?.exitScore ?? 0);
+        const hasExitSignal = exitScore > 0 && (Boolean(row?.exit_tier || row?.exitTier || row?.exit_signal) || /sell|exit|خروج|بيع/.test(kind));
+        const hasEntrySignal = entryScore > 0 && (Boolean(row?.entry_tier || row?.entryTier || row?.entry_signal || row?.entrySignal) || /buy|entry|دخول|شراء/.test(kind));
+        const isExit = hasExitSignal;
+        const isEntry = hasEntrySignal;
+        const symbol = String(row.symbol || '').toUpperCase();
+        if (isExit && virtualTrader.positions[symbol]) { if (virtualExecuteSell(row)) sells++; }
+        else if (isEntry && virtualBuyEligible(row) && !virtualTrader.positions[symbol]) { if (virtualExecuteBuy(row)) buys++; }
+        const pos = virtualTrader.positions[symbol]; if (pos && virtualPrice(row)) pos.lastPrice = virtualPrice(row);
     });
     virtualTrader.lastRun = new Date().toISOString(); saveVirtualTrader(); renderVirtualTrader();
     if (buys || sells) toast(`المتداول الافتراضي: ${buys} دخول و${sells} خروج محاكى`, 'success');

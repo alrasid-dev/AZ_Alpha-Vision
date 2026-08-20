@@ -1,0 +1,15 @@
+{
+  "name": "AZ Alpha Vision — Trading Simulation",
+  "short_name": "AZ Alpha Vision",
+  "description": "منصة تعليمية لمحاكاة قراءة إشارات التداول والمتداول الافتراضي.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07121f",
+  "theme_color": "#07121f",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

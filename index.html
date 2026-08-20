@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#07121f">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icon.svg">
     <title>AZ Alpha Vision — محاكي طرق واستراتيجيات التداول</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -890,7 +893,7 @@
     <div id="appContainer" class="app-container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <span class="sidebar-title">المحفظة</span>
+                <span class="sidebar-title">المتداول الافتراضي</span>
                 <span id="trialBadge" class="trial-pill">60 يوم</span>
             </div>
             <div class="add-stock-form">
@@ -899,14 +902,13 @@
                 <button class="btn-add" onclick="addToWatchlist()">+ إضافة للمتابعة</button>
             </div>
             <div class="watchlist-scroll" id="watchlistContainer"></div>
-            <div class="stats-block">
-                <h4>📊 عائد محفظتي</h4>
-                <div class="stat-row"><span>الصفقات الرابحة</span><span class="val pos" id="winRecs">0</span></div>
-                <div class="stat-row"><span>الصفقات الخاسرة</span><span class="val neg" id="loseRecs">0</span></div>
-                <div class="stat-row"><span>الربح/خسارة $</span><span class="val" id="recReturn">$0.00</span></div>
-                <div class="stat-row"><span>العائد %</span><span class="val" id="recReturnPct">0.00%</span></div>
-                <div class="stat-row"><span>الاستثمار</span><span class="val text-muted" id="totalInvested">$0.00</span></div>
-                <div class="stat-row"><span>القيمة الحالية</span><span class="val text-cyan" id="totalCurrent">$0.00</span></div>
+<div class="stats-block">
+                <h4>🤖 المتداول الافتراضي — 10,000$</h4>
+                <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$10,000.00</span></div>
+                <div class="stat-row"><span>قيمة الحساب</span><span class="val" id="vtEquity">$10,000.00</span></div>
+                <div class="stat-row"><span>المستثمر محاكيًا</span><span class="val" id="vtInvested">$0.00</span></div>
+                <div class="stat-row"><span>الربح/الخسارة</span><span class="val" id="vtPnl">$0.00</span></div>
+                <div class="stat-row"><span>مراكز مفتوحة</span><span class="val" id="vtOpenPositions">0</span></div>
             </div>
             <div class="stats-block" style="margin-top:12px;">
                 <h4>🎯 أداء ترشيحات الموقع</h4>
@@ -938,7 +940,7 @@
 
             <div class="tabs-wrap">
                 <button class="tab-btn active" onclick="switchTab('stocks')" data-tab="stocks">📊 الأسهم الحية</button>
-                <button class="tab-btn" onclick="switchTab('portfolio')" data-tab="portfolio">💼 المحفظة</button>
+                <button class="tab-btn" onclick="switchTab('portfolio')" data-tab="portfolio">🤖 المتداول الافتراضي</button>
                 <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener">🔍 فلترة الأسهم</button>
                 <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals">🎯 الماسح والتنبيهات</button>
                 <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks">📌 ترشيحات الأسبوع</button>
@@ -966,26 +968,33 @@
                 </div>
 
                 <div id="tab-portfolio" class="tab-panel hidden">
-                    <div class="section-title">محفظتي <div class="line"></div></div>
-                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
-                        <table class="data-table">
-                            <thead><tr><th>الرمز</th><th>الدخول</th><th>الحالي</th><th>الربح $</th><th>الربح %</th><th>مستثمر</th><th>القيمة</th><th></th></tr></thead>
-                            <tbody id="portfolioTableBody"></tbody>
-                        </table>
+                    <div class="section-title">🤖 المتداول الافتراضي — محاكاة تعليمية <div class="line"></div></div>
+                    <div class="glass" style="padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+                        <div><strong>رأس المال الافتراضي: $10,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="preset-btn" onclick="runVirtualTrader('manual')">🔄 متابعة الماسح الآن</button><button class="preset-btn danger" onclick="resetVirtualTrader()">إعادة المحاكاة</button></div>
+                    </div>
+                    <div class="glass" style="padding:14px;margin-bottom:18px;font-size:12px;line-height:1.8;color:var(--text-muted);">المتداول الافتراضي يتابع الإشارات المؤهلة ويشتري أو يبيع داخل المحاكاة فقط. كل صفقة تحتوي على السعر والوقت ودرجة الإشارة والسبب. لا يوجد تنفيذ حقيقي ولا اتصال بوسيط.</div>
+                    <div class="section-title">المراكز المفتوحة <div class="line"></div></div>
+                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:24px;">
+                        <table class="data-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>سعر الدخول</th><th>السعر الأخير</th><th>الربح العائم</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
+                    </div>
+                    <div class="section-title">سجل الصفقات المحاكاة <div class="line"></div></div>
+                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
+                        <table class="data-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
                     </div>
                 </div>
 
                 <div id="tab-screener" class="tab-panel hidden">
                     <div class="screener-header">
-                        <h3>🔍 فلترة متقدمة — <span class="text-cyan">800+</span> سهم</h3>
+                        <h3>🔍 قوالب تصفية جاهزة — أسهم مؤهلة فقط</h3>
                         <div class="preset-btns">
-                            <button class="preset-btn" onclick="loadPreset('growth')">📈 نمو</button>
-                            <button class="preset-btn" onclick="loadPreset('value')">💰 قيمة</button>
-                            <button class="preset-btn" onclick="loadPreset('momentum')">🚀 زخم</button>
-                            <button class="preset-btn" onclick="loadPreset('breakout')">💥 اختراق</button>
-                            <button class="preset-btn" onclick="loadPreset('swing')">🎯 سوينج</button>
-                            <button class="preset-btn" onclick="loadPreset('dividend')">💵 توزيعات</button>
-                            <button class="preset-btn" onclick="loadPreset('penny')">🪙 Penny</button>
+                            <button class="preset-btn" onclick="loadPreset('growth')">📈 نمو وربحية</button>
+                            <button class="preset-btn" onclick="loadPreset('value')">💰 قيمة متحفظة</button>
+                            <button class="preset-btn" onclick="loadPreset('momentum')">🚀 زخم سعري</button>
+                            <button class="preset-btn" onclick="loadPreset('breakout')">💥 اختراق فني</button>
+                            <button class="preset-btn" onclick="loadPreset('swing')">🎯 ارتداد من تصحيح</button>
+                            <button class="preset-btn" onclick="loadPreset('dividend')">📊 اتجاه مستقر</button>
+                            <button class="preset-btn" onclick="loadPreset('penny')">💵 أسهم 5–20</button>
                         </div>
                     </div>
 
@@ -993,16 +1002,16 @@
                         <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; font-weight:600;">🎯 فلاتر الفرص الجاهزة</div>
                         <div class="preset-btns">
                             <button class="preset-btn opp" onclick="loadPreset('opp_buy_dip')">📉 شراء التراجع</button>
-                            <button class="preset-btn opp" onclick="loadPreset('opp_earnings')">📊 مفاجأة أرباح</button>
-                            <button class="preset-btn opp" onclick="loadPreset('opp_low_float')">🎈 Float منخفض</button>
-                            <button class="preset-btn opp" onclick="loadPreset('opp_analyst')">👨‍💼 توصية محللين</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_earnings')">📊 نمو الأرباح</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_low_float')">📈 سيولة وزخم</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_analyst')">📈 اتجاه صاعد</button>
                             <button class="preset-btn opp" onclick="loadPreset('opp_debt_free')">✅ خالٍ من الديون</button>
-                            <button class="preset-btn opp" onclick="loadPreset('opp_undervalued')">🏷️ أقل من قيمته</button>
+                            <button class="preset-btn opp" onclick="loadPreset('opp_undervalued')">🏷️ قيمة سعرية</button>
                             <button class="preset-btn opp" onclick="loadPreset('opp_tech_bounce')">🔥 ارتداد تقني</button>
                         </div>
                     </div>
 
-                    <div class="filters-grid">
+                    <div class="filters-grid" style="display:none !important;">
                         <div class="filter-box">
                             <label>💵 نطاق السعر</label>
                             <select id="fPrice"><option value="5to50" selected>$5 — $50</option><option value="5to20">$5 — $20</option><option value="20to50">$20 — $50</option></select>
@@ -1017,7 +1026,7 @@
                         </div>
                         <div class="filter-box">
                             <label>🏭 القطاع</label>
-                            <select id="fSector"><option value="any">أي قطاع</option><option value="tech">تكنولوجيا</option><option value="finance">مالي</option><option value="healthcare">صحية</option><option value="consumer">استهلاكي</option><option value="industrial">صناعي</option><option value="energy">طاقة</option><option value="reits">عقارات</option></select>
+                            <select id="fSector"><option value="any">أي قطاع</option><option value="tech">تكنولوجيا</option><option value="consumer">استهلاكي</option><option value="industrial">صناعي</option></select>
                         </div>
                         <div class="filter-box">
                             <label>⚡ RSI (14)</label>
@@ -1115,12 +1124,20 @@
                         <h3>🎯 الماسح الحقيقي</h3>
                     </div>
                     <div class="preset-btns" style="margin-bottom:16px;">
-                        <button class="preset-btn" onclick="runSignalScan('military')">الفلتر العسكري</button>
-                        <button class="preset-btn" onclick="runSignalScan('quality_value')">قيمة ونوعية</button>
-                        <button class="preset-btn" onclick="runSignalScan('growth')">نمو (Float منخفض)</button>
-                        <button class="preset-btn" onclick="runSignalScan('growth_beta')">نمو (Beta)</button>
+                        <button class="preset-btn" onclick="runSignalScan('military')">🎯 توافق المؤشرات الأربعة</button>
+                        <button class="preset-btn" onclick="runSignalScan('quality_value')">💰 قيمة وربحية</button>
+                        <button class="preset-btn" onclick="runSignalScan('growth')">📈 نمو وربحية</button>
+                        <button class="preset-btn" onclick="runSignalScan('growth_beta')">🚀 زخم سعري وحجم</button>
                     </div>
                     <div class="scan-meta" id="signalsMeta"></div>
+                    <div id="azAssistantBox" class="filter-box" style="margin:12px 0 18px;border-color:var(--accent-cyan);color:var(--text-main);"><strong>AZ</strong> — اختر قالبًا لشرح سبب الإشارة التعليمية.</div>
+                    <div class="glass" style="margin:12px 0 18px;padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <strong>🔔 استقبال التنبيهات</strong>
+                        <button class="preset-btn" id="enablePushBtn" onclick="enableBrowserNotifications()">تفعيل إشعار المتصفح خارج الموقع</button>
+                        <input id="alertEmail" type="email" placeholder="بريد التنبيهات" style="min-width:220px;flex:1;">
+                        <button class="preset-btn" onclick="saveEmailAlerts()">حفظ البريد</button>
+                        <small class="text-muted" style="width:100%;">يتطلب الإشعار موافقتك وHTTPS، والبريد يبدأ بعد إعداد مزود الإرسال الخلفي.</small>
+                    </div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
                         <table class="data-table">
                             <thead><tr><th>الرمز</th><th>الشركة</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
@@ -1269,6 +1286,20 @@
                             <thead><tr><th>المستخدم</th><th>البريد</th><th>التاريخ</th><th>الإيصال</th><th>إجراء</th></tr></thead>
                             <tbody id="upgradeRequestsBody"></tbody>
                         </table>
+                    </div>
+                </div>
+                <div id="userGuide" class="glass" style="margin-top:24px;padding:22px;line-height:1.9;">
+                    <div class="section-title" style="margin-top:0;">📘 دليل استخدام المنصة <div class="line"></div></div>
+                    <p class="text-muted" style="margin-bottom:12px;">هذه المنصة تعليمية ومحاكاة فقط. اقرأ سبب الإشارة قبل تسجيل أي تجربة، ولا تعتبر أي نتيجة أو سعر ضمانًا للتنفيذ أو الربح.</p>
+                    <div class="guide-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+                        <div><strong>📊 الأسهم الحية</strong><p class="text-muted">عرض الأسعار والاتجاه والحجم وقراءة الإشارة التعليمية.</p></div>
+                        <div><strong>🤖 المتداول الافتراضي</strong><p class="text-muted">محاكاة آلية برصيد 10,000 دولار وسجل يوضح السعر والسبب والوقت.</p></div>
+                        <div><strong>🔍 فلترة الأسهم</strong><p class="text-muted">استخدم القوالب الجاهزة؛ قاعدة الماسح العامة أعلى من أي قالب.</p></div>
+                        <div><strong>🎯 الماسح والتنبيهات</strong><p class="text-muted">راجع توافق المؤشرات الأربع ودرجة الدخول أو الخروج وسعر الإشارة.</p></div>
+                        <div><strong>📌 ترشيحات الأسبوع</strong><p class="text-muted">قائمة تعليمية دورية مبنية على بيانات السوق المؤهلة، وليست توصية.</p></div>
+                        <div><strong>📈 المؤشرات</strong><p class="text-muted">أدوات عرض تعليمية لفهم فيبوناتشي وSMC وATR، وقد يكون الرسم تجريبيًا.</p></div>
+                        <div><strong>📚 الدورة التعليمية</strong><p class="text-muted">دروس عن قراءة السعر وإدارة المخاطر واختبار الفرضيات.</p></div>
+                        <div><strong>🎧 الدعم الفني</strong><p class="text-muted">أرسل ملاحظة أو مشكلة لتصل إلى المسؤول كتذكرة.</p></div>
                     </div>
                 </div>
             </div>

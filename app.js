@@ -5,6 +5,8 @@
 
 const SUPABASE_URL = "https://riktmjqbixqlqwqwqoyc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TMew47Ce-t8NuuJ-4Mpw5w_sa6ckPjf";
+// مفتاح VAPID العام فقط؛ المفتاح الخاص يبقى داخل Supabase Edge Function Secrets.
+const WEB_PUSH_PUBLIC_KEY = "BLCSJ98tUAcH2QNuzmjdf2wdAZ0eKTRob4yhDM5-QrEPPhmkdz1cSz2aAEUdKxXKMFLriTcIcXH96dqRPBYU49M";
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -149,6 +151,46 @@ function handleLogout() {
     toast('👋 تم تسجيل الخروج');
 }
 
+// ===== NOTIFICATIONS: WEB PUSH + EMAIL PREFERENCES =====
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(ch => ch.charCodeAt(0)));
+}
+async function registerPushWorker() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('المتصفح لا يدعم Web Push');
+    return navigator.serviceWorker.register('./sw.js', { scope: './' });
+}
+async function enableBrowserNotifications() {
+    try {
+        if (!currentUser) return toast('سجّل الدخول أولًا لتفعيل الإشعارات', 'warn');
+        if (!window.isSecureContext) return toast('الإشعارات تحتاج HTTPS', 'warn');
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return toast('لم يتم السماح بإشعارات المتصفح', 'warn');
+        const registration = await registerPushWorker();
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY) });
+        const { error } = await sb.from('notification_subscriptions').upsert({
+            user_id: currentUser.id, email: currentUser.email || currentProfile?.email || null,
+            endpoint: subscription.endpoint, push_subscription: subscription.toJSON(), push_enabled: true, updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        if (error) throw error;
+        const btn = document.getElementById('enablePushBtn'); if (btn) btn.textContent = '✅ إشعارات المتصفح مفعّلة';
+        toast('تم تفعيل إشعارات المتصفح خارج الموقع');
+    } catch (e) { console.error(e); toast('تعذر تفعيل إشعارات المتصفح: ' + (e?.message || 'تحقق من إعدادات الموقع'), 'error'); }
+}
+async function saveEmailAlerts() {
+    try {
+        if (!currentUser) return toast('سجّل الدخول أولًا', 'warn');
+        const email = String(document.getElementById('alertEmail')?.value || currentUser.email || '').trim().toLowerCase();
+        if (!email.includes('@')) return toast('أدخل بريدًا صحيحًا', 'warn');
+        const { error } = await sb.from('notification_subscriptions').upsert({ user_id: currentUser.id, email, email_enabled: true, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
+        toast('تم حفظ بريد التنبيهات؛ سيبدأ الإرسال بعد إعداد مزود البريد الخلفي');
+    } catch (e) { console.error(e); toast('تعذر حفظ بريد التنبيهات: ' + (e?.message || 'خطأ غير معروف'), 'error'); }
+}
+
 // ===== APP INIT =====
 async function initApp(user, profile) {
     currentUser = user;
@@ -168,6 +210,9 @@ async function initApp(user, profile) {
     setTimeout(()=>initChart(), 100);
     runScanner(); setInterval(runScanner, 15000);
     subscribeSignalRealtime();
+    loadVirtualTrader();
+    loadSignalsData();
+    if (!virtualTraderTimer) virtualTraderTimer = setInterval(() => runVirtualTrader('auto'), 60000);
     const c = LocalCache.getScreener();
     if (c && c.t > Date.now()-86400000) {
         screenerResults = (c.r || []).filter(isCommonStockRow);
@@ -247,6 +292,7 @@ async function renderWatchlist() {
     updateStats(wins,losses,totalPnl,totalInvested,totalCurrent);
 }
 function updateStats(w,l,pnl,invested,current) {
+    if (!document.getElementById('winRecs')) { if (typeof renderVirtualTrader === 'function') renderVirtualTrader(); return; }
     document.getElementById('winRecs').textContent=w;
     document.getElementById('loseRecs').textContent=l;
     const pnlEl=document.getElementById('recReturn');
@@ -500,7 +546,7 @@ const UNIQUE_STOCKS = [...new Set(STOCK_UNIVERSE)];
 const SECTOR_MAP = {}; // لم يعد يُستخدَم لتصنيف الفحص (ذلك يأتي الآن من Finviz عبر market_fundamentals.sector) — أُبقي فارغًا عمدًا؛ محفوظ فقط لتفادي كسر أي مرجع قديم متبقٍّ.
 
 const EXCLUDED_SYMBOLS = new Set([
-    'DDV','CCDE','CCODA','AASYS','CCRSR','AAI','AAIRG','AAMRZ','AAOUT','AAPEI','BBKKT',
+    'DDV','CCDE','CCODA','AASYS','CCRSR','AAI','AAIRG','AAMRZ','AAOUT','AAPEI','BBKKT','BRBI','WD',
     'LUCK','TAL','EDU','GSX','STG','FANH','QTT','UXIN','SOGO','QFIN','FINV','YRD','JT','PPDF','XYF',
     'NIO','XPEV','LI','BYD','F','GM','HOG','PII','NKLA','WKHS','RIDE','GOEV','MULN','FSR','LCID','RIVN',
     'AMC','GME','BBBY','M','JCP','BIG','RAD','EXPR','KOSS','NAKD','SNDL','TLRY','ACB','CRON','OGI','HEXO','CGC',
@@ -804,14 +850,19 @@ function initIndicatorChart() {
     series.setData(data); window.indicatorChart.timeScale().fitContent();
     window.addEventListener('resize', () => { if(window.indicatorChart&&cont)window.indicatorChart.resize(cont.clientWidth,cont.clientHeight); });
 }
+const EXCLUDED_SECTOR_RE = /financial|finance|bank|banc|insurance|insur|capital|credit|mortgage|broker|asset management|investment|reinsurance|real estate|property|properties|reit|healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|energy|oil|gas|petroleum|coal|solar|utilities/i;
+const GENERAL_MARKET_RULE = Object.freeze({ minPrice: 5, maxPrice: 50, exchanges: new Set(['NYSE', 'NASDAQ']) });
+
 function isCommonStockRow(row) {
     const symbol = String(row?.symbol || '').trim().toUpperCase();
     const exchange = String(row?.exchange || '').trim().toUpperCase();
     const text = [row?.industry, row?.company, row?.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
     if (!symbol || EXCLUDED_SYMBOLS.has(symbol)) return false;
-    if (!['NYSE','NASDAQ'].includes(exchange)) return false;
+    if (!GENERAL_MARKET_RULE.exchanges.has(exchange)) return false;
     if (/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text)) return false;
-    return Number(row?.price || 0) > 0;
+    if (EXCLUDED_SECTOR_RE.test(text)) return false;
+    const price = Number(row?.price || 0);
+    return price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice;
 }
 
 // ===== REAL MARKET DATA (Supabase — replaces the old fake REAL_PRICES/getLivePrice/fetchYahooData) =====
@@ -884,7 +935,7 @@ async function fetchUniverse(forceRefresh=false) {
     const techMap = Object.fromEntries((techRows || []).map(t => [t.symbol, t]));
     const rows = (fundRows || []).map(f => mapMarketRow(f, techMap[f.symbol])).filter(r => {
         const sector = String(r.sector || '').toLowerCase();
-        const liquid = Number(r.price || 0) >= 5 && Number(r.price || 0) <= 50;
+        const liquid = Number(r.price || 0) >= GENERAL_MARKET_RULE.minPrice && Number(r.price || 0) <= GENERAL_MARKET_RULE.maxPrice;
         const ordinary = !['finance', 'financial', 'financials', 'reits'].includes(sector);
         return liquid && ordinary && isCommonStockRow(r);
     });
@@ -916,7 +967,7 @@ async function runScanner() {
         if (!base || !live) return null;
         if (!isCommonStockRow(base)) return null;
         const price = live?.price ?? base?.price ?? null;
-        if (price == null || price < 5 || price > 50) return null;
+        if (price == null || price < GENERAL_MARKET_RULE.minPrice || price > GENERAL_MARKET_RULE.maxPrice) return null;
         const change = live?.change_pct ?? base?.change ?? null;
         const volume = live?.volume ?? base?.volume ?? null;
         if (price == null) return null;
@@ -994,7 +1045,7 @@ async function runScreener() {
     bar.style.width = '80%';
 
     const filtered = universe.filter(d => {
-        if (d.price == null) return false;
+        if (d.price == null || d.price < GENERAL_MARKET_RULE.minPrice || d.price > GENERAL_MARKET_RULE.maxPrice) return false;
         if (d.sector === 'healthcare' || d.sector === 'energy' || d.sector === 'reits') return false;
         if (d.hasIssues) return false;
         if (d.hasPlan === false) return false;
@@ -1123,21 +1174,24 @@ function clearScreener() {
 function loadPreset(p) {
     const presets = {
         growth: { price:'5to20', volume:'over300k', change:'up', sector:'any', rsi:'neutral', sma50:'above', sma200:'above', grade:'ab', relVol:'over1', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'over15', eps5y:'any', ltDebt:'under0.6', perfWeek:'any', sma20:'any', curVol:'any' },
-        value: { price:'under5', volume:'over100k', change:'any', sector:'any', rsi:'oversold', sma50:'any', sma200:'any', grade:'any', relVol:'any', limit:'100', pb:'under1', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'under0.6', perfWeek:'any', sma20:'any', curVol:'any' },
+        value: { price:'5to50', volume:'over100k', change:'any', sector:'any', rsi:'oversold', sma50:'any', sma200:'any', grade:'any', relVol:'any', limit:'100', pb:'under1', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'under0.6', perfWeek:'any', sma20:'any', curVol:'any' },
         momentum: { price:'5to20', volume:'over500k', change:'up5', sector:'any', rsi:'neutral', sma50:'above', sma200:'above', grade:'a', relVol:'over2', limit:'100', pb:'any', epsGrowth:'over30', epsNext:'over30', eps5y:'any', ltDebt:'any', perfWeek:'up5', sma20:'above', curVol:'over500k' },
         breakout: { price:'5to20', volume:'over1m', change:'up3', sector:'any', rsi:'neutral', sma50:'above', sma200:'below', grade:'ab', relVol:'over2', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'any', eps5y:'any', ltDebt:'any', perfWeek:'up10', sma20:'above', curVol:'over1m' },
         swing: { price:'5to20', volume:'over300k', change:'any', sector:'any', rsi:'oversold', sma50:'below', sma200:'any', grade:'ab', relVol:'over1', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'over15', eps5y:'any', ltDebt:'under0.6', perfWeek:'down', sma20:'below', curVol:'any' },
         dividend: { price:'20to50', volume:'over300k', change:'any', sector:'any', rsi:'neutral', sma50:'above', sma200:'above', grade:'ab', relVol:'any', limit:'100', pb:'any', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'under0.3', perfWeek:'any', sma20:'above', curVol:'any' },
-        penny: { price:'under5', volume:'over100k', change:'up', sector:'any', rsi:'any', sma50:'any', sma200:'any', grade:'any', relVol:'over1', limit:'100', pb:'any', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'any', perfWeek:'up', sma20:'any', curVol:'over100k' },
+        penny: { price:'5to20', volume:'over100k', change:'up', sector:'any', rsi:'any', sma50:'any', sma200:'any', grade:'any', relVol:'over1', limit:'100', pb:'any', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'any', perfWeek:'up', sma20:'any', curVol:'over100k' },
         opp_buy_dip: { price:'20to50', volume:'over300k', change:'down', sector:'any', rsi:'oversold', sma50:'below', sma200:'above', grade:'ab', relVol:'over1', limit:'100', pb:'1to3', epsGrowth:'over15', epsNext:'over15', eps5y:'over15', ltDebt:'under0.6', perfWeek:'down', sma20:'below', curVol:'any' },
         opp_earnings: { price:'any', volume:'over300k', change:'up3', sector:'any', rsi:'neutral', sma50:'above', sma200:'any', grade:'a', relVol:'over2', limit:'100', pb:'any', epsGrowth:'over30', epsNext:'over30', eps5y:'over15', ltDebt:'under0.6', perfWeek:'up5', sma20:'above', curVol:'over500k' },
         opp_low_float: { price:'5to20', volume:'over500k', change:'up', sector:'any', rsi:'any', sma50:'any', sma200:'any', grade:'any', relVol:'over2', limit:'100', pb:'any', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'any', perfWeek:'up', sma20:'any', curVol:'over500k' },
         opp_analyst: { price:'any', volume:'over300k', change:'up', sector:'any', rsi:'neutral', sma50:'above', sma200:'above', grade:'a', relVol:'over1', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'over15', eps5y:'over15', ltDebt:'under0.6', perfWeek:'up', sma20:'above', curVol:'any' },
         opp_debt_free: { price:'any', volume:'over100k', change:'any', sector:'any', rsi:'any', sma50:'any', sma200:'any', grade:'ab', relVol:'any', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'over15', eps5y:'over15', ltDebt:'under0.3', perfWeek:'any', sma20:'any', curVol:'any' },
-        opp_undervalued: { price:'under5', volume:'over100k', change:'any', sector:'any', rsi:'oversold', sma50:'below', sma200:'below', grade:'any', relVol:'any', limit:'100', pb:'under1', epsGrowth:'over15', epsNext:'over15', eps5y:'over15', ltDebt:'under0.6', perfWeek:'down', sma20:'below', curVol:'any' },
+        opp_undervalued: { price:'5to50', volume:'over100k', change:'any', sector:'any', rsi:'oversold', sma50:'below', sma200:'below', grade:'any', relVol:'any', limit:'100', pb:'under1', epsGrowth:'over15', epsNext:'over15', eps5y:'over15', ltDebt:'under0.6', perfWeek:'down', sma20:'below', curVol:'any' },
         opp_tech_bounce: { price:'5to20', volume:'over500k', change:'up3', sector:'tech', rsi:'oversold', sma50:'below', sma200:'above', grade:'ab', relVol:'over2', limit:'100', pb:'any', epsGrowth:'over30', epsNext:'over30', eps5y:'over15', ltDebt:'under0.6', perfWeek:'up5', sma20:'below', curVol:'over500k' }
     };
-    const s = presets[p]; if(!s) return;
+    const originalPreset = presets[p]; if(!originalPreset) return;
+    const s = { ...originalPreset };
+    // قاعدة الماسح العام أعلى من أي قالب: لا يُسمح بأقل من 5 أو أكثر من 50 دولارًا.
+    if (['under5', '50to100', 'over100'].includes(s.price)) s.price = '5to50';
     Object.entries(s).forEach(([key, val]) => {
         const idMap = { price:'fPrice', volume:'fVolume', change:'fChange', sector:'fSector', rsi:'fRSI', sma50:'fSMA50', sma200:'fSMA200', grade:'fGrade', relVol:'fRelVol', limit:'fLimit', pb:'fPB', epsGrowth:'fEPSGrowth', epsNext:'fEPSNext', eps5y:'fEPS5Y', ltDebt:'fLTDebt', perfWeek:'fPerfWeek', sma20:'fSMA20', curVol:'fCurVol' };
         const el = document.getElementById(idMap[key]);
@@ -1157,7 +1211,7 @@ async function runWeeklyScan() {
 
     const universe = await fetchUniverse();
     const candidates = universe.filter(d =>
-        d.price != null && d.price >= 5 && d.price <= 50 &&
+        d.price != null && d.price >= GENERAL_MARKET_RULE.minPrice && d.price <= GENERAL_MARKET_RULE.maxPrice &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
         isCommonStockRow(d) &&
         (d.sma50 == null || d.price <= d.sma50 * 0.8) &&
@@ -1248,10 +1302,10 @@ async function updateSitePerformance() {
 let SIGNALS_CACHE = null, SIGNALS_ALERTS = null, SIGNALS_PERF = null, SIGNALS_CACHE_AT = 0;
 let signalChartInstance = null;
 
-const SIG_TIER_COLOR = { 'صريح': 'badge-strong-buy', 'أقوى': 'badge-buy', 'أولي': 'badge-hold' };
-const SIG_TIER_COLOR_EXIT = { 'صريح': 'badge-strong-sell', 'أقوى': 'badge-sell', 'أولي': 'badge-hold' };
+const SIG_TIER_COLOR = { 'صريح': 'badge-strong-buy', 'مؤكد': 'badge-buy', 'دخول': 'badge-hold' };
+const SIG_TIER_COLOR_EXIT = { 'صريح': 'badge-strong-sell', 'مؤكد': 'badge-sell', 'خروج': 'badge-hold' };
 const SIG_LABEL = { fibonacci: 'فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'شمعة', volume: 'حجم' };
-const SIG_PRESET_LABEL = { military: 'العسكري', quality_value: 'قيمة ونوعية', growth: 'نمو-Float', growth_beta: 'نمو-Beta' };
+const SIG_PRESET_LABEL = { military: 'توافق المؤشرات الأربعة', quality_value: 'قيمة وربحية', growth: 'نمو وربحية', growth_beta: 'زخم سعري وحجم' };
 let signalAudioContext = null;
 function playSignalAlertSound() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1291,25 +1345,31 @@ async function loadSignalsData(force = false) {
     const meta = document.getElementById('signalsMeta');
     meta.innerHTML = 'جاري التحميل من قاعدة البيانات...';
     try {
-        const [{ data: sig, error: e1 }, { data: alerts, error: e2 }, { data: perf, error: e3 }] = await Promise.all([
+        const [{ data: sig, error: e1 }, { data: alerts, error: e2 }, { data: perf, error: e3 }, { data: fundamentals, error: e4 }] = await Promise.all([
             sb.from('screener_signals').select('*'),
             sb.from('screener_alerts').select('*').order('ts', { ascending: false }).limit(100),
             sb.from('screener_performance').select('*'),
+            sb.from('market_fundamentals').select('symbol,price,exchange,industry,company,finviz_sector,sector'),
         ]);
         if (e1) throw e1;
+        if (e4) throw e4;
         const blocked = new Set(['DDV']);
-        SIGNALS_CACHE = (sig || []).filter(s => !blocked.has(String(s.symbol || '').toUpperCase()));
-        SIGNALS_ALERTS = (alerts || []).filter(a => {
-            const symbol = String(a.symbol || '').toUpperCase();
-            const price = Number(a.price);
-            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price > 0;
-        });
+        const fundMap = Object.fromEntries((fundamentals || []).map(f => [String(f.symbol || '').toUpperCase(), f]));
+        const validSignalRow = (row) => {
+            const symbol = String(row?.symbol || '').toUpperCase();
+            const fund = fundMap[symbol];
+            const price = Number(row?.price ?? fund?.price);
+            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price > 0 && fund && isCommonStockRow({ ...fund, symbol, price });
+        };
+        SIGNALS_CACHE = (sig || []).filter(validSignalRow);
+        SIGNALS_ALERTS = (alerts || []).filter(validSignalRow);
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         SIGNALS_CACHE_AT = Date.now();
         meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString('ar-SA') : '--'}</span> — اختر فلترًا لعرض النتائج`;
         renderSignalAlerts();
         renderSignalPerformance('month');
+        if (typeof runVirtualTrader === 'function') runVirtualTrader('auto');
     } catch (err) {
         meta.innerHTML = "<b style='color:var(--accent-red);'>تعذر تحميل بيانات الماسح — تأكد أن fetch_screener_signals.py عمل مرة واحدة على الأقل.</b>";
         console.error(err);
@@ -1322,8 +1382,62 @@ function runSignalScan(presetKey) {
         .filter(s => s.preset === presetKey)
         .sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
 
-    document.getElementById('signalsMeta').innerHTML = `${SIG_PRESET_LABEL[presetKey] || presetKey} — أسهم بإشارة تنبيه: <span>${stocks.length}</span>`;
+    document.getElementById('signalsMeta').innerHTML = `${SIG_PRESET_LABEL[presetKey] || presetKey} — أسهم بإشارة: <span>${stocks.length}</span>`;
     renderSignalsTable(stocks);
+    renderAZAssistant(stocks[0], presetKey);
+}
+
+function renderAZAssistant(stock, presetKey) {
+    const box = document.getElementById('azAssistantBox');
+    if (!box) return;
+    if (!stock) {
+        box.innerHTML = '<strong>AZ</strong> — لا توجد إشارة مؤهلة في هذا القالب حاليًا.';
+        return;
+    }
+    const signals = stock.entry_signals || {};
+    const active = Object.entries(signals).filter(([, on]) => on).map(([key]) => SIG_LABEL[key] || key);
+    const tier = stock.entry_tier || 'دون إشارة';
+    const price = Number(stock.price);
+    const priceText = Number.isFinite(price) ? `$${price.toFixed(2)}` : 'غير متاح';
+    const timing = active.length >= 3 ? 'توافق قوي تعليميًا؛ راجع السعر والبيانات الحالية قبل أي قرار.' : active.length === 2 ? 'توافق متوسط؛ انتظر تأكيدًا إضافيًا أو راقب السهم.' : 'إشارة أولية؛ لا تعتبر توقيت دخول مكتمل.';
+    box.innerHTML = `<strong>AZ</strong> — ${sigEsc(stock.symbol)} عند سعر مرجعي ${priceText}: <b>${sigEsc(tier)}</b> (${active.length}/4). المؤشرات المتحققة: ${active.length ? active.join('، ') : 'لا يوجد'}. ${timing}<div id="azNews" style="margin-top:12px;color:var(--text-muted);">جاري جلب الأخبار المرتبطة بالرمز...</div>`;
+    loadAZNews(stock.symbol, stock.company || stock.name || stock.symbol);
+}
+
+function azNewsTone(title, snippet = '') {
+    const text = `${title} ${snippet}`.toLowerCase();
+    const positive = /earnings beat|profit|revenue growth|upgrade|partnership|contract|approval|award|record|raises guidance|beats estimates|نمو الأرباح|أرباح|ترقية|عقد|موافقة|شراكة/.test(text);
+    const negative = /loss|layoff|downgrade|lawsuit|investigation|warning|bankruptcy|default|misses estimates|cuts guidance|offering|dilution|خسارة|تسريح|دعوى|تحقيق|إفلاس|تحذير|طرح أسهم/.test(text);
+    return positive && !negative ? 'إيجابي' : negative && !positive ? 'سلبي' : 'مختلط/محايد';
+}
+
+async function loadAZNews(symbol, company) {
+    const target = document.getElementById('azNews');
+    if (!target) return;
+    const query = encodeURIComponent(`"${symbol}" OR "${String(company).replace(/[^a-zA-Z0-9 .&-]/g, ' ').trim()}"`);
+    const endpoint = `https://api.gdeltproject.org/api/v2/doc/doc?query=${query}&mode=artlist&maxrecords=5&timespan=7d&sort=datedesc&format=json`;
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(endpoint, { signal: controller.signal, headers: { Accept: 'application/json' } });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const articles = Array.isArray(data.articles) ? data.articles : [];
+        if (!articles.length) {
+            target.innerHTML = `<strong>أخبار AZ:</strong> لا توجد أخبار موثوقة مرتبطة بـ ${sigEsc(symbol)} خلال آخر 7 أيام. <small>المصدر: GDELT</small>`;
+            return;
+        }
+        target.innerHTML = `<strong>أخبار AZ — آخر 7 أيام</strong><div style="margin-top:8px;display:grid;gap:6px;">${articles.map(article => {
+            const title = sigEsc(article.title || 'خبر بلا عنوان');
+            const url = /^https?:\/\//i.test(String(article.url || '')) ? String(article.url) : '#';
+            const tone = azNewsTone(article.title || '', article.seendate || '');
+            const date = String(article.seendate || '').replace(/(\\d{4})(\\d{2})(\\d{2}).*/, '$1-$2-$3');
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--text-main);text-decoration:none;border-bottom:1px solid var(--border);padding:5px 0;">${title} <span class="text-muted">(${tone} — ${sigEsc(date)})</span></a>`;
+        }).join('')}</div><small>المصدر المجاني: GDELT؛ افتح الرابط لقراءة النص الكامل.</small>`;
+    } catch (err) {
+        target.innerHTML = `<strong>أخبار AZ:</strong> تعذر جلب الأخبار الآن. لا تُستخدم الأخبار كإشارة مستقلة. <small>المصدر: GDELT</small>`;
+    }
 }
 
 function sigDots(signals, isEntry) {
@@ -1498,11 +1612,11 @@ function courseMove(delta) { renderCourseLesson(Number(document.getElementById('
 async function isTradableMarketSymbol(symbol) {
     const s = String(symbol || '').trim().toUpperCase();
     if (!s || EXCLUDED_SYMBOLS.has(s)) return false;
-    const { data, error } = await sb.from('market_fundamentals').select('symbol,price,exchange,industry').eq('symbol', s).maybeSingle();
+    const { data, error } = await sb.from('market_fundamentals').select('symbol,price,exchange,industry,company,finviz_sector,sector').eq('symbol', s).maybeSingle();
     if (error || !data) return false;
     const exchange = String(data.exchange || '').toUpperCase();
-    const industry = String(data.industry || '').toLowerCase();
-    return Number(data.price) > 0 && ['NYSE','NASDAQ'].includes(exchange) && !EXCLUDED_SYMBOLS.has(s) && !/etf|reit|closed end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(industry);
+    const text = [data.industry, data.company, data.finviz_sector, data.sector].map(v => String(v || '').toLowerCase()).join(' ');
+    return Number(data.price) > 0 && ['NYSE','NASDAQ'].includes(exchange) && !EXCLUDED_SYMBOLS.has(s) && !/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text) && !EXCLUDED_SECTOR_RE.test(text);
 }
 const originalAddToWatchlist = addToWatchlist;
 addToWatchlist = async function() {
@@ -1510,3 +1624,111 @@ addToWatchlist = async function() {
     if (!(await isTradableMarketSymbol(sym))) { toast('هذا الرمز غير موجود كسهم عادي قابل للتداول في قاعدة السوق', 'error'); return; }
     return originalAddToWatchlist();
 };
+
+
+// ===== VIRTUAL TRADER — EDUCATIONAL SIMULATION ONLY =====
+const VIRTUAL_STARTING_CASH = 10000;
+const VIRTUAL_MAX_POSITION_PCT = 0.20;
+let virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: null, lastRun: null };
+let virtualTraderTimer = null;
+function virtualTraderKey() { return `az_virtual_trader_${currentUser?.id || 'guest'}`; }
+function saveVirtualTrader() { localStorage.setItem(virtualTraderKey(), JSON.stringify(virtualTrader)); }
+function loadVirtualTrader() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(virtualTraderKey()) || 'null');
+        if (raw && Number.isFinite(Number(raw.cash))) virtualTrader = { ...virtualTrader, ...raw, positions: raw.positions || {}, trades: Array.isArray(raw.trades) ? raw.trades : [] };
+    } catch { virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: null, lastRun: null }; }
+    if (!virtualTrader.startedAt) { virtualTrader.startedAt = new Date().toISOString(); saveVirtualTrader(); }
+    renderVirtualTrader();
+}
+function virtualPrice(row) { const p = Number(row?.price ?? row?.current_price ?? row?.last_price); return Number.isFinite(p) && p > 0 ? p : null; }
+function virtualSignalKind(row) { return String(row?.signal || row?.type || row?.action || row?.direction || row?.entry_signal || row?.entrySignal || row?.entry_tier || row?.exit_tier || '').toLowerCase(); }
+function virtualTierScore(row, action = 'buy') { return Number(action === 'sell' ? (row?.exit_score ?? row?.exitScore ?? row?.score ?? 0) : (row?.entry_score ?? row?.entryScore ?? row?.signal_score ?? 0)); }
+function virtualReason(row, action) {
+    const raw = row?.[action === 'buy' ? 'entry_signals' : 'exit_signals'] ?? row?.signals;
+    const signals = Array.isArray(raw) ? raw.filter(Boolean) : (raw && typeof raw === 'object' ? Object.entries(raw).filter(([,v]) => Boolean(v)).map(([k]) => ({ fibonacci: 'منطقة فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'شمعة', volume: 'حجم' }[k] || k)) : []);
+    const text = signals.length ? signals.join('، ') : (row?.reason || row?.catalyst || 'توافق شروط الماسح والفلاتر الجاهزة');
+    return action === 'buy' ? `دخول محاكى لأن ${text}` : `خروج محاكى لأن ${text}`;
+}
+function virtualTierLabel(row, action) {
+    const n = Math.max(1, Math.min(4, Math.round(virtualTierScore(row, action)) || (Array.isArray(row?.signals) ? row.signals.length : 1)));
+    if (n >= 3) return action === 'buy' ? 'دخول صريح' : 'خروج صريح';
+    if (n === 2) return action === 'buy' ? 'دخول مؤكد' : 'خروج مؤكد';
+    return action === 'buy' ? 'دخول' : 'خروج';
+}
+function virtualEquity() {
+    return virtualTrader.cash + Object.values(virtualTrader.positions).reduce((sum, p) => sum + (Number(p.qty) * Number(p.lastPrice || p.entryPrice)), 0);
+}
+function virtualExecuteBuy(row) {
+    const symbol = String(row?.symbol || '').toUpperCase(); const price = virtualPrice(row);
+    if (!symbol || !price || virtualTrader.positions[symbol]) return false;
+    const allocation = Math.min(virtualTrader.cash * VIRTUAL_MAX_POSITION_PCT, virtualTrader.cash);
+    const qty = Math.floor(allocation / price);
+    if (qty < 1) return false;
+    const tier = virtualTierLabel(row, 'buy');
+    virtualTrader.cash -= qty * price;
+    virtualTrader.positions[symbol] = { symbol, qty, entryPrice: price, lastPrice: price, tier, reason: virtualReason(row, 'buy'), enteredAt: new Date().toISOString() };
+    virtualTrader.trades.unshift({ id: `${Date.now()}-buy-${symbol}`, symbol, action: 'buy', qty, price, tier, reason: virtualReason(row, 'buy'), at: new Date().toISOString() });
+    return true;
+}
+function virtualExecuteSell(row) {
+    const symbol = String(row?.symbol || '').toUpperCase(); const price = virtualPrice(row); const pos = virtualTrader.positions[symbol];
+    if (!symbol || !price || !pos) return false;
+    const proceeds = Number(pos.qty) * price; const pnl = proceeds - (Number(pos.qty) * Number(pos.entryPrice));
+    const tier = virtualTierLabel(row, 'sell');
+    virtualTrader.cash += proceeds;
+    virtualTrader.trades.unshift({ id: `${Date.now()}-sell-${symbol}`, symbol, action: 'sell', qty: pos.qty, price, tier, pnl, reason: virtualReason(row, 'sell'), at: new Date().toISOString() });
+    delete virtualTrader.positions[symbol];
+    return true;
+}
+function virtualRowsFromSignals() {
+    const signalRows = Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : [];
+    const screenRows = Array.isArray(screenerResults) ? screenerResults : [];
+    return [...signalRows, ...screenRows].filter(r => r && r.symbol && virtualPrice(r));
+}
+function runVirtualTrader(mode = 'manual') {
+    const rows = virtualRowsFromSignals();
+    let buys = 0, sells = 0;
+    rows.forEach(row => {
+        const kind = virtualSignalKind(row);
+        const hasExitTier = Boolean(row?.exit_tier || row?.exitTier) && Number(row?.exit_score ?? row?.exitScore ?? 0) > 0;
+        const hasEntryTier = Boolean(row?.entry_tier || row?.entryTier) && Number(row?.entry_score ?? row?.entryScore ?? 0) > 0;
+        const isExit = hasExitTier || /sell|exit|خروج|بيع/.test(kind) || row?.exit_signal;
+        const isEntry = hasEntryTier || /buy|entry|دخول|شراء/.test(kind) || row?.entry_signal || row?.entrySignal;
+        if (isExit && virtualTrader.positions[String(row.symbol).toUpperCase()]) { if (virtualExecuteSell(row)) sells++; }
+        else if (isEntry && !virtualTrader.positions[String(row.symbol).toUpperCase()]) { if (virtualExecuteBuy(row)) buys++; }
+        const pos = virtualTrader.positions[String(row.symbol || '').toUpperCase()]; if (pos && virtualPrice(row)) pos.lastPrice = virtualPrice(row);
+    });
+    virtualTrader.lastRun = new Date().toISOString(); saveVirtualTrader(); renderVirtualTrader();
+    if (buys || sells) toast(`المتداول الافتراضي: ${buys} دخول و${sells} خروج محاكى`, 'success');
+    else if (mode === 'manual') toast('لم تتحقق إشارة جديدة مؤهلة للمحاكاة', 'warn');
+}
+function resetVirtualTrader() {
+    if (!confirm('إعادة المتداول الافتراضي إلى 10,000 دولار وحذف سجل الصفقات؟')) return;
+    virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: new Date().toISOString(), lastRun: null };
+    saveVirtualTrader(); renderVirtualTrader(); toast('تمت إعادة المحاكاة إلى 10,000 دولار');
+}
+function renderVirtualTrader() {
+    const equity = virtualEquity();
+    const invested = Object.values(virtualTrader.positions).reduce((sum, p) => sum + Number(p.qty) * Number(p.entryPrice), 0);
+    const pnl = equity - VIRTUAL_STARTING_CASH;
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    set('vtCash', `$${virtualTrader.cash.toFixed(2)}`); set('vtEquity', `$${equity.toFixed(2)}`); set('vtInvested', `$${invested.toFixed(2)}`); set('vtPnl', `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`); set('vtOpenPositions', String(Object.keys(virtualTrader.positions).length));
+    const posBody = document.getElementById('virtualPositionsBody');
+    if (posBody) {
+        const positions = Object.values(virtualTrader.positions);
+        posBody.innerHTML = positions.length ? positions.map(p => { const upnl = (Number(p.lastPrice || p.entryPrice) - Number(p.entryPrice)) * Number(p.qty); return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${Number(p.lastPrice || p.entryPrice).toFixed(2)}</td><td class="${upnl >= 0 ? 'text-green' : 'text-red'}">${upnl >= 0 ? '+' : ''}$${upnl.toFixed(2)}</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
+    }
+    const tradeBody = document.getElementById('virtualTradesBody');
+    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`).join('') : '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
+    set('virtualTraderStatus', virtualTrader.lastRun ? `آخر متابعة: ${new Date(virtualTrader.lastRun).toLocaleString('ar-SA')}` : 'لم تبدأ المتابعة الآلية بعد');
+    const pnlEl = document.getElementById('vtPnl'); if (pnlEl) pnlEl.className = `val ${pnl >= 0 ? 'pos' : 'neg'}`;
+}
+
+// إعادة توجيه وظائف الواجهة القديمة إلى المتداول الافتراضي.
+const _oldRenderPortfolio = typeof renderPortfolio === 'function' ? renderPortfolio : null;
+renderPortfolio = function() { loadVirtualTrader(); renderVirtualTrader(); };
+const _oldLoadWatchlist = loadWatchlist;
+loadWatchlist = async function() { await _oldLoadWatchlist(); loadVirtualTrader(); };
+const _oldSwitchTab = switchTab;
+switchTab = function(id) { const result = _oldSwitchTab(id); if (id === 'portfolio') { loadVirtualTrader(); renderVirtualTrader(); } return result; };

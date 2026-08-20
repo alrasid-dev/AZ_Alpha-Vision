@@ -43,7 +43,7 @@ LIVE_TRACKED = [
 
 # رموز ظهرت سابقًا كأدوات غير عادية أو غير مرغوبة في المنصة.
 EXCLUDED_SYMBOLS = {
-    "DDV", "CCDE", "CCODA", "AASYS", "CCRSR", "AAI", "AAIRG", "AAMRZ", "AAOUT", "AAPEI", "BBKKT",
+    "DDV", "CCDE", "CCODA", "AASYS", "CCRSR", "AAI", "AAIRG", "AAMRZ", "AAOUT", "AAPEI", "BBKKT", "BRBI", "WD",
     "LUCK", "TAL", "EDU", "GSX", "STG", "FANH", "QTT", "UXIN", "SOGO", "QFIN", "FINV", "YRD", "JT", "PPDF", "XYF",
     "NIO", "XPEV", "LI", "BYD", "F", "GM", "HOG", "PII", "NKLA", "WKHS", "RIDE", "GOEV", "MULN", "FSR", "LCID", "RIVN",
     "AMC", "GME", "BBBY", "M", "JCP", "BIG", "RAD", "EXPR", "KOSS", "NAKD", "SNDL", "TLRY", "ACB", "CRON", "OGI", "HEXO", "CGC",
@@ -56,7 +56,7 @@ INSTRUMENT_RE = re.compile(
     re.I,
 )
 FINANCE_RE = re.compile(
-    r"bank|banc|financial|finance|insurance|insur|capital|credit|mortgage|broker|asset management|investment management|reinsurance|life insurance|savings|morgan|chase|blackrock|citigroup|schwab|state street|american express|discover financial",
+    r"bank|banc|financial|finance|insurance|insur|capital|credit|mortgage|broker|asset management|investment management|reinsurance|life insurance|savings|morgan|chase|blackrock|citigroup|schwab|state street|american express|discover financial|real estate|property|properties|healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|energy|oil|gas|petroleum|coal|solar|utilities",
     re.I,
 )
 
@@ -126,8 +126,12 @@ def sector_from_name(company: str) -> tuple[str, str]:
     name = str(company or "")
     if FINANCE_RE.search(name):
         return "finance", "Financial"
-    if re.search(r"real estate|properties|reit", name, re.I):
+    if re.search(r"real estate|property|properties|reit", name, re.I):
         return "reits", "Real Estate"
+    if re.search(r"healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical", name, re.I):
+        return "healthcare", "Healthcare"
+    if re.search(r"energy|oil|gas|petroleum|coal|solar|utilities", name, re.I):
+        return "energy", "Energy"
     return "other", "Other"
 
 
@@ -230,7 +234,7 @@ def build_fundamentals(symbols: dict[str, dict[str, str]], technicals: dict[str,
         if symbol not in technicals:
             continue
         sector, finviz_sector = sector_from_name(meta.get("company", ""))
-        if sector in {"finance", "reits"}:
+        if sector in {"finance", "reits", "healthcare", "energy"}:
             continue
         records[symbol] = {
             "symbol": symbol,

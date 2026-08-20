@@ -8,7 +8,14 @@ const SUPABASE_ANON_KEY = "sb_publishable_TMew47Ce-t8NuuJ-4Mpw5w_sa6ckPjf";
 // مفتاح VAPID العام فقط؛ المفتاح الخاص يبقى داخل Supabase Edge Function Secrets.
 const WEB_PUSH_PUBLIC_KEY = "BLCSJ98tUAcH2QNuzmjdf2wdAZ0eKTRob4yhDM5-QrEPPhmkdz1cSz2aAEUdKxXKMFLriTcIcXH96dqRPBYU49M";
 const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { experimental: { passkey: true } } });
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        experimental: { passkey: true }
+    }
+});
 
 let currentUser = null, currentProfile = null, chartInstance = null, watchlist = [], screenerResults = [], isScanning = false;
 

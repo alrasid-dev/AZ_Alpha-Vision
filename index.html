@@ -627,6 +627,7 @@
             </div>
             <div class="auth-error" id="loginError"></div>
             <button class="btn-primary" onclick="handleLogin()">دخول</button>
+            <button class="btn-primary" onclick="handlePasskeyLogin()" style="margin-top:10px;background:linear-gradient(135deg,#b829dd,#7c3aed);color:#fff;">🔐 دخول بالبصمة أو مفتاح المرور</button>
             <div class="auth-link" onclick="requestPasswordReset()">نسيت كلمة المرور؟ <span style="color:var(--accent-cyan)">إرسال رابط استعادة</span></div>
             <div class="auth-link" onclick="switchAuth('register')">ليس لديك حساب؟ <span style="color:var(--accent-cyan)">سجل الآن</span></div>
         </div>
@@ -934,6 +935,7 @@
                         <span id="userName">--</span>
                     </div>
                     <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">أرغب بالترقية والاستمرار بالتعلم</button>
+                    <button class="btn-logout" onclick="registerPasskeyForCurrentUser()" style="padding:8px 14px; font-size:12px;">🔐 تفعيل البصمة</button>
                     <button class="btn-logout" onclick="handleLogout()" style="padding:8px 14px; font-size:12px;">🚪 خروج</button>
                 </div>
             </div>

@@ -27,12 +27,15 @@ jobs:
         run: python scripts/fetch_screener_signals.py
 
       - name: Send browser push and email notifications
-        if: ${{ secrets.NOTIFY_RUN_KEY != '' }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
         run: |
+          if [ -z "${NOTIFY_RUN_KEY}" ]; then
+            echo "NOTIFY_RUN_KEY is not configured; skipping external notifications."
+            exit 0
+          fi
           curl --fail-with-body --request POST \
             --url "${SUPABASE_URL}/functions/v1/send-signal-notifications?minutes=120" \
             --header "x-notify-key: ${NOTIFY_RUN_KEY}" \

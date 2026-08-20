@@ -1579,8 +1579,13 @@ async function openSignalChart(symbol) {
 // ===== EDUCATION, SIMULATION CONSENT & 60-DAY TRIAL =====
 const TRIAL_DAYS = 60;
 function ensureEducationConsent() {
-    const key = `az_education_consent_${currentUser?.id || 'guest'}`;
-    if (localStorage.getItem(key) === 'accepted') return true;
+    // بعد موافقة الحساب مرة واحدة لا نعرض الإقرار في تسجيلات الدخول اللاحقة.
+    const localKey = `az_education_consent_${currentUser?.id || 'guest'}`;
+    const raw = localStorage.getItem(localKey);
+    let localAccepted = false;
+    try { localAccepted = JSON.parse(raw || 'null')?.accepted === 'accepted'; } catch { localAccepted = raw === 'accepted'; }
+    const profileAccepted = currentProfile?.age_confirmed === true && !!currentProfile?.education_consent_at;
+    if (localAccepted || profileAccepted) return true;
     const modal = document.getElementById('educationDisclaimerModal');
     if (modal) modal.classList.add('active');
     return false;
@@ -1597,7 +1602,9 @@ async function acceptEducationConsent() {
     localStorage.setItem(key, JSON.stringify({ accepted: 'accepted', age18: true, at: new Date().toISOString() }));
     if (currentUser?.id) {
         // يعمل حتى لو لم تُضف أعمدة الموافقة بعد؛ لا يمنع دخول المستخدم عند اختلاف المخطط.
-        await sb.from('profiles').update({ age_confirmed: true, education_consent_at: new Date().toISOString() }).eq('id', currentUser.id);
+        const consentAt = new Date().toISOString();
+        const { error: consentError } = await sb.from('profiles').update({ age_confirmed: true, education_consent_at: consentAt }).eq('id', currentUser.id);
+        if (!consentError && currentProfile) { currentProfile.age_confirmed = true; currentProfile.education_consent_at = consentAt; }
     }
     document.getElementById('educationDisclaimerModal')?.classList.remove('active');
     toast('تم قبول الإقرار التعليمي والمحاكاة');

@@ -252,7 +252,23 @@ def evaluate_signals(stock, df_t):
     }
 
 
-TIER_RANK = {None: 0, "أولي": 1, "أقوى": 2, "صريح": 3}
+# ترتيب مستويات الإشارة. ندعم الاسمين القديم والجديد حتى لا تتسبب بيانات سابقة
+# أو قيمة غير معروفة في إيقاف تشغيل الماسح.
+TIER_RANK = {
+    None: 0,
+    "دخول": 1,
+    "مؤكد": 2,
+    "صريح": 3,
+    "أولي": 1,
+    "أقوى": 2,
+}
+
+
+def tier_rank(value):
+    """يعيد ترتيب المستوى، ويعامل أي قيمة غير معروفة كمستوى غير صالح بدل KeyError."""
+    if value is None:
+        return 0
+    return TIER_RANK.get(str(value).strip(), 0)
 
 
 def load_previous_tiers():
@@ -274,16 +290,21 @@ def compute_new_alerts(prev_tiers, preset_key, stock):
     now = pd.Timestamp.utcnow().isoformat()
     new_alerts = []
 
-    if TIER_RANK[stock["entryTier"]] > TIER_RANK.get(prev.get("entryTier")):
+    entry_tier = stock.get("entryTier")
+    exit_tier = stock.get("exitTier")
+    previous_entry_tier = prev.get("entryTier")
+    previous_exit_tier = prev.get("exitTier")
+
+    if tier_rank(entry_tier) > tier_rank(previous_entry_tier):
         new_alerts.append({
             "ts": now, "preset": preset_key, "symbol": stock["symbol"],
-            "type": "entry", "tier": stock["entryTier"], "score": stock["entryScore"],
+            "type": "entry", "tier": entry_tier, "score": stock["entryScore"],
             "price": stock["price"], "signals": stock["entrySignals"],
         })
-    if TIER_RANK[stock["exitTier"]] > TIER_RANK.get(prev.get("exitTier")):
+    if tier_rank(exit_tier) > tier_rank(previous_exit_tier):
         new_alerts.append({
             "ts": now, "preset": preset_key, "symbol": stock["symbol"],
-            "type": "exit", "tier": stock["exitTier"], "score": stock["exitScore"],
+            "type": "exit", "tier": exit_tier, "score": stock["exitScore"],
             "price": stock["price"], "signals": stock["exitSignals"],
         })
     return new_alerts

@@ -308,8 +308,28 @@ def run_full():
     log.info("اكتمل المسح المجاني: fundamentals=%s, technicals=%s", n1, n2)
 
 
+def load_quick_symbols() -> list[str]:
+    symbols = set(LIVE_TRACKED)
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/screener_signals?select=symbol&limit=5000",
+            headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        for row in response.json() or []:
+            symbol = str(row.get("symbol") or "").strip().upper()
+            if symbol and symbol not in EXCLUDED_SYMBOLS:
+                symbols.add(symbol)
+    except Exception as exc:
+        log.warning("تعذر تحميل رموز screener_signals؛ سيُستخدم التتبع الثابت فقط: %s", exc)
+    selected = sorted(symbols - EXCLUDED_SYMBOLS)
+    log.info("تحديث الأسعار السريع لعدد %s رمزًا، منها رموز الماسح الحالية", len(selected))
+    return selected
+
+
 def run_quick():
-    technicals = fetch_prices_and_technicals(LIVE_TRACKED, full_history=False)
+    technicals = fetch_prices_and_technicals(load_quick_symbols(), full_history=False)
     now = pd.Timestamp.now(tz="UTC").isoformat()
     rows = [{"symbol": symbol, "price": values["price"], "change_pct": values["change_pct"], "volume": values["volume"], "updated_at": now} for symbol, values in technicals.items()]
     if upsert_rows("live_quotes", rows) == 0:

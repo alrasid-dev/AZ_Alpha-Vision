@@ -1,0 +1,21 @@
+name: AZ Alpha Vision - Subscription Expiry Reminders
+
+on:
+  schedule:
+    - cron: '15 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send expiry reminders
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUBSCRIPTION_CRON_KEY: ${{ secrets.SUBSCRIPTION_CRON_KEY }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS -X POST "$SUPABASE_URL/functions/v1/notify-subscription-expiry" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-key: $SUBSCRIPTION_CRON_KEY" \
+            -d '{}'

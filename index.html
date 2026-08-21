@@ -874,19 +874,22 @@
 
     <div id="upgradeModal" class="modal-overlay">
         <div class="modal-box">
-            <h2>أرغب بالترقية <span>والاستمرار بالتعلم</span></h2>
-            <div class="sub">اشتراك شهري للوصول إلى المحتوى التعليمي المتقدم. لا تُخزن بيانات البطاقة داخل AZ Alpha Vision.</div>
+            <h2>اختر باقتك التعليمية</h2>
+            <div class="sub">اختر الباقة، ثم ادفع بالتحويل البنكي المؤقت. لا تُخزن بيانات البطاقة داخل AZ Alpha Vision.</div>
                 <div class="pay-option">
-                <div class="pay-title">💳 الدفع بالبطاقة</div>
-                <div class="pay-desc">سيتم ربطها بصفحة دفع مستضافة من مزود الدفع بعد تحديد الحساب التجاري.</div>
-                <button class="btn-modal btn-modal-confirm" onclick="toast('واجهة الدفع جاهزة — يلزم ربط مزود الدفع التجاري أولًا','warn')">المتابعة إلى الدفع</button>
-            </div>
-            <div class="pay-option">
-                <div class="pay-title">🏦 تحويل بنكي</div>
-                <div class="pay-desc">حول المبلغ وارفع الإيصال</div>
-                <input type="file" id="receiptUpload" accept="image/*">
-                <button class="btn-modal btn-modal-confirm" onclick="submitBankTransfer()" style="margin-top:12px;">رفع الإيصال وطلب الترقية</button>
-            </div>
+                    <div class="pay-title">شهر واحد — <s>713 ريال</s> <strong>499 ريال</strong> <span class="trial-pill">خصم 30%</span></div>
+                    <div class="pay-desc">وصول تعليمي لمدة 30 يومًا.</div>
+                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('monthly')">اختيار الباقة الشهرية</button>
+                </div>
+                <div class="pay-option">
+                    <div class="pay-title">ثلاثة أشهر — <s>2332 ريال</s> <strong>1399 ريال</strong> <span class="trial-pill">خصم 40%</span></div>
+                    <div class="pay-desc">وصول تعليمي لمدة 90 يومًا.</div>
+                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('quarterly')">اختيار باقة ثلاثة أشهر</button>
+                </div>
+                <div class="pay-option">
+                    <div class="pay-title">🏦 التحويل البنكي</div>
+                    <div class="pay-desc">بعد اختيار الباقة ستظهر بيانات التحويل وزر نسخ الآيبان، ثم ترسل رقم العملية للمراجعة.</div>
+                </div>
             <button class="btn-modal btn-modal-cancel" onclick="closeUpgradeModal()">إلغاء</button>
         </div>
     </div>
@@ -895,7 +898,7 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <span class="sidebar-title">المتداول الافتراضي</span>
-                <span id="trialBadge" class="trial-pill">60 يوم</span>
+                <span id="trialBadge" class="trial-pill">30 يوم</span>
             </div>
             <div class="add-stock-form">
                 <input type="text" id="addSymbolInput" placeholder="رمز السهم (مثال: AAPL)" style="text-transform:uppercase;">
@@ -934,7 +937,7 @@
                         <div class="avatar" id="userAvatar">U</div>
                         <span id="userName">--</span>
                     </div>
-                    <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">أرغب بالترقية والاستمرار بالتعلم</button>
+                    <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">عرض الاشتراك والتجديد</button>
                     <button class="btn-logout" onclick="registerPasskeyForCurrentUser()" style="padding:8px 14px; font-size:12px;">🔐 تفعيل البصمة</button>
                     <button class="btn-logout" onclick="handleLogout()" style="padding:8px 14px; font-size:12px;">🚪 خروج</button>
                 </div>

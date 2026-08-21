@@ -380,23 +380,45 @@ function updateTrial() {
     if (!currentProfile.trial_end) { b.textContent='بانتظار التفعيل'; b.classList.add('expired'); btn.style.display='none'; return; }
     const diff = new Date(currentProfile.trial_end).getTime() - Date.now();
     if (diff<=0) { b.textContent='منتهي'; b.classList.add('expired'); btn.style.display='inline-block'; }
-    else { const d=Math.ceil(diff/86400000); b.textContent=d+' يوم متبقي'; b.classList.remove('expired'); btn.style.display='inline-block'; btn.textContent='أرغب بالترقية والاستمرار بالتعلم'; }
+    else { const d=Math.ceil(diff/86400000); b.textContent=d+' يوم متبقي'; b.classList.remove('expired'); btn.style.display='inline-block'; btn.textContent='عرض الاشتراك والتجديد'; }
 }
 function openUpgradeModal(){document.getElementById('upgradeModal').classList.add('active');}
 function closeUpgradeModal(){document.getElementById('upgradeModal').classList.remove('active');}
 
-async function submitBankTransfer(){
-    const f=document.getElementById('receiptUpload');
-    if(!f.files||!f.files.length){toast('ارفع الإيصال أولاً','warn');return;}
-    const file = f.files[0];
-    const path = `${currentUser.id}/${Date.now()}_${file.name}`;
-    const { error: upErr } = await sb.storage.from('receipts').upload(path, file);
-    if (upErr) { toast('تعذر رفع الإيصال: ' + upErr.message, 'error'); return; }
-    const { error: insErr } = await sb.from('upgrade_requests').insert({ user_id: currentUser.id, receipt_path: path });
-    if (insErr) { toast('تعذر إرسال الطلب: ' + insErr.message, 'error'); return; }
-    toast('✅ تم استلام طلب الترقية — بانتظار مراجعة المسؤول');
+const SUBSCRIPTION_PLANS = {
+    monthly: { name: 'شهر واحد', days: 30, amount: 499, oldAmount: 713, discount: 30 },
+    quarterly: { name: 'ثلاثة أشهر', days: 90, amount: 1399, oldAmount: 2332, discount: 40 }
+};
+async function selectSubscriptionPlan(planCode) {
+    const plan = SUBSCRIPTION_PLANS[planCode];
+    if (!plan || !currentUser) { toast('سجّل الدخول أولًا لاختيار الباقة','warn'); return; }
+    const { data, error } = await sb.functions.invoke('get-payment-details');
+    if (error || !data?.iban) { toast('تعذر تحميل بيانات التحويل؛ حاول لاحقًا','error'); return; }
+    const modal = document.getElementById('upgradeModal');
+    const box = modal?.querySelector('.modal-box');
+    if (!box) return;
+    box.innerHTML = `<h2>${escapeHtml(plan.name)} — ${plan.amount} ريال</h2>
+      <div class="sub">السعر السابق ${plan.oldAmount} ريال — خصم ${plan.discount}% — التفعيل بعد تحقق المسؤول من وصول المبلغ.</div>
+      <div class="pay-option"><div class="pay-title">🏦 ${escapeHtml(data.bank)}</div><div class="pay-desc">المستفيد: ${escapeHtml(data.beneficiary)}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="paymentIban" readonly value="${escapeHtml(data.iban)}" style="flex:1;font-family:var(--font-mono);direction:ltr"><button class="btn-modal btn-modal-confirm" onclick="copyPaymentIban()">نسخ الآيبان</button></div></div>
+      <div class="pay-option"><label class="pay-desc">رقم العملية أو مرجع التحويل (اختياري)</label><input id="transferReference" placeholder="أدخل رقم العملية" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;background:rgba(255,255,255,.04);color:inherit;border:1px solid var(--border)"></div>
+      <button class="btn-modal btn-modal-confirm" onclick="submitManualTransferOrder('${planCode}')">إرسال طلب المراجعة</button>
+      <button class="btn-modal btn-modal-cancel" onclick="closeUpgradeModal()">إلغاء</button>`;
+}
+async function copyPaymentIban() {
+    const input = document.getElementById('paymentIban');
+    if (!input) return;
+    await navigator.clipboard.writeText(input.value);
+    toast('تم نسخ الآيبان','success');
+}
+async function submitManualTransferOrder(planCode) {
+    const plan = SUBSCRIPTION_PLANS[planCode];
+    if (!plan || !currentUser) return;
+    const transferReference = document.getElementById('transferReference')?.value?.trim() || null;
+    const { error } = await sb.from('manual_transfer_orders').insert({ user_id: currentUser.id, plan_code: planCode, amount_sar: plan.amount, transfer_reference: transferReference });
+    if (error) { toast('تعذر إرسال طلب التحويل: ' + error.message, 'error'); return; }
+    toast('تم استلام طلب التحويل — بانتظار مراجعة المسؤول','success');
     closeUpgradeModal();
-    f.value = '';
 }
 
 // ===== ADMIN (Supabase) =====
@@ -1584,7 +1606,7 @@ async function openSignalChart(symbol) {
 
 
 // ===== EDUCATION, SIMULATION CONSENT & 60-DAY TRIAL =====
-const TRIAL_DAYS = 60;
+const TRIAL_DAYS = 30;
 function ensureEducationConsent() {
     // بعد موافقة الحساب مرة واحدة لا نعرض الإقرار في تسجيلات الدخول اللاحقة.
     const localKey = `az_education_consent_${currentUser?.id || 'guest'}`;
@@ -1691,7 +1713,9 @@ function loadVirtualTrader() {
     } catch { virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: null, lastRun: null }; }
     if (!virtualTrader.startedAt) { virtualTrader.startedAt = new Date().toISOString(); saveVirtualTrader(); }
     renderVirtualTrader();
+    syncVirtualTraderFromServer();
 }
+async function refreshVirtualTraderFromServer() { return syncVirtualTraderFromServer(); }
 function virtualPrice(row) { const p = Number(row?.price ?? row?.current_price ?? row?.last_price); return Number.isFinite(p) && p > 0 ? p : null; }
 function virtualSignalKind(row) { return String(row?.signal || row?.type || row?.action || row?.direction || row?.entry_signal || row?.entrySignal || row?.entry_tier || row?.exit_tier || '').toLowerCase(); }
 function virtualTierScore(row, action = 'buy') { return Number(action === 'sell' ? (row?.exit_score ?? row?.exitScore ?? row?.score ?? 0) : (row?.entry_score ?? row?.entryScore ?? row?.signal_score ?? 0)); }

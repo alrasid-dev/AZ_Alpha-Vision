@@ -1120,8 +1120,7 @@ async function runScreener() {
             if (filters.price === 'under5' && d.price >= 5) return false;
             if (filters.price === '5to20' && (d.price < 5 || d.price > 20)) return false;
             if (filters.price === '20to50' && (d.price < 20 || d.price > 50)) return false;
-            if (filters.price === '50to100' && (d.price < 50 || d.price > 100)) return false;
-            if (filters.price === 'over100' && d.price <= 100) return false;
+            if (filters.price === '50to100' || filters.price === 'over100') return false; // قاعدة الماسح العامة: الحد الأعلى 50 دولارًا
         }
         if (filters.change !== 'any' && d.change != null) {
             if (filters.change === 'up' && d.change <= 0) return false;
@@ -1707,13 +1706,30 @@ let virtualTraderTimer = null;
 function virtualTraderKey() { return `az_virtual_trader_${currentUser?.id || 'guest'}`; }
 function saveVirtualTrader() { localStorage.setItem(virtualTraderKey(), JSON.stringify(virtualTrader)); }
 function loadVirtualTrader() {
-    try {
-        const raw = JSON.parse(localStorage.getItem(virtualTraderKey()) || 'null');
-        if (raw && Number.isFinite(Number(raw.cash))) virtualTrader = { ...virtualTrader, ...raw, positions: raw.positions || {}, trades: Array.isArray(raw.trades) ? raw.trades : [] };
-    } catch { virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: null, lastRun: null }; }
-    if (!virtualTrader.startedAt) { virtualTrader.startedAt = new Date().toISOString(); saveVirtualTrader(); }
+    // المصدر الوحيد للمحاكي هو Supabase؛ الواجهة لا تنفذ صفقات ولا تعتمد على localStorage.
+    virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: null, lastRun: null };
     renderVirtualTrader();
     syncVirtualTraderFromServer();
+}
+async function syncVirtualTraderFromServer() {
+    if (!currentUser?.id || !sb) return;
+    const uid = currentUser.id;
+    const [portfolioRes, positionsRes, tradesRes] = await Promise.all([
+        sb.from('virtual_portfolios').select('*').eq('user_id', uid).maybeSingle(),
+        sb.from('virtual_positions').select('*').eq('user_id', uid).order('updated_at', { ascending: false }),
+        sb.from('virtual_trades').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(100),
+    ]);
+    if (portfolioRes.error || positionsRes.error || tradesRes.error) {
+        console.warn('تعذر مزامنة المحاكي الخلفي:', portfolioRes.error || positionsRes.error || tradesRes.error);
+        return;
+    }
+    const portfolio = portfolioRes.data || { cash: VIRTUAL_STARTING_CASH };
+    const positions = Object.fromEntries((positionsRes.data || []).map(p => [String(p.symbol).toUpperCase(), {
+        symbol: p.symbol, qty: Number(p.qty), entryPrice: Number(p.entry_price), lastPrice: Number(p.last_price || p.entry_price), tier: p.entry_tier, reason: p.reason || '', enteredAt: p.entered_at,
+    }]));
+    const trades = (tradesRes.data || []).map(t => ({ id: t.id, symbol: t.symbol, action: t.action, qty: Number(t.qty), price: Number(t.price), entryPrice: t.entry_price == null ? null : Number(t.entry_price), tier: t.tier, pnl: t.pnl == null ? null : Number(t.pnl), reason: t.reason || '', at: t.created_at }));
+    virtualTrader = { cash: Number(portfolio.cash ?? VIRTUAL_STARTING_CASH), positions, trades, startedAt: portfolio.created_at || null, lastRun: trades[0]?.at || null };
+    renderVirtualTrader();
 }
 async function refreshVirtualTraderFromServer() { return syncVirtualTraderFromServer(); }
 function virtualPrice(row) { const p = Number(row?.price ?? row?.current_price ?? row?.last_price); return Number.isFinite(p) && p > 0 ? p : null; }
@@ -1824,43 +1840,32 @@ function virtualBuyEligible(row) {
     return ['A', 'B'].includes(virtualGrade(row));
 }
 function runVirtualTrader(mode = 'manual') {
-    const rows = virtualRowsFromSignals();
-    let buys = 0, sells = 0;
-    rows.forEach(row => {
-        const kind = virtualSignalKind(row);
-        const entryScore = Number(row?.entry_score ?? row?.entryScore ?? 0);
-        const exitScore = Number(row?.exit_score ?? row?.exitScore ?? 0);
-        const hasExitSignal = exitScore > 0 && (Boolean(row?.exit_tier || row?.exitTier || row?.exit_signal) || /sell|exit|خروج|بيع/.test(kind));
-        const hasEntrySignal = entryScore > 0 && (Boolean(row?.entry_tier || row?.entryTier || row?.entry_signal || row?.entrySignal) || /buy|entry|دخول|شراء/.test(kind));
-        const isExit = hasExitSignal;
-        const isEntry = hasEntrySignal;
-        const symbol = String(row.symbol || '').toUpperCase();
-        if (isExit && virtualTrader.positions[symbol]) { if (virtualExecuteSell(row)) sells++; }
-        else if (isEntry && virtualBuyEligible(row) && !virtualTrader.positions[symbol]) { if (virtualExecuteBuy(row)) buys++; }
-        const pos = virtualTrader.positions[symbol]; if (pos && virtualPrice(row)) pos.lastPrice = virtualPrice(row);
-    });
-    virtualTrader.lastRun = new Date().toISOString(); saveVirtualTrader(); renderVirtualTrader();
-    if (buys || sells) toast(`المتداول الافتراضي: ${buys} دخول و${sells} خروج محاكى`, 'success');
-    else if (mode === 'manual') toast('لم تتحقق إشارة جديدة مؤهلة للمحاكاة', 'warn');
+    // التشغيل والتنفيذ في Supabase/GitHub Actions فقط؛ هذه الدالة تحدّث العرض ولا تنفذ أوامر.
+    syncVirtualTraderFromServer();
+    if (mode === 'manual') toast('المتداول يعمل في الخلفية؛ الواجهة تعرض السجل فقط', 'info');
 }
 function resetVirtualTrader() {
-    if (!confirm('إعادة المتداول الافتراضي إلى 10,000 دولار وحذف سجل الصفقات؟')) return;
-    virtualTrader = { cash: VIRTUAL_STARTING_CASH, positions: {}, trades: [], startedAt: new Date().toISOString(), lastRun: null };
-    saveVirtualTrader(); renderVirtualTrader(); toast('تمت إعادة المحاكاة إلى 10,000 دولار');
+    toast('إعادة ضبط المحاكي تتم من الخادم مع حفظ السجل السابق؛ لا تُحذف الصفقات من الواجهة.', 'info');
+    syncVirtualTraderFromServer();
 }
 function renderVirtualTrader() {
     const equity = virtualEquity();
     const invested = Object.values(virtualTrader.positions).reduce((sum, p) => sum + Number(p.qty) * Number(p.entryPrice), 0);
+    const unrealized = Object.values(virtualTrader.positions).reduce((sum, p) => sum + (Number(p.lastPrice || p.entryPrice) - Number(p.entryPrice)) * Number(p.qty), 0);
+    const sells = virtualTrader.trades.filter(t => t.action === 'sell');
+    const realized = sells.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
     const pnl = equity - VIRTUAL_STARTING_CASH;
+    const returnPct = (pnl / VIRTUAL_STARTING_CASH) * 100;
+    const winRate = sells.length ? (sells.filter(t => Number(t.pnl) > 0).length / sells.length) * 100 : null;
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-    set('vtCash', `$${virtualTrader.cash.toFixed(2)}`); set('vtEquity', `$${equity.toFixed(2)}`); set('vtInvested', `$${invested.toFixed(2)}`); set('vtPnl', `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`); set('vtOpenPositions', String(Object.keys(virtualTrader.positions).length));
+    set('vtCash', `$${virtualTrader.cash.toFixed(2)}`); set('vtEquity', `$${equity.toFixed(2)}`); set('vtInvested', `$${invested.toFixed(2)}`); set('vtPnl', `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`); set('vtReturnPct', `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`); set('vtRealizedPnl', `${realized >= 0 ? '+' : ''}$${realized.toFixed(2)}`); set('vtUnrealizedPnl', `${unrealized >= 0 ? '+' : ''}$${unrealized.toFixed(2)}`); set('vtWinRate', winRate == null ? '—' : `${winRate.toFixed(1)}%`); set('vtOpenPositions', String(Object.keys(virtualTrader.positions).length));
     const posBody = document.getElementById('virtualPositionsBody');
     if (posBody) {
         const positions = Object.values(virtualTrader.positions);
-        posBody.innerHTML = positions.length ? positions.map(p => { const upnl = (Number(p.lastPrice || p.entryPrice) - Number(p.entryPrice)) * Number(p.qty); return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${Number(p.lastPrice || p.entryPrice).toFixed(2)}</td><td class="${upnl >= 0 ? 'text-green' : 'text-red'}">${upnl >= 0 ? '+' : ''}$${upnl.toFixed(2)}</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
+        posBody.innerHTML = positions.length ? positions.map(p => { const last = Number(p.lastPrice || p.entryPrice); const upnl = (last - Number(p.entryPrice)) * Number(p.qty); const pct = Number(p.entryPrice) ? ((last / Number(p.entryPrice) - 1) * 100) : 0; return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${upnl >= 0 ? 'text-green' : 'text-red'}">${upnl >= 0 ? '+' : ''}$${upnl.toFixed(2)}</td><td class="${pct >= 0 ? 'text-green' : 'text-red'}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
     }
     const tradeBody = document.getElementById('virtualTradesBody');
-    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`).join('') : '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
+    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => { const pnlValue = t.pnl == null ? null : Number(t.pnl); const pct = t.action === 'sell' && t.entryPrice ? ((Number(t.price) / Number(t.entryPrice) - 1) * 100) : null; return `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td class="${pnlValue == null || pnlValue >= 0 ? 'text-green' : 'text-red'}">${pnlValue == null ? '—' : `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toFixed(2)}`}</td><td class="${pct == null || pct >= 0 ? 'text-green' : 'text-red'}">${pct == null ? '—' : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`; }).join('') : '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
     set('virtualTraderStatus', virtualTrader.lastRun ? `آخر متابعة: ${new Date(virtualTrader.lastRun).toLocaleString('ar-SA')}` : 'لم تبدأ المتابعة الآلية بعد');
     const pnlEl = document.getElementById('vtPnl'); if (pnlEl) pnlEl.className = `val ${pnl >= 0 ? 'pos' : 'neg'}`;
 }

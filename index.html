@@ -909,9 +909,13 @@
 <div class="stats-block">
                 <h4>🤖 المتداول الافتراضي — 10,000$</h4>
                 <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$10,000.00</span></div>
-                <div class="stat-row"><span>قيمة الحساب</span><span class="val" id="vtEquity">$10,000.00</span></div>
                 <div class="stat-row"><span>المستثمر محاكيًا</span><span class="val" id="vtInvested">$0.00</span></div>
-                <div class="stat-row"><span>الربح/الخسارة</span><span class="val" id="vtPnl">$0.00</span></div>
+                <div class="stat-row"><span>قيمة الحساب</span><span class="val" id="vtEquity">$10,000.00</span></div>
+                <div class="stat-row"><span>الربح/الخسارة الإجمالي</span><span class="val" id="vtPnl">$0.00</span></div>
+                <div class="stat-row"><span>العائد الإجمالي</span><span class="val" id="vtReturnPct">0.00%</span></div>
+                <div class="stat-row"><span>ربح محقق من مبيعات</span><span class="val" id="vtRealizedPnl">$0.00</span></div>
+                <div class="stat-row"><span>ربح عائم للمراكز</span><span class="val" id="vtUnrealizedPnl">$0.00</span></div>
+                <div class="stat-row"><span>نسبة الصفقات الرابحة</span><span class="val" id="vtWinRate">—</span></div>
                 <div class="stat-row"><span>مراكز مفتوحة</span><span class="val" id="vtOpenPositions">0</span></div>
             </div>
             <div class="stats-block" style="margin-top:12px;">
@@ -981,11 +985,11 @@
                     <div class="glass" style="padding:14px;margin-bottom:18px;font-size:12px;line-height:1.8;color:var(--text-muted);">المتداول الافتراضي يتابع الإشارات المؤهلة ويشتري أو يبيع داخل المحاكاة فقط. كل صفقة تحتوي على السعر والوقت ودرجة الإشارة والسبب. لا يوجد تنفيذ حقيقي ولا اتصال بوسيط.</div>
                     <div class="section-title">المراكز المفتوحة <div class="line"></div></div>
                     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:24px;">
-                        <table class="data-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>سعر الدخول</th><th>السعر الأخير</th><th>الربح العائم</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
+                        <table class="data-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>سعر الدخول</th><th>السعر الأخير</th><th>الربح العائم</th><th>العائد %</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
                     </div>
                     <div class="section-title">سجل الصفقات المحاكاة <div class="line"></div></div>
                     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
-                        <table class="data-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
+                        <table class="data-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الربح/الخسارة</th><th>العائد %</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
                     </div>
                 </div>
 

@@ -23,8 +23,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          MAX_UNIVERSE: '5000'
+          MAX_UNIVERSE: '10000'
           MIN_PRICE: '5'
-          MAX_PRICE: '50'
+          MAX_PRICE: '70'
           YF_BATCH_SIZE: '50'
         run: python fetch_market_data.py --mode full

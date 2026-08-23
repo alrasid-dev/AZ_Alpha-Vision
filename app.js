@@ -942,6 +942,8 @@ function mapMarketRow(fund, tech) {
     const sma50 = tech?.sma50 ?? null;
     const sma200 = tech?.sma200 ?? null;
     const growth = fund?.eps_growth_this_year ?? null;
+    const eps = fund?.eps_ttm ?? fund?.eps_diluted ?? fund?.eps ?? null;
+    const profitable = eps != null ? Number(eps) > 0 : (fund?.pe != null && Number(fund.pe) > 0);
     const ltDebt = fund?.lt_debt_equity ?? null;
     const rsi = tech?.rsi14 ?? null;
     const relVolume = tech?.rel_volume ?? null;
@@ -965,7 +967,7 @@ function mapMarketRow(fund, tech) {
         volume: tech?.volume ?? 0, avgVolume: tech?.avg_volume ?? 0, avgVolume9: tech?.avg_volume_9 ?? 0, relVolume: relVolume ?? 1, relVolume9: relVolume9 ?? 1,
         sma20: tech?.sma20 ?? null, sma50, sma200, rsi, atr: tech?.atr14 ?? null,
         sector: fund.sector, pe: fund.pe, pb: fund.pb,
-        growth, epsNext: fund.eps_growth_next_year, eps5y: fund.eps_growth_5y, epsGrowthQtr: fund.eps_growth_qtr,
+        growth, eps, profitable, epsNext: fund.eps_growth_next_year, eps5y: fund.eps_growth_5y, epsGrowthQtr: fund.eps_growth_qtr,
         ltDebt, debtRatio: ltDebt,
         perfWeek: tech?.perf_week ?? null,
         hasIssues, hasPlan, missedEarnings: false,
@@ -1270,8 +1272,15 @@ function loadPreset(p) {
 }
 
 // ===== WEEKLY PICKS =====
+function updateWeeklyScanMeta(status = 'اكتمل الفحص') {
+    const meta = document.getElementById('weeklyScanMeta');
+    if (!meta) return;
+    const now = new Date();
+    meta.innerHTML = `<strong style="color:var(--accent-cyan);">آخر فحص:</strong> ${now.toLocaleString('ar-SA')} — ${status}<br><strong style="color:var(--accent-cyan);">الشروط المطبقة:</strong> السعر ${GENERAL_MARKET_RULE.minPrice}–${GENERAL_MARKET_RULE.maxPrice} دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد المالية والصحة والطاقة والعقارات، السعر عند أو تحت 80% من SMA50، نمو EPS موجب، ودون مشاكل بيانات.`;
+}
 async function runWeeklyScan() {
     const tb = document.getElementById('picksTableBody');
+    updateWeeklyScanMeta('جارٍ الفحص من قاعدة البيانات');
     tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري الترشيح من قاعدة البيانات...</td></tr>';
 
     const universe = await fetchUniverse();
@@ -1279,15 +1288,17 @@ async function runWeeklyScan() {
         d.price != null && d.price >= GENERAL_MARKET_RULE.minPrice && d.price <= GENERAL_MARKET_RULE.maxPrice &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
         isCommonStockRow(d) &&
-        (d.sma50 == null || d.price <= d.sma50 * 0.8) &&
-        d.growth != null && d.growth > 0 &&
+        ((d.sma20 != null && d.sma50 != null && d.sma20 > d.sma50) ||
+         (d.sma50 != null && d.sma200 != null && d.sma50 > d.sma200)) &&
+        d.profitable === true && d.growth != null && d.growth > 0 &&
         !d.hasIssues && d.hasPlan !== false
     );
 
     candidates.forEach(d => {
         let score = 0;
-        if (d.sma50!=null && d.price>d.sma50) score+=2;
-        if (d.sma200!=null && d.price>d.sma200) score+=2;
+        if (d.sma20!=null && d.sma50!=null && d.sma20>d.sma50) score+=3;
+        if (d.sma50!=null && d.sma200!=null && d.sma50>d.sma200) score+=3;
+        if (d.profitable === true) score+=3;
         if (d.rsi!=null && d.rsi>40 && d.rsi<60) score+=1;
         if ((d.change??0)>0) score+=1;
         if ((d.relVolume??0)>1) score+=1;
@@ -1309,12 +1320,14 @@ async function runWeeklyScan() {
         document.getElementById('siteAvgReturn').textContent = '0.00%';
         document.getElementById('siteWinRate').textContent = '0%';
         document.getElementById('sitePicksDesc').textContent = 'لا توجد ترشيحات تحقق شروط السعر وSMA50 وفلاتر Finviz الحالية.';
+        updateWeeklyScanMeta('اكتمل الفحص — لا توجد نتائج مطابقة');
         tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 وSMA50 وفلاتر Finviz</td></tr>';
         toast('لم توجد ترشيحات مطابقة للشروط الحالية', 'warn');
         return;
     }
 
-    const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, exchange: s.exchange, industry: s.industry, company: s.company, date: new Date().toISOString().split('T')[0], score: s.pickScore }));
+        updateWeeklyScanMeta(`اكتمل الفحص — ${top.length} نتيجة`);
+    const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, exchange: s.exchange, industry: s.industry, company: s.company, date: new Date().toISOString().split('T')[0], scannedAt: new Date().toISOString(), score: s.pickScore }));
     LocalCache.setPicks(pickData);
     updateSitePerformance();
 

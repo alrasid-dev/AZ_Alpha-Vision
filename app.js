@@ -939,8 +939,14 @@ let _universeCache = null; // { t: timestamp, rows: [...] } لتفادي إعا�
 
 function mapMarketRow(fund, tech) {
     const price = tech?.price ?? fund?.price ?? null;
+    const sma20 = tech?.sma20 ?? null;
     const sma50 = tech?.sma50 ?? null;
     const sma200 = tech?.sma200 ?? null;
+    const prevSma20 = tech?.prev_sma20 ?? null;
+    const prevSma50 = tech?.prev_sma50 ?? null;
+    const prevSma200 = tech?.prev_sma200 ?? null;
+    const sma20CrossUp = [prevSma20, prevSma50, sma20, sma50].every(v => Number.isFinite(Number(v))) && Number(prevSma20) <= Number(prevSma50) && Number(sma20) > Number(sma50);
+    const sma50CrossUp = [prevSma50, prevSma200, sma50, sma200].every(v => Number.isFinite(Number(v))) && Number(prevSma50) <= Number(prevSma200) && Number(sma50) > Number(sma200);
     const growth = fund?.eps_growth_this_year ?? null;
     const eps = fund?.eps_ttm ?? fund?.eps_diluted ?? fund?.eps ?? null;
     const profitable = eps != null ? Number(eps) > 0 : (fund?.pe != null && Number(fund.pe) > 0);
@@ -965,7 +971,7 @@ function mapMarketRow(fund, tech) {
         symbol: fund.symbol, company: fund.company,
         price, change: tech?.change_pct ?? null,
         volume: tech?.volume ?? 0, avgVolume: tech?.avg_volume ?? 0, avgVolume9: tech?.avg_volume_9 ?? 0, relVolume: relVolume ?? 1, relVolume9: relVolume9 ?? 1,
-        sma20: tech?.sma20 ?? null, sma50, sma200, rsi, atr: tech?.atr14 ?? null,
+        sma20, sma50, sma200, prevSma20, prevSma50, prevSma200, sma20CrossUp, sma50CrossUp, rsi, atr: tech?.atr14 ?? null,
         sector: fund.sector, pe: fund.pe, pb: fund.pb,
         growth, eps, profitable, epsNext: fund.eps_growth_next_year, eps5y: fund.eps_growth_5y, epsGrowthQtr: fund.eps_growth_qtr,
         ltDebt, debtRatio: ltDebt,
@@ -1276,19 +1282,20 @@ function updateWeeklyScanMeta(status = 'اكتمل الفحص') {
     const meta = document.getElementById('weeklyScanMeta');
     if (!meta) return;
     const now = new Date();
-    meta.innerHTML = `<strong style="color:var(--accent-cyan);">آخر فحص:</strong> ${now.toLocaleString('ar-SA')} — ${status}<br><strong style="color:var(--accent-cyan);">الشروط المطبقة:</strong> السعر ${GENERAL_MARKET_RULE.minPrice}–${GENERAL_MARKET_RULE.maxPrice} دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد المالية والصحة والطاقة والعقارات، السعر عند أو تحت 80% من SMA50، نمو EPS موجب، ودون مشاكل بيانات.`;
+    meta.innerHTML = `<strong style="color:var(--accent-cyan);">آخر فحص:</strong> ${now.toLocaleString('ar-SA')} — ${status}<br><strong style="color:var(--accent-cyan);">الشروط المطبقة:</strong> السعر ${GENERAL_MARKET_RULE.minPrice}–${GENERAL_MARKET_RULE.maxPrice} دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد المالية والصحة والطاقة والعقارات، SMA20 أعلى من SMA50 أو SMA50 أعلى من SMA200، ربحية موجبة، نمو EPS موجب، ودون مشاكل بيانات.`;
 }
 async function runWeeklyScan() {
     const tb = document.getElementById('picksTableBody');
     updateWeeklyScanMeta('جارٍ الفحص من قاعدة البيانات');
-    tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري الترشيح من قاعدة البيانات...</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري الترشيح من قاعدة البيانات...</td></tr>';
 
     const universe = await fetchUniverse();
     const candidates = universe.filter(d =>
         d.price != null && d.price >= GENERAL_MARKET_RULE.minPrice && d.price <= GENERAL_MARKET_RULE.maxPrice &&
         !['finance','financial','financials','healthcare','energy','reits'].includes(d.sector) &&
         isCommonStockRow(d) &&
-        ((d.sma20 != null && d.sma50 != null && d.sma20 > d.sma50) ||
+        ((d.sma20CrossUp || d.sma50CrossUp) ||
+         (d.sma20 != null && d.sma50 != null && d.sma20 > d.sma50) ||
          (d.sma50 != null && d.sma200 != null && d.sma50 > d.sma200)) &&
         d.profitable === true && d.growth != null && d.growth > 0 &&
         !d.hasIssues && d.hasPlan !== false
@@ -1298,6 +1305,8 @@ async function runWeeklyScan() {
         let score = 0;
         if (d.sma20!=null && d.sma50!=null && d.sma20>d.sma50) score+=3;
         if (d.sma50!=null && d.sma200!=null && d.sma50>d.sma200) score+=3;
+        if (d.sma20CrossUp) score+=4;
+        if (d.sma50CrossUp) score+=4;
         if (d.profitable === true) score+=3;
         if (d.rsi!=null && d.rsi>40 && d.rsi<60) score+=1;
         if ((d.change??0)>0) score+=1;
@@ -1321,12 +1330,12 @@ async function runWeeklyScan() {
         document.getElementById('siteWinRate').textContent = '0%';
         document.getElementById('sitePicksDesc').textContent = 'لا توجد ترشيحات تحقق شروط السعر وSMA50 وفلاتر Finviz الحالية.';
         updateWeeklyScanMeta('اكتمل الفحص — لا توجد نتائج مطابقة');
-        tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 وSMA50 وفلاتر Finviz</td></tr>';
+        tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد ترشيحات مطابقة لشروط 5–50 واتجاه المتوسطات وربحية ونمو</td></tr>';
         toast('لم توجد ترشيحات مطابقة للشروط الحالية', 'warn');
         return;
     }
 
-        updateWeeklyScanMeta(`اكتمل الفحص — ${top.length} نتيجة`);
+    updateWeeklyScanMeta(`اكتمل الفحص — ${top.length} نتيجة`);
     const pickData = top.map(s => ({ symbol: s.symbol, price: s.price, exchange: s.exchange, industry: s.industry, company: s.company, date: new Date().toISOString().split('T')[0], scannedAt: new Date().toISOString(), score: s.pickScore }));
     LocalCache.setPicks(pickData);
     updateSitePerformance();
@@ -1334,8 +1343,9 @@ async function runWeeklyScan() {
     const sn = { tech:'تكنولوجيا', finance:'مالي', healthcare:'صحية', consumer:'استهلاكي', industrial:'صناعي', energy:'طاقة', reits:'عقارات', other:'أخرى' };
     top.forEach((s,i) => {
         const grade = s.pickScore>=10?'⭐ ممتاز':s.pickScore>=7?'✅ جيد':'📊 مقبول';
+        const trendReason = s.sma20CrossUp ? 'تقاطع SMA20 فوق SMA50' : s.sma50CrossUp ? 'تقاطع SMA50 فوق SMA200' : (s.sma20>s.sma50 ? 'SMA20 أعلى من SMA50' : 'SMA50 أعلى من SMA200');
         const gc = s.pickScore>=10?'var(--accent-green)':s.pickScore>=7?'var(--accent-cyan)':'var(--accent-gold)';
-        tb.innerHTML += `<tr><td class="font-mono">${i+1}</td><td><div class="sym">${s.symbol}</div></td><td class="font-mono">$${s.price.toFixed(2)}</td><td>${sn[s.sector]||s.sector}</td><td class="font-mono ${s.ltDebt!=null&&s.ltDebt<0.3?'text-green':'text-gold'}">${s.ltDebt!=null?(s.ltDebt*100).toFixed(1)+'%':'—'}</td><td class="font-mono text-cyan">${s.growth!=null?s.growth.toFixed(1)+'%':'—'}</td><td class="font-mono text-green">${s.growth!=null?s.growth.toFixed(1)+'%':'—'}</td><td><span style="background:${gc};color:#000;padding:4px 12px;border-radius:12px;font-weight:700;font-size:11px;">${grade}</span></td></tr>`;
+        tb.innerHTML += `<tr><td class="font-mono">${i+1}</td><td><div class="sym">${s.symbol}</div></td><td class="font-mono">$${s.price.toFixed(2)}</td><td>${sn[s.sector]||s.sector}</td><td class="font-mono ${s.ltDebt!=null&&s.ltDebt<0.3?'text-green':'text-gold'}">${s.ltDebt!=null?(s.ltDebt*100).toFixed(1)+'%':'—'}</td><td class="font-mono text-cyan">${s.growth!=null?s.growth.toFixed(1)+'%':'—'}</td><td class="font-mono text-green">${s.growth!=null?s.growth.toFixed(1)+'%':'—'}</td><td><span style="background:${gc};color:#000;padding:4px 12px;border-radius:12px;font-weight:700;font-size:11px;">${grade}</span></td><td class="text-muted">${trendReason}</td></tr>`;
     });
     toast(`✅ ${top.length} ترشيح أسبوعي`);
 }

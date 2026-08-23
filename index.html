@@ -1023,7 +1023,7 @@
                     <div class="filters-grid" style="display:none !important;">
                         <div class="filter-box">
                             <label>💵 نطاق السعر</label>
-                            <select id="fPrice"><option value="5to50" selected>$5 — $50</option><option value="5to20">$5 — $20</option><option value="20to50">$20 — $50</option></select>
+                            <select id="fPrice"><option value="5to70" selected>$5 — $70</option><option value="5to20">$5 — $20</option><option value="20to70">$20 — $70</option></select>
                         </div>
                         <div class="filter-box">
                             <label>📊 الحجم النسبي فقط</label>
@@ -1178,13 +1178,28 @@
                         <button class="preset-btn" onclick="runWeeklyScan()" style="border-color:var(--accent-cyan); color:var(--accent-cyan);">🔄 مسح الأسبوع</button>
                     </div>
                     <div id="weeklyScanMeta" class="text-muted" style="margin:-4px 0 16px;line-height:1.9;padding:12px 16px;border:1px solid var(--border);border-radius:var(--radius);background:rgba(255,255,255,.03);">
-                        آخر فحص: لم يُشغّل بعد<br>
-                        الشروط: السعر 5–50 دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد القطاعات المالية والصحية والطاقة والعقارات، SMA20 أعلى من SMA50 أو SMA50 أعلى من SMA200، ربحية موجبة، نمو EPS موجب، ودون مشاكل بيانات.
+                        <div id="weeklyScanStatus">آخر فحص: لم يُشغّل بعد</div>
+                        <details style="margin-top:6px;">
+                            <summary style="cursor:pointer;color:var(--accent-cyan);font-weight:700;">عرض شروط الترشيح</summary>
+                            <div style="margin-top:8px;line-height:1.9;">
+                                <strong>المصدر:</strong> نتائج القوالب الجاهزة في الماسح الحقيقي: توافق المؤشرات الأربعة، قيمة وربحية، نمو وربحية، وزخم سعري وحجم.
+                                <br><strong>النطاق العام:</strong> سعر 5–70 دولارًا، NYSE/NASDAQ، سهم عادي، وبيانات صحيحة.
+                                <br><strong>الاختيار:</strong> تُجمع النتائج من القوالب الأربعة ويُحذف التكرار، ثم تُرتّب حسب عدد القوالب ودرجة الدخول وقوة الإشارة. تظهر أفضل 7 ترشيحات و7 أسهم للمتابعة.
+                            </div>
+                        </details>
                     </div>
+                    <div class="section-title" style="margin:10px 0 8px;">⭐ أفضل 7 ترشيحات <div class="line"></div></div>
+                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:18px;">
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>الرمز</th><th>السعر</th><th>القوالب</th><th>الإشارة</th><th>الدرجة</th><th>سبب الاختيار</th></tr></thead>
+                            <tbody id="picksTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="section-title" style="margin:10px 0 8px;">👀 7 أسهم للمتابعة <div class="line"></div></div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border);">
                         <table class="data-table">
-                            <thead><tr><th>#</th><th>الرمز</th><th>السعر</th><th>القطاع</th><th>الديون</th><th>EPS</th><th>النمو</th><th>التقييم</th><th>سبب الاتجاه</th></tr></thead>
-                            <tbody id="picksTableBody"></tbody>
+                            <thead><tr><th>#</th><th>الرمز</th><th>السعر</th><th>القوالب</th><th>الإشارة</th><th>الدرجة</th><th>سبب المتابعة</th></tr></thead>
+                            <tbody id="watchPicksTableBody"></tbody>
                         </table>
                     </div>
                 </div>

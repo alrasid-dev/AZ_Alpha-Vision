@@ -216,7 +216,7 @@ def download_chunk_with_retry(yf, chunk: list[str], period: str) -> pd.DataFrame
 def fetch_prices_and_technicals(tickers: list[str], full_history=True) -> dict[str, dict[str, Any]]:
     import yfinance as yf
     results: dict[str, dict[str, Any]] = {}
-    period = "1y" if full_history else "5d"
+    period = "2y" if full_history else "5d"
     chunks = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
     for index, chunk in enumerate(chunks, 1):
         log.info("yfinance دفعة %s/%s: %s سهم", index, len(chunks), len(chunk))
@@ -347,11 +347,16 @@ def load_quick_symbols() -> list[str]:
 
 
 def run_quick():
-    technicals = fetch_prices_and_technicals(load_quick_symbols(), full_history=False)
+    # نستخدم تاريخ سنة حتى لا تبقى RSI وSMA20/SMA50/SMA200 فارغة.
+    # هذا المسار يحدّث الأسعار الحية والفنيات معًا لرموز الماسح الحالية.
+    technicals = fetch_prices_and_technicals(load_quick_symbols(), full_history=True)
     now = pd.Timestamp.now(tz="UTC").isoformat()
-    rows = [{"symbol": symbol, "price": values["price"], "change_pct": values["change_pct"], "volume": values["volume"], "updated_at": now} for symbol, values in technicals.items()]
-    if upsert_rows("live_quotes", rows) == 0:
+    quote_rows = [{"symbol": symbol, "price": values["price"], "change_pct": values["change_pct"], "volume": values["volume"], "updated_at": now} for symbol, values in technicals.items()]
+    technical_rows = [{"symbol": symbol, **values, "updated_at": now} for symbol, values in technicals.items()]
+    if upsert_rows("live_quotes", quote_rows) == 0:
         raise RuntimeError("لم تُحفظ أي أسعار حية")
+    if upsert_rows("market_technicals", technical_rows) == 0:
+        raise RuntimeError("لم تُحفظ أي مؤشرات فنية")
 
 
 if __name__ == "__main__":

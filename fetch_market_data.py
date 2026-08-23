@@ -144,7 +144,17 @@ def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
         return {}
 
     def sma(period: int):
-        return round(float(close.rolling(period).mean().iloc[-1]), 4) if len(close) >= period else None
+        series = close.rolling(period).mean().dropna()
+        return round(float(series.iloc[-1]), 4) if len(series) else None
+
+    def previous_sma(period: int):
+        series = close.rolling(period).mean().dropna()
+        return float(series.iloc[-2]) if len(series) >= 2 else None
+
+    def performance(period: int):
+        if len(close) > period and float(close.iloc[-period - 1]) != 0:
+            return round((price / float(close.iloc[-period - 1]) - 1) * 100, 2)
+        return None
 
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
@@ -172,12 +182,20 @@ def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
         "avg_volume_9": round(avg9, 2),
         "rel_volume": round(current_volume / avg20, 2) if avg20 else 1.0,
         "rel_volume_9": round(current_volume / avg9, 2) if avg9 else 1.0,
-        "sma20": round(float(close.rolling(20).mean().iloc[-1]), 4) if len(close) >= 20 else None,
+        "sma20": sma(20),
         "sma50": sma(50),
         "sma200": sma(200),
+        "sma20_change": round((sma(20) / previous_sma(20) - 1) * 100, 4) if sma(20) is not None and previous_sma(20) not in (None, 0) else None,
+        "sma50_change": round((sma(50) / previous_sma(50) - 1) * 100, 4) if sma(50) is not None and previous_sma(50) not in (None, 0) else None,
+        "sma200_change": round((sma(200) / previous_sma(200) - 1) * 100, 4) if sma(200) is not None and previous_sma(200) not in (None, 0) else None,
+        "distance_from_sma20": round((price / sma(20) - 1) * 100, 4) if sma(20) not in (None, 0) else None,
         "rsi14": round(float(rsi), 2) if rsi is not None and pd.notna(rsi) else None,
         "atr14": round(float(atr), 4) if atr is not None and pd.notna(atr) else None,
         "perf_week": perf_week,
+        "perf_month": performance(21),
+        "perf_quarter": performance(63),
+        "perf_half": performance(126),
+        "perf_year": performance(252),
     }
 
 

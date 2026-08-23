@@ -25,5 +25,6 @@ jobs:
           curl --fail-with-body --silent --show-error \
             -X POST "$SUPABASE_URL/functions/v1/run-virtual-trader" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $NOTIFY_RUN_KEY" \
             -H "x-trader-key: $NOTIFY_RUN_KEY" \
             --data '{}'

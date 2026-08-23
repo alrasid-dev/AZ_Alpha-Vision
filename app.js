@@ -1312,13 +1312,19 @@ async function runWeeklyScan() {
 
     signalRows.forEach(row => {
         const symbol = String(row?.symbol || '').trim().toUpperCase();
-        const base = universeMap[symbol];
+        const base = universeMap[symbol] || null;
         const entryScore = Number(row?.entry_score ?? row?.entryScore ?? 0);
         const preset = String(row?.preset || '').trim();
-        if (!symbol || !base || entryScore <= 0 || !isCommonStockRow(base)) return;
+        const price = Number(row?.price ?? base?.price);
+        const source = { ...(base || {}), ...row, symbol, price };
+        const sourceText = [source.industry, source.company, source.sector, source.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
+        const sourceExchange = String(source.exchange || '').trim().toUpperCase();
+        const sourceExchangeOk = !sourceExchange || GENERAL_MARKET_RULE.exchanges.has(sourceExchange);
+        const sourceSafe = symbol && Number.isFinite(price) && price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice && sourceExchangeOk && !EXCLUDED_SYMBOLS.has(symbol) && !/[.\\-]/.test(symbol) && !EXCLUDED_SECTOR_RE.test(sourceText) && !/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(sourceText);
+        if (!sourceSafe || entryScore <= 0) return;
         let item = merged.get(symbol);
         if (!item) {
-            item = { ...base, symbol, price: Number(base.price), presets: new Set(), signalNames: new Set(), tiers: new Set(), bestEntryScore: 0, totalEntryScore: 0 };
+            item = { ...source, symbol, price, presets: new Set(), signalNames: new Set(), tiers: new Set(), bestEntryScore: 0, totalEntryScore: 0 };
             merged.set(symbol, item);
         }
         if (preset) item.presets.add(preset);
@@ -1472,10 +1478,15 @@ async function loadSignalsData(force = false) {
         const blocked = new Set(['DDV']);
         const fundMap = Object.fromEntries((fundamentals || []).map(f => [String(f.symbol || '').toUpperCase(), f]));
         const validSignalRow = (row) => {
-            const symbol = String(row?.symbol || '').toUpperCase();
+            const symbol = String(row?.symbol || '').trim().toUpperCase();
             const fund = fundMap[symbol];
             const price = Number(row?.price ?? fund?.price);
-            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price > 0 && fund && isCommonStockRow({ ...fund, symbol, price });
+            const source = { ...(fund || {}), ...row, symbol, price };
+            const exchange = String(source.exchange || '').trim().toUpperCase();
+            const text = [source.industry, source.company, source.sector, source.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
+            const exchangeOk = !exchange || GENERAL_MARKET_RULE.exchanges.has(exchange);
+            const instrumentOk = !/[.\\-]/.test(symbol) && !/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text);
+            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice && exchangeOk && instrumentOk && !EXCLUDED_SECTOR_RE.test(text);
         };
         SIGNALS_CACHE = (sig || []).filter(validSignalRow);
         SIGNALS_ALERTS = (alerts || []).filter(validSignalRow);

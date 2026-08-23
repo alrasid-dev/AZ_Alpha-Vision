@@ -1282,7 +1282,7 @@ function updateWeeklyScanMeta(status = 'اكتمل الفحص') {
     const meta = document.getElementById('weeklyScanMeta');
     if (!meta) return;
     const now = new Date();
-    meta.innerHTML = `<strong style="color:var(--accent-cyan);">آخر فحص:</strong> ${now.toLocaleString('ar-SA')} — ${status}<br><strong style="color:var(--accent-cyan);">الشروط المطبقة:</strong> السعر ${GENERAL_MARKET_RULE.minPrice}–${GENERAL_MARKET_RULE.maxPrice} دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد المالية والصحة والطاقة والعقارات، SMA20 أعلى من SMA50 أو SMA50 أعلى من SMA200، ربحية موجبة، نمو EPS موجب، ودون مشاكل بيانات.`;
+    meta.innerHTML = `<strong style="color:var(--accent-cyan);">آخر فحص:</strong> ${now.toLocaleString('ar-SA')} — ${status}<br><strong style="color:var(--accent-cyan);">الشروط المطبقة:</strong> السعر ${GENERAL_MARKET_RULE.minPrice}–${GENERAL_MARKET_RULE.maxPrice} دولارًا، بورصتا NYSE/NASDAQ، أسهم عادية فقط، استبعاد المالية والصحة والطاقة والعقارات، SMA20 أعلى من SMA50 أو SMA50 أعلى من SMA200، ربحية موجبة، نمو EPS موجب، ونسبة الدين إلى حقوق الملكية أقل من 0.6، ودون مشاكل بيانات.`;
 }
 async function runWeeklyScan() {
     const tb = document.getElementById('picksTableBody');
@@ -1298,6 +1298,7 @@ async function runWeeklyScan() {
          (d.sma20 != null && d.sma50 != null && d.sma20 > d.sma50) ||
          (d.sma50 != null && d.sma200 != null && d.sma50 > d.sma200)) &&
         d.profitable === true && d.growth != null && d.growth > 0 &&
+        d.ltDebt != null && Number(d.ltDebt) < 0.6 &&
         !d.hasIssues && d.hasPlan !== false
     );
 
@@ -1308,6 +1309,7 @@ async function runWeeklyScan() {
         if (d.sma20CrossUp) score+=4;
         if (d.sma50CrossUp) score+=4;
         if (d.profitable === true) score+=3;
+        if (d.ltDebt!=null && d.ltDebt<0.6) score+=2;
         if (d.rsi!=null && d.rsi>40 && d.rsi<60) score+=1;
         if ((d.change??0)>0) score+=1;
         if ((d.relVolume??0)>1) score+=1;

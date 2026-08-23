@@ -16,15 +16,17 @@ jobs:
       - name: Run educational virtual trader
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "$SUPABASE_URL" || { echo "Missing SUPABASE_URL"; exit 1; }
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
           test -n "$NOTIFY_RUN_KEY" || { echo "Missing NOTIFY_RUN_KEY"; exit 1; }
           curl --fail-with-body --silent --show-error \
             -X POST "$SUPABASE_URL/functions/v1/run-virtual-trader" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $NOTIFY_RUN_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "x-trader-key: $NOTIFY_RUN_KEY" \
             --data '{}'

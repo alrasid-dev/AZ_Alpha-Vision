@@ -1297,6 +1297,27 @@ function weeklySignalDetails(row) {
     return [];
 }
 
+function weeklyEntryPlan(row) {
+    const price = Number(row?.price);
+    if (!Number.isFinite(price) || price <= 0) return { price: null, label: 'لا يوجد سعر كافٍ', reason: 'بيانات السعر غير كافية', avoid: true };
+    const sma20 = Number(row?.sma20), sma50 = Number(row?.sma50), rsi = Number(row?.rsi14), change = Number(row?.change ?? row?.change_pct ?? 0);
+    const supports = [sma20, sma50].filter(v => Number.isFinite(v) && v > 0 && v <= price * 1.08).sort((a, b) => b - a);
+    const support = supports[0] || null;
+    const reasons = [];
+    const chase = (Number.isFinite(rsi) && rsi >= 70) || change >= 6 || (Number.isFinite(sma20) && sma20 > 0 && price > sma20 * 1.10);
+    if (Number.isFinite(rsi) && rsi >= 70) reasons.push('RSI في تشبع شرائي');
+    if (change >= 6) reasons.push(`ارتفاع حديث ${change.toFixed(1)}%`);
+    if (Number.isFinite(sma20) && sma20 > 0 && price > sma20 * 1.10) reasons.push('السعر بعيد عن SMA20');
+    if (support) reasons.push(`منطقة دعم قرب SMA${support === sma20 ? '20' : '50'} عند $${support.toFixed(2)}`);
+    if (chase) {
+        const target = support ? Math.min(price, support * 1.01) : price * 0.97;
+        return { price: Math.max(5, Number(target.toFixed(2))), label: 'انتظار تراجع', reason: reasons.join('؛ ') || 'لا دخول بعد الارتفاع', avoid: true };
+    }
+    const target = support ? Math.min(price, support * 1.02) : price;
+    reasons.push('لا توجد مطاردة واضحة للسعر');
+    return { price: Number(target.toFixed(2)), label: 'دخول عند التأكيد', reason: reasons.join('؛ '), avoid: false };
+}
+
 async function runWeeklyScan() {
     const tb = document.getElementById('picksTableBody');
     const watchTb = document.getElementById('watchPicksTableBody');
@@ -1342,7 +1363,9 @@ async function runWeeklyScan() {
         item.templateCount = templateCount;
         item.signalCount = signalCount;
         item.bestTier = bestTier;
-        item.pickScore = templateCount * 10 + item.bestEntryScore * 4 + signalCount * 2 + item.totalEntryScore;
+        item.entryPlan = weeklyEntryPlan(item);
+        // نخفض ترتيب السهم إذا كان في تشبع شرائي أو بعيدًا عن منطقة الدعم؛ يبقى للمتابعة بدل مطاردة السعر.
+        item.pickScore = templateCount * 10 + item.bestEntryScore * 4 + signalCount * 2 + item.totalEntryScore - (item.entryPlan.avoid ? 8 : 0);
         return item;
     }).sort((a, b) => b.pickScore - a.pickScore || b.templateCount - a.templateCount || b.bestEntryScore - a.bestEntryScore || (b.change ?? 0) - (a.change ?? 0));
 
@@ -1365,16 +1388,19 @@ async function runWeeklyScan() {
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
     const nowIso = new Date().toISOString();
-    LocalCache.setPicks(top.map(s => ({ symbol: s.symbol, price: s.price, exchange: s.exchange, industry: s.industry, company: s.company, date: nowIso.split('T')[0], scannedAt: nowIso, score: s.pickScore })));
+    LocalCache.setPicks(top.map(s => ({ symbol: s.symbol, price: s.price, entryPrice: s.entryPlan?.price ?? s.price, entryStatus: s.entryPlan?.label, entryReason: s.entryPlan?.reason, exchange: s.exchange, industry: s.industry, company: s.company, date: nowIso.split('T')[0], scannedAt: nowIso, score: s.pickScore })));
     updateSitePerformance();
 
     const renderRow = (s, i, watchOnly = false) => {
         const presets = [...s.presets].map(p => SIG_PRESET_LABEL[p] || p).filter(Boolean).join('، ') || '—';
         const signals = [...s.signalNames].join('، ') || 'إشارة دخول من القالب';
-        const reason = `${watchOnly ? 'متابعة تحتاج تأكيدًا إضافيًا' : 'اختيار قوي'}؛ ظهر في ${s.templateCount} قالب: ${presets}. ${s.bestTier} (${s.bestEntryScore}/4)، والمؤشرات: ${signals}.`;
+        const plan = s.entryPlan || weeklyEntryPlan(s);
+        const entryText = plan.price ? `$${plan.price.toFixed(2)} — ${plan.label}` : 'غير متاح';
+        const reason = `${watchOnly ? 'متابعة تحتاج تأكيدًا إضافيًا' : 'اختيار قوي'}؛ ظهر في ${s.templateCount} قالب: ${presets}. ${s.bestTier} (${s.bestEntryScore}/4)، والمؤشرات: ${signals}. سعر الدخول المقترح: ${entryText}. ${plan.reason}.`;
         const badge = watchOnly ? '👀 متابعة' : (s.bestTier === 'صريح' ? '⭐ صريح' : s.bestTier === 'مؤكد' ? '✅ مؤكد' : '📌 دخول');
         const color = watchOnly ? 'var(--accent-gold)' : (s.bestTier === 'صريح' ? 'var(--accent-green)' : 'var(--accent-cyan)');
-        return `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td>${sigEsc(presets)}</td><td><span style="color:${color};font-weight:700;">${badge}</span></td><td class="font-mono">${s.bestEntryScore}/4</td><td class="text-muted">${sigEsc(reason)}</td></tr>`;
+        const entryColor = plan.avoid ? 'var(--accent-gold)' : 'var(--accent-green)';
+        return `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono" style="color:${entryColor};font-weight:700;">${sigEsc(entryText)}</td><td>${sigEsc(presets)}</td><td><span style="color:${color};font-weight:700;">${badge}</span></td><td class="font-mono">${s.bestEntryScore}/4</td><td class="text-muted">${sigEsc(reason)}</td></tr>`;
     };
     top.forEach((s, i) => { tb.innerHTML += renderRow(s, i, false); });
     if (watchTb) {

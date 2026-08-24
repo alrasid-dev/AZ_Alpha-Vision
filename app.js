@@ -18,6 +18,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 let currentUser = null, currentProfile = null, chartInstance = null, watchlist = [], screenerResults = [], isScanning = false;
+let activePresetKey = null;
 
 // ===== UTILS =====
 function toast(msg, type='success') {
@@ -1233,6 +1234,9 @@ async function runScreener() {
     if (typeof runVirtualTrader === 'function') runVirtualTrader('auto');
     toast(`✅ ${screenerResults.length} سهم مطابق`);
     isScanning = false;
+    // نتائج القالب نفسها تُرسل مباشرة إلى ترشيحات الأسبوع.
+    // أي فلترة ناجحة، جاهزة أو مخصصة، تصبح مصدر ترشيحات الأسبوع والتنبيه.
+    await runWeeklyScan();
 }
 
 function renderScreener() {
@@ -1254,6 +1258,7 @@ function renderScreener() {
 }
 
 function clearScreener() {
+    activePresetKey = null;
     ['fPrice','fChange','fSector','fRSI','fSMA50','fSMA200','fGrade','fPB','fEPSGrowth','fEPSNext','fEPS5Y','fLTDebt','fPerfWeek','fSMA20','fCurVol'].forEach(id=>{
         const el = document.getElementById(id); if (el) el.value = 'any';
     });
@@ -1266,6 +1271,7 @@ function clearScreener() {
 }
 
 function loadPreset(p) {
+    activePresetKey = p;
     const presets = {
         growth: { price:'5to20', volume:'over300k', change:'up', sector:'any', rsi:'neutral', sma50:'above', sma200:'above', grade:'ab', relVol:'over1', limit:'100', pb:'any', epsGrowth:'over15', epsNext:'over15', eps5y:'any', ltDebt:'under0.6', perfWeek:'any', sma20:'any', curVol:'any' },
         value: { price:'5to70', volume:'over100k', change:'any', sector:'any', rsi:'oversold', sma50:'any', sma200:'any', grade:'any', relVol:'any', limit:'100', pb:'under1', epsGrowth:'any', epsNext:'any', eps5y:'any', ltDebt:'under0.6', perfWeek:'any', sma20:'any', curVol:'any' },
@@ -1350,7 +1356,19 @@ async function runWeeklyScan() {
     const universe = await fetchUniverse(true);
     const universeMap = Object.fromEntries(universe.map(row => [String(row.symbol || '').toUpperCase(), row]));
     const merged = new Map();
-    const signalRows = Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : [];
+    // عند تشغيل قالب من أيقونة فلترة الأسهم، تكون نتائجه المحلية هي المصدر المباشر للأسبوع.
+    // نستخدم بيانات screenerResults أولًا حتى لا تنفصل القائمة الأسبوعية عن الفلتر الظاهر.
+    const localTemplateRows = screenerResults.length
+        ? screenerResults.map(row => ({
+            ...row,
+            symbol: String(row.symbol || '').toUpperCase(),
+            preset: activePresetKey || 'custom',
+            entry_score: Number(row.score) >= 80 ? 4 : Number(row.score) >= 60 ? 3 : Number(row.score) >= 40 ? 2 : 1,
+            entry_tier: ['A', 'B'].includes(String(row.grade || '').toUpperCase()) ? 'مؤكد' : 'دخول',
+            entry_signals: { filter_match: true }
+        }))
+        : [];
+    const signalRows = localTemplateRows.length ? localTemplateRows : (Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : []);
 
     signalRows.forEach(row => {
         const symbol = String(row?.symbol || '').trim().toUpperCase();

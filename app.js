@@ -1839,11 +1839,10 @@ function loadVirtualTrader() {
 }
 async function syncVirtualTraderFromServer() {
     if (!currentUser?.id || !sb) return;
-    const uid = currentUser.id;
     const [portfolioRes, positionsRes, tradesRes] = await Promise.all([
-        sb.from('virtual_portfolios').select('*').eq('user_id', uid).maybeSingle(),
-        sb.from('virtual_positions').select('*').eq('user_id', uid).order('updated_at', { ascending: false }),
-        sb.from('virtual_trades').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(100),
+        sb.from('shared_virtual_portfolios').select('*').eq('simulation_id', 'global').maybeSingle(),
+        sb.from('shared_virtual_positions').select('*').eq('simulation_id', 'global').order('updated_at', { ascending: false }),
+        sb.from('shared_virtual_trades').select('*').eq('simulation_id', 'global').order('created_at', { ascending: false }).limit(100),
     ]);
     if (portfolioRes.error || positionsRes.error || tradesRes.error) {
         console.warn('تعذر مزامنة المحاكي الخلفي:', portfolioRes.error || positionsRes.error || tradesRes.error);

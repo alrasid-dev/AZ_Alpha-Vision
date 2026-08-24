@@ -1427,7 +1427,7 @@ let signalChartInstance = null;
 const SIG_TIER_COLOR = { 'صريح': 'badge-strong-buy', 'مؤكد': 'badge-buy', 'دخول': 'badge-hold' };
 const SIG_TIER_COLOR_EXIT = { 'صريح': 'badge-strong-sell', 'مؤكد': 'badge-sell', 'خروج': 'badge-hold' };
 const SIG_LABEL = { fibonacci: 'فيبوناتشي', smc_atr: 'SMC+ATR', candlestick: 'شمعة', volume: 'حجم' };
-const SIG_PRESET_LABEL = { military: 'توافق المؤشرات الأربعة', quality_value: 'قيمة وربحية', growth: 'نمو وربحية', growth_beta: 'زخم سعري وحجم' };
+const SIG_PRESET_LABEL = { military: 'توافق المؤشرات الأربعة', quality_value: 'قيمة وربحية', growth: 'نمو الأرباح', growth_beta: 'زخم سعري وحجم', value: 'قيمة مغرية', momentum: 'زخم سعري', breakout: 'اختراق', swing: 'سوينج', dividend: 'توزيعات', penny: 'سيولة وحركة', opp_buy_dip: 'شراء التراجع', opp_earnings: 'مفاجأة أرباح', opp_low_float: 'حجم متسارع', opp_analyst: 'اتجاه قوي', opp_debt_free: 'دين منخفض', opp_undervalued: 'أقل من قيمته', opp_tech_bounce: 'ارتداد تقني' };
 let signalAudioContext = null;
 function playSignalAlertSound() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;

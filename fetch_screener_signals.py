@@ -213,7 +213,7 @@ def upsert(rows: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     fundamentals = get_all("market_fundamentals", "symbol,company,exchange,industry,sector,finviz_sector,price,pe,pb,eps_growth_this_year,eps_growth_next_year,eps_growth_5y,lt_debt_equity")
-    technicals = get_all("market_technicals", "symbol,price,change_pct,volume,avg_volume,avg_volume_9,rel_volume,rel_volume_9,rsi14,sma20,sma50,sma200,perf_week")
+    technicals = get_all("market_technicals", "symbol,price,change_pct,volume,avg_volume,avg_volume_9,rel_volume,rel_volume_9,rsi14,atr14,sma20,sma50,sma200,sma20_change,sma50_change,sma200_change,distance_from_sma20,distance_from_sma50,distance_from_sma200,perf_week,perf_month,perf_quarter,perf_half,perf_year")
     tech_map = {str(r.get("symbol") or "").upper(): r for r in technicals}
     universe = []
     for fund in fundamentals:
@@ -247,7 +247,18 @@ def main() -> None:
                 "sma20": num(row, "sma20"),
                 "sma50": num(row, "sma50"),
                 "sma200": num(row, "sma200"),
+                "sma20_change": num(row, "sma20_change"),
+                "sma50_change": num(row, "sma50_change"),
+                "sma200_change": num(row, "sma200_change"),
+                "distance_from_sma20": num(row, "distance_from_sma20"),
+                "distance_from_sma50": num(row, "distance_from_sma50"),
+                "distance_from_sma200": num(row, "distance_from_sma200"),
+                "atr14": num(row, "atr14"),
                 "perf_week": num(row, "perf_week"),
+                "perf_month": num(row, "perf_month"),
+                "perf_quarter": num(row, "perf_quarter"),
+                "perf_half": num(row, "perf_half"),
+                "perf_year": num(row, "perf_year"),
                 "entry_score": score,
                 "entry_tier": tier(score),
                 "entry_signals": signals,

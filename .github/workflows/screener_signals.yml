@@ -1,15 +1,18 @@
-name: AZ Alpha Vision - Screener Signals (Confluence Engine)
+name: AZ Alpha Vision - Ready Filter Templates
 
 on:
   schedule:
-    # 22:00 UTC كل يوم عمل — بعد إغلاق السوق الأمريكي، بعد تشغيل الفحص الكامل بقليل يفضّل
-    - cron: '30 22 * * 1-5'
+    # بعد تحديث الأسعار؛ GitHub قد يؤخر الجدولة قليلًا.
+    - cron: '30 * * * 1-5'
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   screener_signals:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -18,26 +21,29 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install "finvizfinance>=1.3.0,<2.0.0" "yfinance>=1.6.0,<2.0.0" "pandas>=2.0.0,<3.0.0" "numpy>=1.26.0,<2.1.0" requests
+        run: pip install --disable-pip-version-check --no-cache-dir requests
 
-      - name: Run confluence engine
+      - name: Build ready-template signals
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: python scripts/fetch_screener_signals.py
+          MIN_PRICE: '5'
+          MAX_PRICE: '70'
+        run: python fetch_screener_signals.py
 
-      - name: Send browser push and email notifications
+      - name: Send signal notifications
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
         run: |
           if [ -z "${NOTIFY_RUN_KEY}" ]; then
-            echo "NOTIFY_RUN_KEY is not configured; skipping external notifications."
+            echo "NOTIFY_RUN_KEY is not configured; skipping notifications."
             exit 0
           fi
-          curl --fail-with-body --request POST \
+          curl --fail-with-body --silent --show-error --request POST \
             --url "${SUPABASE_URL}/functions/v1/send-signal-notifications?minutes=120" \
+            --header "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
             --header "Content-Type: application/json" \
             --data '{}'

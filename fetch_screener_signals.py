@@ -45,8 +45,9 @@ UNWANTED_TEXT = re.compile(
     r"financial|finance|bank|banc|insurance|insur|capital|credit|mortgage|broker|"
     r"asset management|investment|reinsurance|real estate|property|properties|reit|"
     r"healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|"
-    r"energy|oil|gas|petroleum|coal|solar|utilities|etf|closed[ -]?end|warrant|"
-    r"unit|preferred|fund|trust|spac|rights|note|depositary|acquisition",
+    r"energy|oil|gas|petroleum|coal|solar|utilities|etf|exchange[ -]?traded|etn|"
+    r"closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|"
+    r"acquisition|bond|convertible|royalty|partnership|limited partnership|adr",
     re.I,
 )
 
@@ -121,16 +122,20 @@ def num(row: dict[str, Any], *names: str) -> float | None:
 def valid(row: dict[str, Any]) -> bool:
     symbol = str(row.get("symbol") or "").strip().upper()
     exchange = str(row.get("exchange") or "").strip().upper()
-    text = " ".join(str(row.get(k) or "") for k in ("industry", "company", "sector", "finviz_sector"))
+    text = " ".join(str(row.get(k) or "") for k in (
+        "industry", "company", "sector", "finviz_sector", "security_type", "quote_type", "asset_type"
+    ))
     price = num(row, "price")
+    # لا نعتمد على الرمز وحده: اسم الأداة وحقول نوعها قد تكشف ETF/Trust حتى لو كان الرمز عاديًا.
+    instrument_ok = not UNWANTED_TEXT.search(text)
     return bool(
         symbol
         and symbol not in BLOCKED
-        and not re.search(r"[.\-]", symbol)
+        and not re.search(r"[.\-\^]", symbol)
         and exchange in {"NYSE", "NASDAQ"}
         and price is not None
         and MIN_PRICE <= price <= MAX_PRICE
-        and not UNWANTED_TEXT.search(text)
+        and instrument_ok
     )
 
 
@@ -173,6 +178,36 @@ def matches(row: dict[str, Any], spec: dict[str, Any]) -> bool:
     return True
 
 
+def smart_money_entry(row: dict[str, Any]) -> tuple[bool, str]:
+    """SMC-style open proxy: bullish structure/order-block proxy + no chase.
+
+    هذا ليس نسخًا لمؤشر LuxAlgo التجاري؛ لا توجد بيانات OHLC/order blocks في الجدول.
+    لذلك نستخدم بنية المتوسطات، المسافة عن SMA20، RSI، الحجم والتغير كحارس محافظ.
+    """
+    price = num(row, "price")
+    sma20, sma50, sma200 = num(row, "sma20"), num(row, "sma50"), num(row, "sma200")
+    rsi = num(row, "rsi14")
+    change = num(row, "change_pct") or 0
+    relvol = num(row, "rel_volume", "rel_volume_9")
+    distance20 = num(row, "distance_from_sma20")
+    if price is None:
+        return False, "لا يوجد سعر صالح"
+    chase = (rsi is not None and rsi >= 68) or change >= 5 or (distance20 is not None and distance20 > 8)
+    if chase:
+        return False, "السعر في منطقة مطاردة/قمة؛ انتظار تراجع"
+    bullish_structure = bool(
+        sma20 is not None and sma50 is not None and price >= sma20 and sma20 >= sma50
+    ) or bool(
+        sma50 is not None and sma200 is not None and price >= sma200 and price <= sma50 * 1.02 and (rsi is None or rsi < 60)
+    )
+    volume_ok = relvol is None or relvol >= 1.0
+    if not bullish_structure:
+        return False, "لا يوجد كسر هيكل أو ارتداد من منطقة طلب مؤكدة"
+    if not volume_ok:
+        return False, "الحجم لا يؤكد الحركة"
+    return True, "SMC مفتوح: هيكل صاعد/ارتداد من الطلب دون مطاردة"
+
+
 def entry_score(row: dict[str, Any], spec: dict[str, Any]) -> tuple[int, dict[str, bool]]:
     price = num(row, "price") or 0
     rsi = num(row, "rsi14")
@@ -180,10 +215,11 @@ def entry_score(row: dict[str, Any], spec: dict[str, Any]) -> tuple[int, dict[st
     relvol = num(row, "rel_volume", "rel_volume_9") or 0
     sma20, sma50, sma200 = num(row, "sma20"), num(row, "sma50"), num(row, "sma200")
     growth = num(row, "eps_growth_this_year")
+    smc_ok, _ = smart_money_entry(row)
     signals = {
         "fibonacci": bool(sma20 is not None and sma50 is not None and price > sma20 > sma50),
-        "smc_atr": bool(sma50 is not None and sma200 is not None and price > sma50 and price > sma200),
-        "candlestick": bool(change > 0 and (rsi is None or rsi < 70)),
+        "smc_atr": smc_ok,
+        "candlestick": bool(change > 0 and (rsi is None or rsi < 68)),
         "volume": bool(relvol > 1.5),
     }
     # اجعل أساسيات القالب تأكيدًا إضافيًا، مع الاحتفاظ بأربع مفاتيح الإشارة المتوافقة مع الواجهة.
@@ -264,6 +300,9 @@ def main() -> None:
         for row in universe:
             if not matches(row, spec):
                 continue
+            smc_ok, smc_reason = smart_money_entry(row)
+            if not smc_ok:
+                continue
             score, signals = entry_score(row, spec)
             if score <= 0:
                 continue
@@ -280,7 +319,7 @@ def main() -> None:
                 "change_pct": num(row, "change_pct"),
                 "entry_score": score,
                 "entry_tier": tier(score),
-                "entry_signals": signals,
+                "entry_signals": {**signals, "smc_atr": True},
                 "exit_score": 0,
                 "exit_tier": None,
                 "exit_signals": {},

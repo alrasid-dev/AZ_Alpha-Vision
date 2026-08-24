@@ -212,7 +212,7 @@ def upsert(rows: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    fundamentals = get_all("market_fundamentals", "symbol,company,exchange,industry,sector,finviz_sector,price,eps_ttm,eps_diluted,eps_growth_this_year,eps_growth_next_year,eps_growth_5y,lt_debt_equity,pb")
+    fundamentals = get_all("market_fundamentals", "symbol,company,exchange,industry,sector,finviz_sector,price,pe,pb,eps_growth_this_year,eps_growth_next_year,eps_growth_5y,lt_debt_equity")
     technicals = get_all("market_technicals", "symbol,price,change_pct,volume,avg_volume,avg_volume_9,rel_volume,rel_volume_9,rsi14,sma20,sma50,sma200,perf_week")
     tech_map = {str(r.get("symbol") or "").upper(): r for r in technicals}
     universe = []

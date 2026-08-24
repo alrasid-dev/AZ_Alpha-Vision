@@ -228,7 +228,9 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         params={"preset": preset_filter},
         timeout=60,
     )
-    deleted.raise_for_status()
+    if not deleted.ok:
+        log.error("Supabase delete failed: status=%s body=%s", deleted.status_code, deleted.text[:2000])
+        deleted.raise_for_status()
 
     insert_headers = {**HEADERS, "Prefer": "return=minimal"}
     res = requests.post(
@@ -237,7 +239,10 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         data=json.dumps(rows, ensure_ascii=False),
         timeout=60,
     )
-    res.raise_for_status()
+    if not res.ok:
+        log.error("Supabase insert failed: status=%s body=%s", res.status_code, res.text[:4000])
+        log.error("First row keys: %s", sorted(rows[0].keys()) if rows else [])
+        res.raise_for_status()
     log.info("تم استبدال %s إشارة قالب في screener_signals", len(rows))
 
 

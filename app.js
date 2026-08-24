@@ -1241,9 +1241,10 @@ function renderScreener() {
     const sn = { tech:'تكنولوجيا', finance:'مالي', healthcare:'صحية', consumer:'استهلاكي', industrial:'صناعي', energy:'طاقة', reits:'عقارات', other:'أخرى' };
     screenerResults.forEach((d,i) => {
         let sig = 'متابعة', cls = 'badge-hold';
-        if (d.rsi != null && d.rsi < 30 && d.change > 0) { sig = 'شراء'; cls = 'badge-strong-buy'; }
-        else if (d.rsi != null && d.rsi > 70 && d.change < 0) { sig = 'بيع'; cls = 'badge-strong-sell'; }
-        else if (d.sma50 != null && d.sma200 != null && d.price > d.sma50 && d.price > d.sma200 && d.change > 2) { sig = 'دخول'; cls = 'badge-buy'; }
+        const entryGuard = technicalEntryGuard(d);
+        if (d.rsi != null && d.rsi < 30 && d.change > 0 && entryGuard.allow) { sig = 'شراء مشروط'; cls = 'badge-strong-buy'; }
+        else if (d.rsi != null && d.rsi > 70 && d.change < 0) { sig = 'بيع قوي'; cls = 'badge-strong-sell'; }
+        else if (d.sma50 != null && d.sma200 != null && d.price > d.sma50 && d.price > d.sma200 && d.change > 2 && entryGuard.allow) { sig = 'دخول مشروط'; cls = 'badge-buy'; }
         else if (d.sma50 != null && d.sma200 != null && d.price < d.sma50 && d.price < d.sma200 && d.change < -2) { sig = 'خروج'; cls = 'badge-sell'; }
         const vf = (d.volume ?? 0) >= 1000000 ? (d.volume/1000000).toFixed(2)+'M' : ((d.volume ?? 0)/1000).toFixed(1)+'K';
         const gc = d.grade==='A'?'badge-a':d.grade==='B'?'badge-b':d.grade==='C'?'badge-c':d.grade==='D'?'badge-d':'badge-f';
@@ -1413,7 +1414,7 @@ async function runWeeklyScan() {
         const signals = [...s.signalNames].join('، ') || 'إشارة دخول من القالب';
         const plan = s.entryPlan || weeklyEntryPlan(s);
         const entryText = plan.price ? `$${plan.price.toFixed(2)} — ${plan.label}` : 'غير متاح';
-        const reason = `${watchOnly ? 'متابعة تحتاج تأكيدًا إضافيًا' : 'اختيار قوي'}؛ ظهر في ${s.templateCount} قالب: ${presets}. ${s.bestTier} (${s.bestEntryScore}/4)، والمؤشرات: ${signals}. سعر الدخول المقترح: ${entryText}. ${plan.reason}.`;
+        const reason = `${watchOnly ? 'متابعة تحتاج تأكيدًا إضافيًا' : (plan.avoid ? 'إشارة قالب مع انتظار فني' : 'اختيار قوي')}؛ ظهر في ${s.templateCount} قالب: ${presets}. ${s.bestTier} (${s.bestEntryScore}/4)، والمؤشرات: ${signals}. سعر الدخول المقترح: ${entryText}. ${s.entry_reason ? sigEsc(s.entry_reason) + '؛ ' : ''}${plan.reason}.`;
         const badge = watchOnly ? '👀 متابعة' : (s.bestTier === 'صريح' ? '⭐ صريح' : s.bestTier === 'مؤكد' ? '✅ مؤكد' : '📌 دخول');
         const color = watchOnly ? 'var(--accent-gold)' : (s.bestTier === 'صريح' ? 'var(--accent-green)' : 'var(--accent-cyan)');
         const entryColor = plan.avoid ? 'var(--accent-gold)' : 'var(--accent-green)';
@@ -1530,7 +1531,8 @@ async function loadSignalsData(force = false) {
         };
         const validSignalRow = (row) => isCommonStockRow(row);
         SIGNALS_CACHE = (sig || []).map(withContext).filter(validSignalRow);
-        SIGNALS_ALERTS = (alerts || []).map(withContext).filter(validSignalRow);
+        // تنبيهات الخروج تبقى ظاهرة، أما دخول غير آمن/بعد ارتفاع حاد فيتحول إلى متابعة فقط.
+        SIGNALS_ALERTS = (alerts || []).map(withContext).filter(validSignalRow).filter(a => a.type !== 'entry' || technicalEntryGuard(a).allow);
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         SIGNALS_CACHE_AT = Date.now();

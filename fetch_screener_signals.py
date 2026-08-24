@@ -196,9 +196,12 @@ def smart_money_entry(row: dict[str, Any]) -> tuple[bool, str]:
     if chase:
         return False, "السعر في منطقة مطاردة/قمة؛ انتظار تراجع"
     bullish_structure = bool(
-        sma20 is not None and sma50 is not None and price >= sma20 and sma20 >= sma50
+        sma20 is not None and sma50 is not None and (
+            (price >= sma20 and sma20 >= sma50) or
+            (price >= sma50 * 0.98 and price <= sma20 * 1.05)
+        )
     ) or bool(
-        sma50 is not None and sma200 is not None and price >= sma200 and price <= sma50 * 1.02 and (rsi is None or rsi < 60)
+        sma50 is not None and sma200 is not None and price >= sma200 * 0.98 and price <= sma50 * 1.05 and (rsi is None or rsi < 62)
     )
     volume_ok = relvol is None or relvol >= 1.0
     if not bullish_structure:
@@ -301,8 +304,8 @@ def main() -> None:
             if not matches(row, spec):
                 continue
             smc_ok, smc_reason = smart_money_entry(row)
-            if not smc_ok:
-                continue
+            # لا نحذف نتيجة القالب بالكامل إذا فشل الحارس؛ نعرضها كمتابعة/انتظار.
+            # الحارس سيمنع الشراء الآلي ويمنع تنبيه الدخول حتى يتحسن السعر.
             score, signals = entry_score(row, spec)
             if score <= 0:
                 continue
@@ -319,7 +322,8 @@ def main() -> None:
                 "change_pct": num(row, "change_pct"),
                 "entry_score": score,
                 "entry_tier": tier(score),
-                "entry_signals": {**signals, "smc_atr": True},
+                "entry_signals": {**signals, "smc_atr": smc_ok},
+                "entry_reason": smc_reason,
                 "exit_score": 0,
                 "exit_tier": None,
                 "exit_signals": {},

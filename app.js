@@ -916,18 +916,35 @@ function initIndicatorChart() {
     window.addEventListener('resize', () => { if(window.indicatorChart&&cont)window.indicatorChart.resize(cont.clientWidth,cont.clientHeight); });
 }
 const EXCLUDED_SECTOR_RE = /financial|finance|bank|banc|insurance|insur|capital|credit|mortgage|broker|asset management|investment|reinsurance|real estate|property|properties|reit|healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|energy|oil|gas|petroleum|coal|solar|utilities/i;
+const NON_COMMON_INSTRUMENT_RE = /etf|exchange[ -]?traded|etn|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition|bond|convertible|royalty|partnership|limited partnership|adr/i;
 const GENERAL_MARKET_RULE = Object.freeze({ minPrice: 5, maxPrice: 70, exchanges: new Set(['NYSE', 'NASDAQ']) });
 
 function isCommonStockRow(row) {
     const symbol = String(row?.symbol || '').trim().toUpperCase();
     const exchange = String(row?.exchange || '').trim().toUpperCase();
-    const text = [row?.industry, row?.company, row?.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
+    const text = [row?.industry, row?.company, row?.sector, row?.finviz_sector, row?.security_type, row?.quote_type, row?.asset_type].map(v => String(v || '').toLowerCase()).join(' ');
     if (!symbol || EXCLUDED_SYMBOLS.has(symbol)) return false;
     if (!GENERAL_MARKET_RULE.exchanges.has(exchange)) return false;
-    if (/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text)) return false;
-    if (EXCLUDED_SECTOR_RE.test(text)) return false;
+    if (NON_COMMON_INSTRUMENT_RE.test(text) || EXCLUDED_SECTOR_RE.test(text)) return false;
+    if (/[.\-\^]/.test(symbol)) return false;
     const price = Number(row?.price || 0);
     return price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice;
+}
+
+// حارس مستوحى من SMC: بنية صاعدة أو ارتداد قريب من المتوسط، مع منع مطاردة السعر.
+// لا يدّعي حساب Order Block حقيقيًا لأن قاعدة البيانات الحالية لا تحفظ OHLC/سيولة مؤسسية.
+function technicalEntryGuard(row) {
+    const price = Number(row?.price);
+    const sma20 = Number(row?.sma20), sma50 = Number(row?.sma50), sma200 = Number(row?.sma200);
+    const rsi = Number(row?.rsi14 ?? row?.rsi);
+    const change = Number(row?.change_pct ?? row?.change ?? 0);
+    const distance20 = Number(row?.distance_from_sma20);
+    if (!Number.isFinite(price) || !Number.isFinite(sma20) || !Number.isFinite(sma50)) return { allow: false, reason: 'بيانات المتوسطات غير مكتملة' };
+    const chase = (Number.isFinite(rsi) && rsi >= 68) || change >= 5 || (Number.isFinite(distance20) && distance20 > 8) || price > sma20 * 1.08;
+    const structure = (price >= sma20 && sma20 >= sma50) || (Number.isFinite(sma200) && price >= sma200 && price <= sma50 * 1.02 && (!Number.isFinite(rsi) || rsi < 60));
+    if (chase) return { allow: false, reason: 'انتظار تراجع: تشبع/ارتفاع حديث أو ابتعاد عن الدعم' };
+    if (!structure) return { allow: false, reason: 'لا يوجد تأكيد هيكل صاعد أو ارتداد من منطقة طلب' };
+    return { allow: true, reason: 'SMC مفتوح: هيكل صاعد قرب الدعم دون مطاردة' };
 }
 
 // ===== REAL MARKET DATA (Supabase — replaces the old fake REAL_PRICES/getLivePrice/fetchYahooData) =====
@@ -942,6 +959,9 @@ function mapMarketRow(fund, tech) {
     const sma20 = tech?.sma20 ?? null;
     const sma50 = tech?.sma50 ?? null;
     const sma200 = tech?.sma200 ?? null;
+    const distanceFromSma20 = tech?.distance_from_sma20 ?? null;
+    const distanceFromSma50 = tech?.distance_from_sma50 ?? null;
+    const distanceFromSma200 = tech?.distance_from_sma200 ?? null;
     const prevSma20 = tech?.prev_sma20 ?? null;
     const prevSma50 = tech?.prev_sma50 ?? null;
     const prevSma200 = tech?.prev_sma200 ?? null;
@@ -971,7 +991,7 @@ function mapMarketRow(fund, tech) {
         symbol: fund.symbol, company: fund.company,
         price, change: tech?.change_pct ?? null,
         volume: tech?.volume ?? 0, avgVolume: tech?.avg_volume ?? 0, avgVolume9: tech?.avg_volume_9 ?? 0, relVolume: relVolume ?? 1, relVolume9: relVolume9 ?? 1,
-        sma20, sma50, sma200, prevSma20, prevSma50, prevSma200, sma20CrossUp, sma50CrossUp, rsi, atr: tech?.atr14 ?? null,
+        sma20, sma50, sma200, distanceFromSma20, distanceFromSma50, distanceFromSma200, prevSma20, prevSma50, prevSma200, sma20CrossUp, sma50CrossUp, rsi, atr: tech?.atr14 ?? null,
         sector: fund.sector, pe: fund.pe, pb: fund.pb,
         growth, eps, profitable, epsNext: fund.eps_growth_next_year, eps5y: fund.eps_growth_5y, epsGrowthQtr: fund.eps_growth_qtr,
         ltDebt, debtRatio: ltDebt,
@@ -1300,18 +1320,18 @@ function weeklySignalDetails(row) {
 function weeklyEntryPlan(row) {
     const price = Number(row?.price);
     if (!Number.isFinite(price) || price <= 0) return { price: null, label: 'لا يوجد سعر كافٍ', reason: 'بيانات السعر غير كافية', avoid: true };
+    const guard = technicalEntryGuard(row);
     const sma20 = Number(row?.sma20), sma50 = Number(row?.sma50), rsi = Number(row?.rsi14), change = Number(row?.change ?? row?.change_pct ?? 0);
     const supports = [sma20, sma50].filter(v => Number.isFinite(v) && v > 0 && v <= price * 1.08).sort((a, b) => b - a);
     const support = supports[0] || null;
-    const reasons = [];
-    const chase = (Number.isFinite(rsi) && rsi >= 70) || change >= 6 || (Number.isFinite(sma20) && sma20 > 0 && price > sma20 * 1.10);
-    if (Number.isFinite(rsi) && rsi >= 70) reasons.push('RSI في تشبع شرائي');
-    if (change >= 6) reasons.push(`ارتفاع حديث ${change.toFixed(1)}%`);
-    if (Number.isFinite(sma20) && sma20 > 0 && price > sma20 * 1.10) reasons.push('السعر بعيد عن SMA20');
+    const reasons = [guard.reason];
+    if (Number.isFinite(rsi) && rsi >= 68) reasons.push('RSI في تشبع شرائي');
+    if (change >= 5) reasons.push(`ارتفاع حديث ${change.toFixed(1)}%`);
+    if (Number.isFinite(sma20) && sma20 > 0 && price > sma20 * 1.08) reasons.push('السعر بعيد عن SMA20');
     if (support) reasons.push(`منطقة دعم قرب SMA${support === sma20 ? '20' : '50'} عند $${support.toFixed(2)}`);
-    if (chase) {
+    if (!guard.allow) {
         const target = support ? Math.min(price, support * 1.01) : price * 0.97;
-        return { price: Math.max(5, Number(target.toFixed(2))), label: 'انتظار تراجع', reason: reasons.join('؛ ') || 'لا دخول بعد الارتفاع', avoid: true };
+        return { price: Math.max(5, Number(target.toFixed(2))), label: 'انتظار تأكيد/تراجع', reason: reasons.join('؛ '), avoid: true };
     }
     const target = support ? Math.min(price, support * 1.02) : price;
     reasons.push('لا توجد مطاردة واضحة للسعر');
@@ -1338,10 +1358,7 @@ async function runWeeklyScan() {
         const preset = String(row?.preset || '').trim();
         const price = Number(row?.price ?? base?.price);
         const source = { ...(base || {}), ...row, symbol, price };
-        const sourceText = [source.industry, source.company, source.sector, source.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
-        const sourceExchange = String(source.exchange || '').trim().toUpperCase();
-        const sourceExchangeOk = !sourceExchange || GENERAL_MARKET_RULE.exchanges.has(sourceExchange);
-        const sourceSafe = symbol && Number.isFinite(price) && price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice && sourceExchangeOk && !EXCLUDED_SYMBOLS.has(symbol) && !/[.\\-]/.test(symbol) && !EXCLUDED_SECTOR_RE.test(sourceText) && !/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(sourceText);
+        const sourceSafe = isCommonStockRow(source);
         if (!sourceSafe || entryScore <= 0) return;
         let item = merged.get(symbol);
         if (!item) {
@@ -1493,29 +1510,27 @@ async function loadSignalsData(force = false) {
     const meta = document.getElementById('signalsMeta');
     meta.innerHTML = 'جاري التحميل من قاعدة البيانات...';
     try {
-        const [{ data: sig, error: e1 }, { data: alerts, error: e2 }, { data: perf, error: e3 }, { data: fundamentals, error: e4 }] = await Promise.all([
+        const [{ data: sig, error: e1 }, { data: alerts, error: e2 }, { data: perf, error: e3 }, { data: fundamentals, error: e4 }, { data: technicals, error: e5 }] = await Promise.all([
             sb.from('screener_signals').select('*'),
             sb.from('screener_alerts').select('*').order('ts', { ascending: false }).limit(100),
             sb.from('screener_performance').select('*'),
             sb.from('market_fundamentals').select('symbol,price,exchange,industry,company,finviz_sector,sector'),
+            sb.from('market_technicals').select('symbol,price,change_pct,rsi14,sma20,sma50,sma200,distance_from_sma20,distance_from_sma50,distance_from_sma200'),
         ]);
         if (e1) throw e1;
         if (e4) throw e4;
-        const blocked = new Set(['DDV']);
+        if (e5) throw e5;
         const fundMap = Object.fromEntries((fundamentals || []).map(f => [String(f.symbol || '').toUpperCase(), f]));
-        const validSignalRow = (row) => {
+        const techMap = Object.fromEntries((technicals || []).map(t => [String(t.symbol || '').toUpperCase(), t]));
+        const withContext = (row) => {
             const symbol = String(row?.symbol || '').trim().toUpperCase();
-            const fund = fundMap[symbol];
-            const price = Number(row?.price ?? fund?.price);
-            const source = { ...(fund || {}), ...row, symbol, price };
-            const exchange = String(source.exchange || '').trim().toUpperCase();
-            const text = [source.industry, source.company, source.sector, source.finviz_sector].map(v => String(v || '').toLowerCase()).join(' ');
-            const exchangeOk = !exchange || GENERAL_MARKET_RULE.exchanges.has(exchange);
-            const instrumentOk = !/[.\\-]/.test(symbol) && !/etf|reit|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition/.test(text);
-            return !blocked.has(symbol) && symbol && Number.isFinite(price) && price >= GENERAL_MARKET_RULE.minPrice && price <= GENERAL_MARKET_RULE.maxPrice && exchangeOk && instrumentOk && !EXCLUDED_SECTOR_RE.test(text);
+            const fund = fundMap[symbol] || {};
+            const tech = techMap[symbol] || {};
+            return { ...fund, ...tech, ...row, symbol, price: row?.price ?? tech?.price ?? fund?.price };
         };
-        SIGNALS_CACHE = (sig || []).filter(validSignalRow);
-        SIGNALS_ALERTS = (alerts || []).filter(validSignalRow);
+        const validSignalRow = (row) => isCommonStockRow(row);
+        SIGNALS_CACHE = (sig || []).map(withContext).filter(validSignalRow);
+        SIGNALS_ALERTS = (alerts || []).map(withContext).filter(validSignalRow);
         playNewSignalAlertSound(SIGNALS_ALERTS);
         SIGNALS_PERF = perf || [];
         SIGNALS_CACHE_AT = Date.now();
@@ -1607,7 +1622,8 @@ function renderSignalsTable(stocks) {
         return;
     }
     tb.innerHTML = stocks.map(s => {
-        const entryBadge = s.entry_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">إشارة دخول تعليمية عند $${Number(s.price).toFixed(2)} — ${s.entry_tier} (${s.entry_score}/4)</span>` : '<span class="text-muted">—</span>';
+        const entryPlan = weeklyEntryPlan(s);
+        const entryBadge = s.entry_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">إشارة دخول تعليمية عند $${Number(s.price).toFixed(2)} — ${s.entry_tier} (${s.entry_score}/4)</span><div class="text-muted" style="margin-top:4px;font-size:11px;">المقترح: $${entryPlan.price?.toFixed(2) || '—'} — ${sigEsc(entryPlan.label)}<br>${sigEsc(entryPlan.reason)}</div>` : '<span class="text-muted">—</span>';
         const exitBadge = s.exit_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0 ? `<span class="badge ${SIG_TIER_COLOR_EXIT[s.exit_tier]}">إشارة خروج تعليمية عند $${Number(s.price).toFixed(2)} — ${s.exit_tier} (${s.exit_score}/4)</span>` : '<span class="text-muted">—</span>';
         return `<tr>
             <td class="sym">${sigEsc(s.symbol)}</td>
@@ -1629,13 +1645,15 @@ function renderSignalAlerts() {
     }
     tb.innerHTML = SIGNALS_ALERTS.map(a => {
         const isEntry = a.type === 'entry';
+        const context = SIGNALS_CACHE?.find(s => String(s.symbol).toUpperCase() === String(a.symbol).toUpperCase()) || a;
+        const entryPlan = isEntry ? weeklyEntryPlan({ ...context, price: a.price ?? context.price }) : null;
         const badge = isEntry ? SIG_TIER_COLOR[a.tier] : SIG_TIER_COLOR_EXIT[a.tier];
         return `<tr>
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString('ar-SA')}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
             <td><span class="badge ${badge}">${isEntry ? 'إشارة دخول تعليمية' : 'إشارة خروج تعليمية'} ${a.tier} (${a.score}/4)</span></td>
-            <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? 'دخول عند' : 'خروج عند'} $${Number(a.price).toFixed(2)}</td>
+            <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || '—'} — ${sigEsc(entryPlan?.label || '')}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
         </tr>`;
     }).join('');
 }

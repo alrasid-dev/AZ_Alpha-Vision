@@ -200,15 +200,45 @@ def upsert(rows: list[dict[str, Any]]) -> None:
     if not rows:
         log.warning("لم تنتج القوالب إشارات جديدة؛ لن نحذف الإشارات السابقة")
         return
-    headers = {**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"}
+
+    # قد يحتوي المصدر على أكثر من صف للسهم نفسه. نضمن سجلًا واحدًا لكل زوج.
+    deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("preset") or ""), str(row.get("symbol") or "").upper())
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = row
+            continue
+        existing["entry_score"] = max(int(existing.get("entry_score") or 0), int(row.get("entry_score") or 0))
+        existing["entry_tier"] = tier(int(existing.get("entry_score") or 0))
+        existing["entry_signals"] = {
+            name: bool(existing.get("entry_signals", {}).get(name) or row.get("entry_signals", {}).get(name))
+            for name in set(existing.get("entry_signals", {})) | set(row.get("entry_signals", {}))
+        }
+    rows = list(deduped.values())
+
+    # لا نعتمد على اسم قيد فريد قد يختلف بين مشاريع Supabase.
+    # نحذف نتائج القوالب التي ستُحدّث فقط، ثم نضيف الدفعة الجديدة بدون on_conflict.
+    presets = sorted({str(row["preset"]) for row in rows if row.get("preset")})
+    preset_filter = "in.(" + ",".join(presets) + ")"
+    delete_headers = {**HEADERS, "Prefer": "return=minimal"}
+    deleted = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/screener_signals",
+        headers=delete_headers,
+        params={"preset": preset_filter},
+        timeout=60,
+    )
+    deleted.raise_for_status()
+
+    insert_headers = {**HEADERS, "Prefer": "return=minimal"}
     res = requests.post(
-        f"{SUPABASE_URL}/rest/v1/screener_signals?on_conflict=preset,symbol",
-        headers=headers,
+        f"{SUPABASE_URL}/rest/v1/screener_signals",
+        headers=insert_headers,
         data=json.dumps(rows, ensure_ascii=False),
         timeout=60,
     )
     res.raise_for_status()
-    log.info("تم حفظ %s إشارة قالب في screener_signals", len(rows))
+    log.info("تم استبدال %s إشارة قالب في screener_signals", len(rows))
 
 
 def main() -> None:

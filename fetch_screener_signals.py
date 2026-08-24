@@ -323,7 +323,6 @@ def main() -> None:
                 "entry_score": score,
                 "entry_tier": tier(score),
                 "entry_signals": {**signals, "smc_atr": smc_ok},
-                "entry_reason": smc_reason,
                 "exit_score": 0,
                 "exit_tier": None,
                 "exit_signals": {},

@@ -45,8 +45,9 @@ UNWANTED_TEXT = re.compile(
     r"financial|finance|bank|banc|insurance|insur|capital|credit|mortgage|broker|"
     r"asset management|investment|reinsurance|real estate|property|properties|reit|"
     r"healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|"
-    r"energy|oil|gas|petroleum|coal|solar|utilities|etf|closed[ -]?end|warrant|"
-    r"unit|preferred|fund|trust|spac|rights|note|depositary|acquisition",
+    r"energy|oil|gas|petroleum|coal|solar|utilities|etf|exchange[ -]?traded|etn|"
+    r"closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|"
+    r"acquisition|bond|convertible|royalty|partnership|limited partnership|adr",
     re.I,
 )
 
@@ -121,16 +122,20 @@ def num(row: dict[str, Any], *names: str) -> float | None:
 def valid(row: dict[str, Any]) -> bool:
     symbol = str(row.get("symbol") or "").strip().upper()
     exchange = str(row.get("exchange") or "").strip().upper()
-    text = " ".join(str(row.get(k) or "") for k in ("industry", "company", "sector", "finviz_sector"))
+    text = " ".join(str(row.get(k) or "") for k in (
+        "industry", "company", "sector", "finviz_sector", "security_type", "quote_type", "asset_type"
+    ))
     price = num(row, "price")
+    # لا نعتمد على الرمز وحده: اسم الأداة وحقول نوعها قد تكشف ETF/Trust حتى لو كان الرمز عاديًا.
+    instrument_ok = not UNWANTED_TEXT.search(text)
     return bool(
         symbol
         and symbol not in BLOCKED
-        and not re.search(r"[.\-]", symbol)
+        and not re.search(r"[.\-\^]", symbol)
         and exchange in {"NYSE", "NASDAQ"}
         and price is not None
         and MIN_PRICE <= price <= MAX_PRICE
-        and not UNWANTED_TEXT.search(text)
+        and instrument_ok
     )
 
 
@@ -173,6 +178,36 @@ def matches(row: dict[str, Any], spec: dict[str, Any]) -> bool:
     return True
 
 
+def smart_money_entry(row: dict[str, Any]) -> tuple[bool, str]:
+    """SMC-style open proxy: bullish structure/order-block proxy + no chase.
+
+    هذا ليس نسخًا لمؤشر LuxAlgo التجاري؛ لا توجد بيانات OHLC/order blocks في الجدول.
+    لذلك نستخدم بنية المتوسطات، المسافة عن SMA20، RSI، الحجم والتغير كحارس محافظ.
+    """
+    price = num(row, "price")
+    sma20, sma50, sma200 = num(row, "sma20"), num(row, "sma50"), num(row, "sma200")
+    rsi = num(row, "rsi14")
+    change = num(row, "change_pct") or 0
+    relvol = num(row, "rel_volume", "rel_volume_9")
+    distance20 = num(row, "distance_from_sma20")
+    if price is None:
+        return False, "لا يوجد سعر صالح"
+    chase = (rsi is not None and rsi >= 68) or change >= 5 or (distance20 is not None and distance20 > 8)
+    if chase:
+        return False, "السعر في منطقة مطاردة/قمة؛ انتظار تراجع"
+    bullish_structure = bool(
+        sma20 is not None and sma50 is not None and price >= sma20 and sma20 >= sma50
+    ) or bool(
+        sma50 is not None and sma200 is not None and price >= sma200 and price <= sma50 * 1.02 and (rsi is None or rsi < 60)
+    )
+    volume_ok = relvol is None or relvol >= 1.0
+    if not bullish_structure:
+        return False, "لا يوجد كسر هيكل أو ارتداد من منطقة طلب مؤكدة"
+    if not volume_ok:
+        return False, "الحجم لا يؤكد الحركة"
+    return True, "SMC مفتوح: هيكل صاعد/ارتداد من الطلب دون مطاردة"
+
+
 def entry_score(row: dict[str, Any], spec: dict[str, Any]) -> tuple[int, dict[str, bool]]:
     price = num(row, "price") or 0
     rsi = num(row, "rsi14")
@@ -180,10 +215,11 @@ def entry_score(row: dict[str, Any], spec: dict[str, Any]) -> tuple[int, dict[st
     relvol = num(row, "rel_volume", "rel_volume_9") or 0
     sma20, sma50, sma200 = num(row, "sma20"), num(row, "sma50"), num(row, "sma200")
     growth = num(row, "eps_growth_this_year")
+    smc_ok, _ = smart_money_entry(row)
     signals = {
         "fibonacci": bool(sma20 is not None and sma50 is not None and price > sma20 > sma50),
-        "smc_atr": bool(sma50 is not None and sma200 is not None and price > sma50 and price > sma200),
-        "candlestick": bool(change > 0 and (rsi is None or rsi < 70)),
+        "smc_atr": smc_ok,
+        "candlestick": bool(change > 0 and (rsi is None or rsi < 68)),
         "volume": bool(relvol > 1.5),
     }
     # اجعل أساسيات القالب تأكيدًا إضافيًا، مع الاحتفاظ بأربع مفاتيح الإشارة المتوافقة مع الواجهة.
@@ -201,9 +237,7 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         log.warning("لم تنتج القوالب إشارات جديدة؛ لن نحذف الإشارات السابقة")
         return
 
-    # قد يحتوي market_fundamentals على أكثر من صف تاريخي للرمز نفسه.
-    # نضمن سجلًا واحدًا لكل زوج (preset, symbol) قبل upsert حتى لا يعيد
-    # PostgreSQL تحديث الصف نفسه مرتين داخل الطلب الواحد.
+    # قد يحتوي المصدر على أكثر من صف للسهم نفسه. نضمن سجلًا واحدًا لكل زوج.
     deduped: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         key = (str(row.get("preset") or ""), str(row.get("symbol") or "").upper())
@@ -218,15 +252,34 @@ def upsert(rows: list[dict[str, Any]]) -> None:
             for name in set(existing.get("entry_signals", {})) | set(row.get("entry_signals", {}))
         }
     rows = list(deduped.values())
-    headers = {**HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"}
+
+    # لا نعتمد على اسم قيد فريد قد يختلف بين مشاريع Supabase.
+    # نحذف نتائج القوالب التي ستُحدّث فقط، ثم نضيف الدفعة الجديدة بدون on_conflict.
+    presets = sorted({str(row["preset"]) for row in rows if row.get("preset")})
+    preset_filter = "in.(" + ",".join(presets) + ")"
+    delete_headers = {**HEADERS, "Prefer": "return=minimal"}
+    deleted = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/screener_signals",
+        headers=delete_headers,
+        params={"preset": preset_filter},
+        timeout=60,
+    )
+    if not deleted.ok:
+        log.error("Supabase delete failed: status=%s body=%s", deleted.status_code, deleted.text[:2000])
+        deleted.raise_for_status()
+
+    insert_headers = {**HEADERS, "Prefer": "return=minimal"}
     res = requests.post(
-        f"{SUPABASE_URL}/rest/v1/screener_signals?on_conflict=preset,symbol",
-        headers=headers,
+        f"{SUPABASE_URL}/rest/v1/screener_signals",
+        headers=insert_headers,
         data=json.dumps(rows, ensure_ascii=False),
         timeout=60,
     )
-    res.raise_for_status()
-    log.info("تم حفظ %s إشارة قالب في screener_signals", len(rows))
+    if not res.ok:
+        log.error("Supabase insert failed: status=%s body=%s", res.status_code, res.text[:4000])
+        log.error("First row keys: %s", sorted(rows[0].keys()) if rows else [])
+        res.raise_for_status()
+    log.info("تم استبدال %s إشارة قالب في screener_signals", len(rows))
 
 
 def main() -> None:
@@ -247,39 +300,26 @@ def main() -> None:
         for row in universe:
             if not matches(row, spec):
                 continue
+            smc_ok, smc_reason = smart_money_entry(row)
+            if not smc_ok:
+                continue
             score, signals = entry_score(row, spec)
             if score <= 0:
                 continue
             output.append({
+                # هذه هي أعمدة screener_signals الموجودة فعليًا فقط.
+                # RSI وSMA ومسافاتها محفوظة في market_technicals وتُطابقها الواجهة بالرمز.
                 "preset": preset,
                 "symbol": row["symbol"],
                 "company": row.get("company"),
                 "sector": row.get("sector"),
                 "industry": row.get("industry"),
-                "pe": None,
+                "pe": num(row, "pe"),
                 "price": num(row, "price"),
                 "change_pct": num(row, "change_pct"),
-                "volume": num(row, "volume"),
-                "rel_volume": num(row, "rel_volume", "rel_volume_9"),
-                "rsi14": num(row, "rsi14"),
-                "sma20": num(row, "sma20"),
-                "sma50": num(row, "sma50"),
-                "sma200": num(row, "sma200"),
-                "sma20_change": num(row, "sma20_change"),
-                "sma50_change": num(row, "sma50_change"),
-                "sma200_change": num(row, "sma200_change"),
-                "distance_from_sma20": num(row, "distance_from_sma20"),
-                "distance_from_sma50": num(row, "distance_from_sma50"),
-                "distance_from_sma200": num(row, "distance_from_sma200"),
-                "atr14": num(row, "atr14"),
-                "perf_week": num(row, "perf_week"),
-                "perf_month": num(row, "perf_month"),
-                "perf_quarter": num(row, "perf_quarter"),
-                "perf_half": num(row, "perf_half"),
-                "perf_year": num(row, "perf_year"),
                 "entry_score": score,
                 "entry_tier": tier(score),
-                "entry_signals": signals,
+                "entry_signals": {**signals, "smc_atr": True},
                 "exit_score": 0,
                 "exit_tier": None,
                 "exit_signals": {},

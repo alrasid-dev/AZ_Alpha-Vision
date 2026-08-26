@@ -225,8 +225,103 @@ async function saveEmailAlerts() {
         if (!email.includes('@')) return toast('أدخل بريدًا صحيحًا', 'warn');
         const { error } = await sb.from('notification_subscriptions').upsert({ user_id: currentUser.id, email, email_enabled: true, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
         if (error) throw error;
+        const toggle = document.getElementById('emailAlertsToggle'); if (toggle) toggle.checked = true;
         toast('تم حفظ بريد التنبيهات؛ سيبدأ الإرسال بعد إعداد مزود البريد الخلفي');
     } catch (e) { console.error(e); toast('تعذر حفظ بريد التنبيهات: ' + (e?.message || 'خطأ غير معروف'), 'error'); }
+}
+async function toggleEmailAlerts(enabled) {
+    try {
+        if (!currentUser) { const toggle = document.getElementById('emailAlertsToggle'); if (toggle) toggle.checked = false; return toast('سجّل الدخول أولًا', 'warn'); }
+        const emailInput = document.getElementById('alertEmail');
+        const email = String(emailInput?.value || currentUser.email || '').trim().toLowerCase();
+        if (enabled && !email.includes('@')) { const toggle = document.getElementById('emailAlertsToggle'); if (toggle) toggle.checked = false; return toast('أدخل بريد التنبيهات ثم اضغط حفظ البريد', 'warn'); }
+        const { error } = await sb.from('notification_subscriptions').upsert({ user_id: currentUser.id, email: email || null, email_enabled: Boolean(enabled), updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
+        toast(enabled ? 'تم تفعيل إشعارات البريد الإلكتروني' : 'تم إيقاف إشعارات البريد الإلكتروني');
+    } catch (e) { console.error(e); const toggle = document.getElementById('emailAlertsToggle'); if (toggle) toggle.checked = !enabled; toast('تعذر تحديث إعداد البريد: ' + (e?.message || 'خطأ غير معروف'), 'error'); }
+}
+async function loadEmailAlertPreference() {
+    if (!currentUser || !sb) return;
+    const { data } = await sb.from('notification_subscriptions').select('email,email_enabled').eq('user_id', currentUser.id).maybeSingle();
+    const input = document.getElementById('alertEmail'); const toggle = document.getElementById('emailAlertsToggle');
+    if (data) { if (input && data.email) input.value = data.email; if (toggle) toggle.checked = data.email_enabled === true; }
+}
+async function saveDisplayName() {
+    try {
+        if (!currentUser) return toast('سجّل الدخول أولًا', 'warn');
+        const input = document.getElementById('displayNameInput');
+        const name = String(input?.value || '').trim();
+        if (name.length < 2 || name.length > 80) return toast('اكتب اسمًا بين حرفين و80 حرفًا', 'warn');
+        const { error } = await sb.from('profiles').update({ name }).eq('id', currentUser.id);
+        if (error) throw error;
+        if (currentProfile) currentProfile.name = name;
+        const nameEl = document.getElementById('userName'); if (nameEl) nameEl.textContent = name;
+        const avatar = document.getElementById('userAvatar'); if (avatar) avatar.textContent = name.charAt(0).toUpperCase();
+        toast('تم حفظ اسم العرض');
+    } catch (e) { console.error(e); toast('تعذر حفظ الاسم: ' + (e?.message || 'خطأ غير معروف'), 'error'); }
+}
+
+const AZ_AI_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/az-ai`;
+let azAiHistory = [];
+function openAzAi() { const modal = document.getElementById('azAiModal'); if (!modal) return; modal.classList.add('active'); modal.setAttribute('aria-hidden','false'); setTimeout(()=>document.getElementById('azAiInput')?.focus(),80); }
+function closeAzAi() { const modal = document.getElementById('azAiModal'); if (!modal) return; modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); }
+function appendAzAiMessage(role, text) { const box=document.getElementById('azAiMessages'); if (!box) return; const item=document.createElement('div'); item.className=`az-ai-message ${role}`; item.textContent=text; box.appendChild(item); box.scrollTop=box.scrollHeight; return item; }
+async function askAzAi(event) {
+    event?.preventDefault();
+    const input=document.getElementById('azAiInput'); const question=String(input?.value||'').trim();
+    if (!question) return;
+    if (input) input.value=''; appendAzAiMessage('user',question); azAiHistory.push({role:'user',content:question});
+    const loading=appendAzAiMessage('assistant','AZ ai يكتب...'); loading?.classList.add('loading');
+    try {
+        const { data: { session } } = await sb.auth.getSession();
+        const headers={'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY}; if (session?.access_token) headers.Authorization=`Bearer ${session.access_token}`;
+        const response=await fetch(AZ_AI_FUNCTION_URL,{method:'POST',headers,body:JSON.stringify({messages:azAiHistory})});
+        const data=await response.json(); if (!response.ok) throw new Error(data?.error||'تعذر الاتصال بالمساعد');
+        loading?.remove(); appendAzAiMessage('assistant',data.answer); azAiHistory.push({role:'assistant',content:data.answer});
+    } catch (error) { loading?.remove(); appendAzAiMessage('assistant','تعذر تشغيل AZ ai حاليًا. تأكد من نشر الوظيفة وإضافة مفتاح الذكاء الاصطناعي في أسرار Supabase.'); console.error(error); }
+}
+
+const AZ_RELEASE_VERSION = '2026.08-owner-control-release-notes';
+function showReleaseNotesIfNeeded() {
+    if (!currentUser) return;
+    const key = `az_release_seen_${currentUser.id}_${AZ_RELEASE_VERSION}`;
+    if (localStorage.getItem(key)) return;
+    const modal = document.getElementById('releaseNotesModal');
+    const version = document.getElementById('releaseNotesVersion');
+    if (version) version.textContent = AZ_RELEASE_VERSION;
+    if (modal) { modal.style.display = 'flex'; modal.setAttribute('aria-hidden','false'); }
+}
+function acknowledgeReleaseNotes() {
+    if (currentUser) localStorage.setItem(`az_release_seen_${currentUser.id}_${AZ_RELEASE_VERSION}`, '1');
+    const modal = document.getElementById('releaseNotesModal');
+    if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden','true'); }
+}
+
+const NEWS_CATEGORY_LABELS = { earnings:'أرباح', dividend:'توزيعات', filing:'إفصاح', positive:'إيجابي', negative:'سلبي', general:'عام' };
+const NEWS_IMPACT_LABELS = { positive:'إيجابي محتمل', negative:'سلبي محتمل', neutral:'محايد' };
+function escapeNewsText(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch])); }
+function formatNewsAge(value) { const t = new Date(value); if (Number.isNaN(t.getTime())) return ''; const mins = Math.max(0, Math.round((Date.now()-t.getTime())/60000)); if (mins < 60) return `منذ ${mins} دقيقة`; const hours = Math.round(mins/60); if (hours < 24) return `منذ ${hours} ساعة`; return t.toLocaleDateString('ar-SA',{year:'numeric',month:'short',day:'numeric'}); }
+async function refreshCompanyNews() {
+    const box = document.getElementById('companyNewsList'); if (!box || !sb) return;
+    box.innerHTML = '<div class="news-empty">جارٍ تحديث الأخبار…</div>';
+    try {
+        const { data, error } = await sb.from('company_news').select('symbol,company_name,title,summary,source_name,source_url,published_at,category,impact,impact_reason,is_material').order('published_at',{ascending:false}).limit(30);
+        if (error) throw error;
+        if (!data?.length) { box.innerHTML = '<div class="news-empty">لا توجد أخبار مرتبطة بالمحاكي حتى الآن. سيظهر المحتوى بعد تشغيل جامع الأخبار الخلفي.</div>'; return; }
+        box.innerHTML = data.map(n => `<article class="news-item"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div class="news-item-title">${escapeNewsText(n.title)}</div><div class="news-item-sub">${escapeNewsText(n.source_name || 'مصدر عام')} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(n.impact_reason || '')}</div><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || 'عام'}</span><br><span class="news-impact ${n.impact || 'neutral'}">${NEWS_IMPACT_LABELS[n.impact] || 'محايد'}</span></div></article>`).join('');
+    } catch (error) { console.warn('تعذر تحميل أخبار الشركات:', error); box.innerHTML = '<div class="news-empty">تعذر تحميل الأخبار الآن. تحقق من نشر جدول company_news وتشغيل التحديث الخلفي.</div>'; }
+}
+
+function earningsCountdown(value) { const date = new Date(value); const days = Math.ceil((date.getTime() - Date.now()) / 86400000); if (days < 0) return 'تم الموعد'; if (days === 0) return 'اليوم'; if (days === 1) return 'غدًا'; return `بعد ${days} أيام`; }
+async function refreshEarningsCalendar() {
+    const box = document.getElementById('earningsList'); if (!box || !sb) return;
+    box.innerHTML = '<div class="earnings-empty">جارٍ تحديث تقويم الأرباح…</div>';
+    try {
+        const { data, error } = await sb.from('earnings_events').select('symbol,company_name,event_date,source_name,source_url').gte('event_date', new Date(Date.now()-86400000).toISOString()).lte('event_date', new Date(Date.now()+45*86400000).toISOString()).order('event_date',{ascending:true}).limit(20);
+        if (error) throw error;
+        if (!data?.length) { box.innerHTML = '<div class="earnings-empty">لا توجد مواعيد أرباح قريبة للأسهم المرتبطة حاليًا.</div>'; return; }
+        box.innerHTML = data.map(e => `<article class="earnings-item"><div class="earnings-symbol">${escapeHtml(e.symbol)}</div><div class="earnings-date">📅 ${earningsCountdown(e.event_date)}<br><span class="text-muted">${new Date(e.event_date).toLocaleDateString('ar-SA',{year:'numeric',month:'short',day:'numeric'})}</span></div><div class="earnings-source">${escapeHtml(e.source_name || 'مصدر عام')} · <a class="news-source" href="${escapeHtml(e.source_url || '#')}" target="_blank" rel="noopener noreferrer">المصدر</a></div></article>`).join('');
+    } catch (error) { console.warn('تعذر تحميل تقويم الأرباح:', error); box.innerHTML = '<div class="earnings-empty">تعذر تحميل التقويم. نفّذ ملف earnings_events.sql ثم شغّل مهمة التحديث.</div>'; }
 }
 
 // ===== APP INIT =====
@@ -238,10 +333,14 @@ async function initApp(user, profile) {
     document.getElementById('appContainer').classList.add('active');
     document.getElementById('userName').textContent = profile.name || profile.email;
     document.getElementById('userAvatar').textContent = (profile.name || profile.email).charAt(0).toUpperCase();
-    if (profile.role === 'admin') { document.getElementById('adminTabBtn').classList.remove('hidden'); refreshAdminData(); }
+    const displayNameInput = document.getElementById('displayNameInput'); if (displayNameInput) displayNameInput.value = profile.name || '';
+    if (profile.role === 'admin') { document.getElementById('adminTabBtn').classList.remove('hidden'); const broadcastCard = document.getElementById('ownerBroadcastCard'); if (broadcastCard) broadcastCard.style.display = 'block'; refreshAdminData(); }
     ensureEducationConsent();
     await loadWatchlist();
     await loadMySupportTickets();
+    await loadEmailAlertPreference();
+    await loadActiveOwnerAnnouncement();
+    showReleaseNotesIfNeeded();
     updateTrial(); updateSitePerformance(); setInterval(updateTrial, 60000);
     document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA');
     setInterval(()=>document.getElementById('liveTime').textContent = new Date().toLocaleTimeString('ar-SA'), 1000);
@@ -249,6 +348,10 @@ async function initApp(user, profile) {
     runScanner(); setInterval(runScanner, 15000);
     subscribeSignalRealtime();
     loadVirtualTrader();
+    await refreshCompanyNews();
+    await refreshEarningsCalendar();
+    if (window.companyNewsTimer) clearInterval(window.companyNewsTimer);
+    window.companyNewsTimer = setInterval(() => { refreshCompanyNews(); refreshEarningsCalendar(); }, 5 * 60 * 1000);
     loadSignalsData();
     if (!virtualTraderTimer) virtualTraderTimer = setInterval(() => runVirtualTrader('auto'), 60000);
     const c = LocalCache.getScreener();
@@ -545,6 +648,54 @@ async function reviewUpgrade(requestId, status) {
     refreshAdminData();
 }
 
+// ===== OWNER BROADCASTS =====
+async function publishOwnerBroadcast() {
+    if (!currentProfile || currentProfile.role !== 'admin') return toast('هذه الأداة متاحة للمالك فقط', 'error');
+    const title = String(document.getElementById('broadcastTitle')?.value || '').trim();
+    const body = String(document.getElementById('broadcastBody')?.value || '').trim();
+    if (title.length < 2 || body.length < 2) return toast('أدخل عنوانًا ونصًا للإشعار', 'warn');
+    const file = document.getElementById('broadcastImage')?.files?.[0];
+    let imageUrl = null;
+    try {
+        if (file) {
+            if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) return toast('الصورة يجب أن تكون أقل من 5MB', 'warn');
+            const path = `${currentUser.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+            const upload = await sb.storage.from('broadcast-media').upload(path, file, { contentType: file.type, upsert: false });
+            if (upload.error) throw upload.error;
+            imageUrl = sb.storage.from('broadcast-media').getPublicUrl(path).data.publicUrl;
+        }
+        const endsValue = document.getElementById('broadcastEndsAt')?.value;
+        const payload = { created_by: currentUser.id, title, body, image_url: imageUrl, popup_enabled: !!document.getElementById('broadcastPopup')?.checked, push_enabled: !!document.getElementById('broadcastPush')?.checked, email_enabled: !!document.getElementById('broadcastEmail')?.checked, ends_at: endsValue ? new Date(endsValue).toISOString() : null, status: 'published', published_at: new Date().toISOString() };
+        const { data, error } = await sb.from('admin_broadcasts').insert(payload).select('id').single();
+        if (error) throw error;
+        toast('تم نشر الإعلان وحفظه بنجاح', 'success');
+        ['broadcastTitle','broadcastBody','broadcastEndsAt'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        const img = document.getElementById('broadcastImage'); if (img) img.value = '';
+        if (payload.push_enabled || payload.email_enabled) {
+            const { data: sessionData } = await sb.auth.getSession();
+            await fetch(`${SUPABASE_URL}/functions/v1/send-admin-broadcast`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${sessionData?.session?.access_token || ''}` }, body: JSON.stringify({ broadcast_id: data.id }) });
+        }
+    } catch (e) { console.error('owner broadcast error', e); toast('تعذر إرسال الإعلان: ' + (e?.message || 'خطأ غير معروف'), 'error'); }
+}
+function closeOwnerAnnouncement() { const modal = document.getElementById('ownerAnnouncementModal'); if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden','true'); } }
+async function loadActiveOwnerAnnouncement() {
+    const { data, error } = await sb.from('admin_broadcasts').select('id,title,body,image_url').eq('status','published').eq('popup_enabled',true).lte('starts_at',new Date().toISOString()).or(`ends_at.is.null,ends_at.gt.${new Date().toISOString()}`).order('published_at',{ascending:false}).limit(1).maybeSingle();
+    if (error || !data || localStorage.getItem(`az_broadcast_seen_${data.id}`)) return;
+    document.getElementById('ownerAnnouncementTitle').textContent = data.title;
+    document.getElementById('ownerAnnouncementBody').textContent = data.body;
+    const img = document.getElementById('ownerAnnouncementImage'); if (img) { img.style.display = data.image_url ? 'block' : 'none'; img.src = data.image_url || ''; }
+    const modal = document.getElementById('ownerAnnouncementModal'); if (modal) { modal.style.display = 'flex'; modal.setAttribute('aria-hidden','false'); }
+    localStorage.setItem(`az_broadcast_seen_${data.id}`, '1');
+}
+
+// ===== OWNERSHIP / COPY DETERRENCE =====
+(function installOwnershipNotice() {
+    document.addEventListener('contextmenu', (event) => { if (!event.target.closest('input,textarea,[contenteditable="true"]')) event.preventDefault(); });
+    document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && ['c','u','s'].includes(event.key.toLowerCase()) && !event.target.closest('input,textarea,[contenteditable="true"]')) event.preventDefault();
+    });
+})();
+
 // ===== SESSION RESTORE ON LOAD =====
 document.addEventListener('DOMContentLoaded', async () => {
     sb.auth.onAuthStateChange((event) => {
@@ -552,6 +703,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadSessionAndEnter();
+    else if (new URLSearchParams(window.location.search).get('register') === '1') switchAuth('register');
 });
 
 // ===== 800+ STOCK UNIVERSE (fetch_market_data.py fetches real data for exactly this list — keep both in sync) =====
@@ -1352,7 +1504,7 @@ async function runWeeklyScan() {
     tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري قراءة القوالب الأربعة...</td></tr>';
     if (watchTb) watchTb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري القراءة...</td></tr>';
 
-    await loadSignalsData(true);
+    await loadInitialData();
     const universe = await fetchUniverse(true);
     const universeMap = Object.fromEntries(universe.map(row => [String(row.symbol || '').toUpperCase(), row]));
     const merged = new Map();
@@ -1806,6 +1958,22 @@ function openCourse() { document.getElementById('courseModal')?.classList.add('a
 function closeCourse() { document.getElementById('courseModal')?.classList.remove('active'); }
 function courseMove(delta) { renderCourseLesson(Number(document.getElementById('courseLessonIndex').value || 0) + delta); }
 
+const PLATFORM_GUIDE = {
+  stocks: { title: 'الأسهم الحية', body: '<p>تعرض هذه الصفحة الأسعار والاتجاه والحجم وقراءة الإشارة التعليمية من بيانات السوق المتاحة.</p><p><strong>طريقة الاستخدام:</strong> اختر السهم لمراجعة السعر والتغير وRSI، ثم انتقل إلى الفلترة قبل تسجيل أي فرضية محاكاة.</p>' },
+  trader: { title: 'المتداول الافتراضي', body: '<p>هذا محاكي تداول افتراضي مشترك برصيد تعليمي. ينفذ صفقات داخل المحاكاة فقط، ولا يتصل بوسيط ولا يستخدم أموالًا حقيقية.</p><p><strong>المتابعة:</strong> راجع سعر الدخول، سبب الصفقة، المركز المفتوح، والربح أو الخسارة المسجلة.</p>' },
+  screener: { title: 'فلترة الأسهم', body: '<p>تجمع الفلترة نتائج القوالب والشروط المحددة، ثم تستبعد الأدوات غير المناسبة مثل الصناديق والأدوات غير العادية.</p><p><strong>مهم:</strong> ظهور السهم في الفلترة لا يعني شراءً؛ القرار النهائي يمر عبر السعر المقترح والحارس الفني.</p>' },
+  signals: { title: 'الماسح والتنبيهات', body: '<p>يعرض الإشارة ودرجتها والسعر الحالي والسعر المقترح والسبب الفني.</p><p><strong>تنبيه الاقتراب:</strong> يصدر عندما يقترب السعر من منطقة الدخول، بينما لا يحدث الشراء إلا عند تحقق الشروط التنفيذية.</p>' },
+  picks: { title: 'ترشيحات الأسبوع', body: '<p>هذه قائمة تعليمية ناتجة من نتائج الفلترة والقوالب المؤهلة، وتعرض أفضل الفرص وقائمة المتابعة.</p><p>الترشيحات ليست توصية أو ضمانًا للنتيجة.</p>' },
+  indicators: { title: 'المؤشرات', body: '<p>تساعد SMA20 وSMA50 وSMA200 وRSI وSMC-inspired على وصف الاتجاه والزخم ومناطق الاهتمام.</p><p>المؤشر أداة مساعدة وليس وعدًا بالاتجاه أو الربح.</p>' },
+  course: { title: 'الدورة التعليمية', body: '<p>تقدم دروسًا عن قراءة السعر والاتجاه والدعم والمقاومة وإدارة المخاطر واختبار الفرضيات.</p><button class="preset-btn" type="button" onclick="closePlatformGuide();openCourse();">فتح الدورة التعليمية</button>' },
+  support: { title: 'الدعم الفني', body: '<p>استخدم الدعم لإرسال ملاحظة أو مشكلة عن الحساب أو البيانات أو تجربة المحاكي، وستصل كتذكرة للمسؤول.</p>' }
+};
+function openPlatformGuide() { const modal = document.getElementById('platformGuideModal'); if (!modal) return; modal.classList.add('active'); modal.setAttribute('aria-hidden', 'false'); backToGuideCards(); }
+function closePlatformGuide() { const modal = document.getElementById('platformGuideModal'); if (!modal) return; modal.classList.remove('active'); modal.setAttribute('aria-hidden', 'true'); }
+function backToGuideCards() { const cards = document.getElementById('platformGuideCards'); const detail = document.getElementById('platformGuideDetail'); if (cards) cards.hidden = false; if (detail) detail.hidden = true; }
+function showGuideDetail(key) { const item = PLATFORM_GUIDE[key]; if (!item) return; const cards = document.getElementById('platformGuideCards'); const detail = document.getElementById('platformGuideDetail'); if (!detail) return; if (cards) cards.hidden = true; detail.hidden = false; document.getElementById('platformGuideDetailTitle').textContent = item.title; document.getElementById('platformGuideDetailBody').innerHTML = item.body; }
+window.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePlatformGuide(); });
+
 // ضابط أولي للرموز: لا يُقبل الرمز إلا إذا وُجد في بيانات السوق الموثوقة وله سعر موجب.
 async function isTradableMarketSymbol(symbol) {
     const s = String(symbol || '').trim().toUpperCase();
@@ -1994,6 +2162,34 @@ function renderVirtualTrader() {
     set('virtualTraderStatus', virtualTrader.lastRun ? `آخر متابعة: ${new Date(virtualTrader.lastRun).toLocaleString('ar-SA')}` : 'لم تبدأ المتابعة الآلية بعد');
     const pnlEl = document.getElementById('vtPnl'); if (pnlEl) pnlEl.className = `val ${pnl >= 0 ? 'pos' : 'neg'}`;
 }
+
+// ===== SIGNAL-FIRST OVERVIEW MIRROR =====
+function syncOverviewMetrics() {
+    const copy = (sourceId, targetId, fallback = '—') => {
+        const source = document.getElementById(sourceId);
+        const target = document.getElementById(targetId);
+        if (target) target.textContent = source?.textContent || fallback;
+    };
+    copy('vtEquity', 'overviewEquity', '$10,000.00');
+    copy('vtPnl', 'overviewPnl', '$0.00');
+    copy('vtReturnPct', 'overviewReturn', '0.00%');
+    copy('vtOpenPositions', 'overviewPositions', '0');
+    const positionSymbols = Object.keys(virtualTrader?.positions || {});
+    const latest = virtualTrader?.trades?.[0];
+    const signal = document.getElementById('overviewSignal');
+    const entry = document.getElementById('overviewEntry');
+    const position = document.getElementById('overviewPosition');
+    const result = document.getElementById('overviewResult');
+    if (signal) signal.textContent = positionSymbols.length ? `مركز مفتوح: ${positionSymbols.join('، ')}` : 'بانتظار إشارة مجتازة';
+    if (entry) entry.textContent = latest?.action === 'buy' ? `دخول عند $${Number(latest.price || 0).toFixed(2)}` : 'السعر المقترح';
+    if (position) position.textContent = positionSymbols.length ? `${positionSymbols.length} مركز مشترك` : 'لا توجد مراكز مفتوحة';
+    if (result) result.textContent = latest?.action === 'sell' ? 'آخر نتيجة: بيع محاكى' : 'قياس الأداء مستمر';
+}
+const _renderVirtualTraderForOverview = renderVirtualTrader;
+renderVirtualTrader = function() {
+    _renderVirtualTraderForOverview();
+    syncOverviewMetrics();
+};
 
 // إعادة توجيه وظائف الواجهة القديمة إلى المتداول الافتراضي.
 const _oldRenderPortfolio = typeof renderPortfolio === 'function' ? renderPortfolio : null;

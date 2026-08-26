@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="author" content="AZ Alpha Vision / Abdulaziz Mohammed">
     <meta name="copyright" content="© 2026 AZ Alpha Vision. All rights reserved.">
     <meta name="application-name" content="AZ Alpha Vision — Virtual Simulator">
@@ -647,9 +650,22 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
 .az-ai-launcher,.platform-guide-launcher{position:fixed;right:22px;bottom:22px;width:52px;height:52px;padding:0!important;border-radius:16px!important;display:flex!important;align-items:center;justify-content:center;z-index:1200;background:#101a21!important;border:1px solid rgba(107,216,208,.48)!important;box-shadow:0 12px 34px rgba(0,0,0,.38)!important}
 .az-ai-launcher{right:22px}.az-ai-launcher strong,.az-ai-launcher .platform-guide-arrow,.platform-guide-launcher#userGuide strong,.platform-guide-launcher#userGuide .platform-guide-arrow{display:none}.az-ai-launcher .platform-guide-icon,.platform-guide-launcher#userGuide .platform-guide-icon{font-size:22px;color:var(--accent-cyan)}
 .platform-guide-launcher#userGuide{right:84px;border-color:rgba(216,179,106,.42)!important}.platform-guide-launcher#userGuide .platform-guide-icon{color:var(--accent-gold)}
-.tab-btn{display:inline-flex;align-items:center;gap:7px}.tab-btn.admin{color:var(--accent-gold)!important}.tab-btn.admin.active{background:rgba(216,179,106,.08)!important;border-color:rgba(216,179,106,.42)!important;color:var(--accent-gold)!important}
+.tab-btn{display:inline-flex;align-items:center;gap:8px}.tab-icon{width:18px;height:18px;display:inline-grid;place-items:center;color:var(--text-muted)}.tab-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.tab-btn.active .tab-icon{color:var(--accent-cyan)}.tab-btn.admin{color:var(--accent-gold)!important}.tab-btn.admin.active{background:rgba(216,179,106,.08)!important;border-color:rgba(216,179,106,.42)!important;color:var(--accent-gold)!important}
 .az-ai-modal{width:min(620px,calc(100vw - 28px))}.az-ai-message{border-radius:12px!important;border:1px solid var(--border)!important;background:#111b22!important;padding:12px 14px!important}.az-ai-message.assistant{border-right:3px solid var(--accent-cyan)!important}.az-ai-message.user{border-right:3px solid var(--accent-gold)!important}
 @media(max-width:760px){.az-ai-launcher{right:14px;bottom:14px}.platform-guide-launcher#userGuide{right:76px;bottom:14px}}
+</style>
+<style id="az-unified-ui">
+:root{--font-body:'IBM Plex Sans Arabic',system-ui,sans-serif;--font-mono:'IBM Plex Mono','JetBrains Mono',monospace;--positive:#76d6a2;--negative:#e98c91;--caution:#d8b36a;--neutral:#8796a3}
+body,input,textarea,select,button{font-family:var(--font-body)!important}.font-mono,.data-table th,.data-table td .font-mono{font-family:var(--font-mono)!important}
+.text-green,.pos,.positive,.price-up{color:var(--positive)!important}.text-red,.neg,.negative,.price-down{color:var(--negative)!important}.text-neutral,.neutral,.price-flat{color:var(--neutral)!important}.text-gold,.caution{color:var(--caution)!important}
+.icon-btn{width:34px;height:34px;display:inline-grid;place-items:center;border:1px solid var(--border);border-radius:10px;background:#111c24;color:var(--text-muted);cursor:pointer;font:600 18px/1 var(--font-mono);transition:.2s}.icon-btn:hover{border-color:var(--accent-cyan);color:var(--accent-cyan);background:rgba(107,216,208,.08)}.top-action{display:inline-flex!important;align-items:center;gap:7px;padding:8px 11px!important;border-radius:10px!important}.top-action-icon{display:inline-grid;place-items:center;width:18px;height:18px;color:var(--accent-cyan);font:600 15px/1 var(--font-mono)}
+.sidebar{background:#0a1016!important}.add-stock-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 0!important}.add-stock-form input{min-height:42px;border:1px solid var(--border)!important;background:#101922!important;border-radius:12px!important;color:var(--text)!important;padding:0 13px!important}.add-stock-form .btn-add{grid-column:span 2;min-height:42px;border-radius:12px!important;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700}.add-stock-form .btn-add:before{content:'+';width:22px;height:22px;display:grid;place-items:center;border:1px solid rgba(7,16,18,.25);border-radius:7px;font-size:16px}
+.virtual-portfolio-summary{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:20px}.virtual-portfolio-summary .sidebar-global-stats{display:block!important;background:#101820!important;border:1px solid var(--border)!important;border-radius:14px!important;padding:16px!important;margin:0!important}.virtual-portfolio-summary .sidebar-global-stats h4{color:var(--text)!important;font-size:13px!important;letter-spacing:0!important;margin:0 0 14px!important}.virtual-portfolio-summary .stat-row{padding:7px 0;margin:0!important;border-bottom:1px solid rgba(185,205,220,.08)}.virtual-portfolio-summary .stat-row:last-child{border-bottom:0}.ledger-surface{border:1px solid var(--border);border-radius:14px;background:#0d141b}
+.news-item{border-right:3px solid var(--neutral)!important}.news-item.impact-positive{border-right-color:var(--positive)!important}.news-item.impact-negative{border-right-color:var(--negative)!important}.news-item.impact-caution{border-right-color:var(--caution)!important}.news-item.impact-neutral{border-right-color:var(--neutral)!important}.news-impact.caution{color:var(--caution)!important;background:rgba(216,179,106,.12)!important}.news-category{color:var(--caution)!important}.ui-badge-icon{display:inline-grid;place-items:center;width:24px;height:24px;margin-left:7px;border-radius:8px;background:rgba(107,216,208,.12);color:var(--accent-cyan);font-family:var(--font-mono)}
+#tab-support .glass,#tab-admin .glass{background:#101820!important;border:1px solid var(--border)!important;border-radius:16px!important}.support-composer{position:relative;padding:18px!important;overflow:hidden}.support-composer:before{content:'';position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--accent-gold),var(--accent-cyan));opacity:.7}.form-grid{gap:10px!important}.input,#tab-support select,#tab-support textarea,#tab-admin input,#tab-admin select,#tab-admin textarea{background:#0d151d!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:12px!important;min-height:44px;padding:11px 13px!important;box-shadow:none!important}.input:focus,#tab-support select:focus,#tab-support textarea:focus,#tab-admin input:focus,#tab-admin select:focus,#tab-admin textarea:focus{border-color:var(--accent-cyan)!important;box-shadow:0 0 0 3px rgba(107,216,208,.1)!important}.ticket-submit{display:inline-flex;align-items:center;justify-content:center;gap:9px;border-radius:12px!important;margin-top:10px}.ticket-submit:before{content:'⌑';font-size:18px}.ticket-submit:after{content:'إرسال التذكرة';font-weight:700}.ticket-submit{font-size:0}.ticket-submit:before,.ticket-submit:after{font-size:13px}
+.support-title,.admin-title{display:flex;align-items:center;gap:10px}.support-title:before{content:'⌑';display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(216,179,106,.12);color:var(--caution);font-size:19px}.admin-title:before{content:'▣';display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(107,216,208,.12);color:var(--accent-cyan);font-size:16px}
+.az-ai-launcher .platform-guide-icon{font-size:0!important;width:100%!important;height:100%!important;display:grid!important;place-items:center!important}.az-ai-launcher .platform-guide-icon:after{content:none!important}.az-ai-launcher .platform-guide-icon svg{width:24px;height:24px;stroke:var(--accent-cyan);filter:drop-shadow(0 0 7px rgba(107,216,208,.45))}.az-ai-modal .platform-guide-head h2:before{content:'✦';display:inline-grid;place-items:center;width:34px;height:34px;margin-left:10px;border-radius:10px;background:rgba(107,216,208,.12);color:var(--accent-cyan);font-size:17px}.az-ai-message{font-family:var(--font-body)!important;font-size:13px!important;line-height:2!important}.az-ai-message.assistant{border-right-color:var(--accent-cyan)!important}.az-ai-message.user{border-right-color:var(--caution)!important}
+@media(max-width:760px){.virtual-portfolio-summary .sidebar-global-stats{padding:14px!important}.add-stock-form{grid-template-columns:1fr}.add-stock-form .btn-add{grid-column:1}.support-composer{padding:14px!important}}
 </style>
 </head>
 <body>
@@ -953,11 +969,11 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
             <div class="add-stock-form">
                 <input type="text" id="addSymbolInput" placeholder="رمز السهم (مثال: AAPL)" style="text-transform:uppercase;">
                 <input type="number" id="addEntryPrice" placeholder="سعر الشراء ($)" step="0.01">
-                <button class="btn-add" onclick="addToWatchlist()">+ إضافة للمتابعة</button>
+                <button class="btn-add" onclick="addToWatchlist()">إضافة للمتابعة</button>
             </div>
             <div class="watchlist-scroll" id="watchlistContainer"></div>
 <div class="stats-block sidebar-global-stats">
-                <h4>🤖 المتداول الافتراضي — 10,000$</h4>
+                <h4>محفظة المحاكي — 10,000$</h4>
                 <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$10,000.00</span></div>
                 <div class="stat-row"><span>المستثمر محاكيًا</span><span class="val" id="vtInvested">$0.00</span></div>
                 <div class="stat-row"><span>قيمة الحساب</span><span class="val" id="vtEquity">$10,000.00</span></div>
@@ -992,21 +1008,21 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                         <span id="userName">--</span>
                     </div>
                     <button id="upgradeBtn" class="btn-upgrade" onclick="openUpgradeModal()" style="display:none;">عرض الاشتراك والتجديد</button>
-                    <button class="btn-logout" onclick="registerPasskeyForCurrentUser()" style="padding:8px 14px; font-size:12px;">🔐 تفعيل البصمة</button>
-                    <button class="btn-logout" onclick="handleLogout()" style="padding:8px 14px; font-size:12px;">🚪 خروج</button>
+                    <button class="btn-logout top-action" onclick="registerPasskeyForCurrentUser()" aria-label="تفعيل البصمة"><span class="top-action-icon">⌁</span><span>تفعيل البصمة</span></button>
+                    <button class="btn-logout top-action" onclick="handleLogout()" aria-label="تسجيل الخروج"><span class="top-action-icon">↗</span><span>خروج</span></button>
                 </div>
             </div>
 
             <div class="tabs-wrap">
-                <button class="tab-btn active" onclick="switchTab('portfolio')" data-tab="portfolio">🤖 المحاكي الافتراضي</button>
-                <button class="tab-btn" onclick="switchTab('stocks')" data-tab="stocks">📊 الأسهم الحية</button>
-                <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener">🔍 فلترة الأسهم</button>
-                <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals">🎯 الماسح والتنبيهات</button>
-                <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks">📌 ترشيحات الأسبوع</button>
-                <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators">📈 المؤشرات</button>
-                <button class="tab-btn" onclick="switchTab('course'); openCourse()" data-tab="course">📚 الدورة التعليمية</button>
-                <button class="tab-btn" onclick="switchTab('support')" data-tab="support">🎧 الدعم الفني</button>
-                <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin">🛡️ التحكم</button>
+                <button class="tab-btn active" onclick="switchTab('portfolio')" data-tab="portfolio"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span>المحاكي الافتراضي</button>
+                <button class="tab-btn" onclick="switchTab('stocks')" data-tab="stocks"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m6 15 4-4 3 2 5-6"/></svg></span>الأسهم الحية</button>
+                <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener"><span class="tab-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></span>فلترة الأسهم</button>
+                <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 12h3l2-6 4 12 2-6h5"/></svg></span>الماسح والتنبيهات</button>
+                <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></svg></span>ترشيحات الأسبوع</button>
+                <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 18V6"/><path d="M4 18h16"/><path d="M7 15h3M12 11h3M17 7h1"/></svg></span>المؤشرات</button>
+                <button class="tab-btn" onclick="switchTab('course'); openCourse()" data-tab="course"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21.5Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5a2.5 2.5 0 0 1 2.5 2.5Z"/></svg></span>الدورة التعليمية</button>
+                <button class="tab-btn" onclick="switchTab('support')" data-tab="support"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 12h8M8 16h5"/></svg></span>الدعم والتذاكر</button>
+                <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg></span>التحكم</button>
             </div>
 
             <div class="content-area">
@@ -1031,17 +1047,17 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                         <div><strong>رأس المال الافتراضي: $10,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="preset-btn" onclick="runVirtualTrader('manual')">🔄 متابعة الماسح الآن</button><button class="preset-btn danger" onclick="resetVirtualTrader()">إعادة المحاكاة</button></div>
                     </div>
-                    <div class="glass" style="padding:14px;margin-bottom:18px;font-size:12px;line-height:1.8;color:var(--text-muted);">المتداول الافتراضي يتابع الإشارات المؤهلة ويشتري أو يبيع داخل المحاكاة فقط. كل صفقة تحتوي على السعر والوقت ودرجة الإشارة والسبب. لا يوجد تنفيذ حقيقي ولا اتصال بوسيط.</div>
-<div class="news-panel" id="companyNewsPanel"><div class="news-panel-head"><div><div class="news-panel-title">📰 أخبار الشركات</div><div class="news-panel-meta">للمراكز المفتوحة وأفضل الترشيحات</div></div><button class="preset-btn" type="button" onclick="refreshCompanyNews()">تحديث</button></div><div id="companyNewsList" class="news-list"><div class="news-empty">جارٍ تحميل الأخبار ذات الصلة…</div></div><div class="news-disclaimer">الأثر المحتمل تعليمي وليس توقعًا مؤكدًا للسعر. افتح رابط المصدر قبل اتخاذ أي استنتاج.</div></div>
-<div class="earnings-panel" id="earningsPanel"><div class="earnings-panel-head"><div><div class="earnings-title">📅 تقويم الأرباح</div><div class="news-panel-meta">مواعيد متوقعة للأسهم المرتبطة بالمحاكي</div></div><button class="preset-btn" type="button" onclick="refreshEarningsCalendar()">تحديث</button></div><div id="earningsList" class="earnings-list"><div class="earnings-empty">جارٍ تحميل مواعيد الأرباح…</div></div></div>
+                    <div id="virtualPortfolioSummary" class="virtual-portfolio-summary"></div>
                     <div class="section-title">المراكز المفتوحة <div class="line"></div></div>
-                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:24px;">
+                    <div class="ledger-surface" style="overflow-x:auto;margin-bottom:24px;">
                         <table class="data-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>سعر الدخول</th><th>السعر الأخير</th><th>الربح العائم</th><th>العائد %</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
                     </div>
-                    <div class="section-title">سجل الصفقات المحاكاة <div class="line"></div></div>
-                    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
+                    <div class="section-title">سجل صفقات المحاكي <div class="line"></div></div>
+                    <div class="ledger-surface" style="overflow-x:auto;margin-bottom:24px;">
                         <table class="data-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الربح/الخسارة</th><th>العائد %</th><th>الدرجة</th><th>السبب</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
                     </div>
+                    <div class="news-panel" id="companyNewsPanel"><div class="news-panel-head"><div><div class="news-panel-title">أخبار الشركات</div><div class="news-panel-meta">للمراكز المفتوحة وأفضل الترشيحات</div></div><button class="icon-btn" type="button" onclick="refreshCompanyNews()" aria-label="تحديث الأخبار">↻</button></div><div id="companyNewsList" class="news-list"><div class="news-empty">جارٍ تحميل الأخبار ذات الصلة…</div></div><div class="news-disclaimer">الأثر المحتمل تعليمي وليس توقعًا مؤكدًا للسعر. افتح رابط المصدر قبل اتخاذ أي استنتاج.</div></div>
+                    <div class="earnings-panel" id="earningsPanel"><div class="earnings-panel-head"><div><div class="earnings-title">تقويم الأرباح</div><div class="news-panel-meta">مواعيد متوقعة للأسهم المرتبطة بالمحاكي</div></div><button class="icon-btn" type="button" onclick="refreshEarningsCalendar()" aria-label="تحديث التقويم">↻</button></div><div id="earningsList" class="earnings-list"><div class="earnings-empty">جارٍ تحميل مواعيد الأرباح…</div></div></div>
                 </div>
 
                 <div id="tab-screener" class="tab-panel hidden">
@@ -1321,14 +1337,14 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                     </div>
                 </div>
                 <div id="tab-support" class="tab-panel hidden">
-                    <div class="section-title">🎧 الدعم الفني <div class="line"></div></div>
-                    <div class="glass" style="padding:18px;margin-bottom:18px;">
+                    <div class="section-title support-title">الدعم والتذاكر <div class="line"></div></div>
+                    <div class="glass support-composer" style="margin-bottom:18px;">
                         <div class="form-grid">
                             <input id="ticketSubject" class="input" placeholder="عنوان المشكلة أو الملاحظة">
                             <select id="ticketPriority" class="input"><option value="normal">عادية</option><option value="high">مهمة</option><option value="urgent">عاجلة</option></select>
                         </div>
                         <textarea id="ticketMessage" class="input" rows="5" placeholder="اكتب تفاصيل المشكلة أو اقتراحك هنا..."></textarea>
-                        <button class="btn-scan-main" onclick="submitSupportTicket()">إرسال التذكرة</button>
+                        <button class="btn-scan-main ticket-submit" onclick="submitSupportTicket()" aria-label="إرسال التذكرة"></button>
                     </div>
                     <div class="section-title">تذاكري <div class="line"></div></div>
                     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
@@ -1337,8 +1353,8 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                 </div>
                 <div id="tab-admin" class="tab-panel hidden">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                        <div class="section-title" style="margin:0;">🛡️ لوحة التحكم <div class="line"></div></div>
-                        <button class="preset-btn" onclick="refreshAdminData()" style="border-color:var(--accent-purple); color:var(--accent-purple);">🔄 تحديث</button>
+                        <div class="section-title admin-title" style="margin:0;">لوحة التحكم <div class="line"></div></div>
+                        <button class="icon-btn" onclick="refreshAdminData()" aria-label="تحديث لوحة التحكم">↻</button>
                     </div>
                     <div class="admin-kpi-grid">
                         <div class="kpi-card"><div class="kpi-glow" style="background:var(--accent-cyan);"></div><div class="kpi-val" id="totalUsers">0</div><div class="kpi-label">المشتركين</div></div>
@@ -1357,7 +1373,7 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                         <small class="text-muted">الإشعارات اختيارية وتتطلب HTTPS. جميع العمليات في المنصة افتراضية لغرض التعليم فقط.</small>
                     </div>
                     <div class="glass admin-settings-card" id="ownerBroadcastCard" style="display:none; margin-top:18px;">
-                        <div class="admin-settings-title">📣 إرسال للمستخدمين</div>
+                        <div class="admin-settings-title"><span class="ui-badge-icon">↗</span> إرسال للمستخدمين</div>
                         <div class="admin-settings-grid">
                             <label><span>عنوان الإشعار</span><input id="broadcastTitle" class="input" maxlength="120" placeholder="خبر أو تحديث مهم"></label>
                             <label><span>نص الرسالة</span><textarea id="broadcastBody" class="input" rows="4" maxlength="1000" placeholder="اكتب الرسالة للمستخدمين..."></textarea></label>
@@ -1396,11 +1412,10 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                     <div class="modal-box release-notes-modal" role="dialog" aria-modal="true" aria-labelledby="releaseNotesTitle">
                         <div class="platform-guide-head"><div><div class="az-kicker">AZ ALPHA VISION / RELEASE NOTES</div><h2 id="releaseNotesTitle">ما الجديد؟</h2><p class="sub">ملخص مختصر لأهم ما أُضيف في هذا الإصدار.</p></div><span class="release-version" id="releaseNotesVersion"></span></div>
                         <div class="release-notes-list">
-                            <div class="release-note-item"><span>✦</span><div><strong>AZ ai</strong><p>مساعدك التعليمي يشرح المؤشرات والفلاتر والمحاكي الافتراضي.</p></div></div>
-                            <div class="release-note-item"><span>📰</span><div><strong>أخبار الشركات</strong><p>مربع صغير يعرض الأخبار المهمة للمراكز والترشيحات مع المصدر والأثر المحتمل.</p></div></div>
-                            <div class="release-note-item"><span>📅</span><div><strong>تقويم الأرباح</strong><p>يعرض موعد إعلان الأرباح المتوقع وينبه قبل 10 أو 5 أو يوم واحد.</p></div></div>
-                            <div class="release-note-item"><span>📣</span><div><strong>إعلانات المالك</strong><p>يمكن للمالك إرسال إشعار نصي أو صورة وإظهار إعلان داخل المحاكي.</p></div></div>
-                            <div class="release-note-item"><span>◈</span><div><strong>محاكي افتراضي موحد</strong><p>المحفظة والعمليات تعليمية فقط، والنتائج مشتركة وواضحة لجميع المستخدمين.</p></div></div>
+                            <div class="release-note-item"><span>✦</span><div><strong>AZ ai</strong><p>مساعدك التعليمي أصبح بأيقونة Chat Sparkle وردود عربية نظيفة بلا رموز مشوهة.</p></div></div>
+                            <div class="release-note-item"><span>▣</span><div><strong>محفظة المحاكي</strong><p>ملخص رأس المال والمراكز وسجل الصفقات يظهر مباشرة داخل المحاكي.</p></div></div>
+                            <div class="release-note-item"><span>↗</span><div><strong>ألوان ذكية</strong><p>الأخضر للارتفاع والإيجابي، والأحمر للانخفاض والسلبي، والأصفر للمتابعة، والرمادي للمحايد.</p></div></div>
+                            <div class="release-note-item"><span>⌑</span><div><strong>دعم وتذاكر حديثة</strong><p>تم تحديث نماذج المتابعة والتذاكر واللوحة إلى حقول داكنة وأيقونات وظيفية موحدة.</p></div></div>
                         </div>
                         <button class="btn-scan-main" type="button" onclick="acknowledgeReleaseNotes()" style="width:100%;margin-top:16px;">فهمت — ابدأ التعلم</button>
                     </div>
@@ -1415,7 +1430,7 @@ body{background:#080b10;letter-spacing:-.01em}.bg-mesh{background:radial-gradien
                     </div>
                 </div>
                 <button id="azAiLauncher" class="glass platform-guide-launcher az-ai-launcher" type="button" onclick="openAzAi()" aria-label="فتح AZ ai">
-                    <span class="platform-guide-icon">◈</span>
+                    <span class="platform-guide-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5 3.8 21l.9-4A8.3 8.3 0 0 1 3.5 12C3.5 7.3 7.3 3.5 12 3.5s8.5 3.8 8.5 8.5-3.8 8.5-8.5 8.5c-1.8 0-3.5-.6-5-1.6Z"/><path d="m15.8 5.5.55 2.15 2.15.55-2.15.55-.55 2.15-.55-2.15-2.15-.55 2.15-.55.55-2.15Z"/></svg></span>
                     <span><strong>AZ ai</strong></span>
                     <span class="platform-guide-arrow">←</span>
                 </button>

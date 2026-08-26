@@ -271,7 +271,8 @@ const AZ_AI_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/az-ai`;
 let azAiHistory = [];
 function openAzAi() { const modal = document.getElementById('azAiModal'); if (!modal) return; modal.classList.add('active'); modal.setAttribute('aria-hidden','false'); setTimeout(()=>document.getElementById('azAiInput')?.focus(),80); }
 function closeAzAi() { const modal = document.getElementById('azAiModal'); if (!modal) return; modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); }
-function appendAzAiMessage(role, text) { const box=document.getElementById('azAiMessages'); if (!box) return; const item=document.createElement('div'); item.className=`az-ai-message ${role}`; item.textContent=text; box.appendChild(item); box.scrollTop=box.scrollHeight; return item; }
+function cleanAzAiText(text) { return String(text || '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/^#{1,6}\s*/gm, '').replace(/^[\-•]\s*/gm, '• ').replace(/`/g, '').trim(); }
+function appendAzAiMessage(role, text) { const box=document.getElementById('azAiMessages'); if (!box) return; const item=document.createElement('div'); item.className=`az-ai-message ${role}`; item.textContent=cleanAzAiText(text); box.appendChild(item); box.scrollTop=box.scrollHeight; return item; }
 async function askAzAi(event) {
     event?.preventDefault();
     const input=document.getElementById('azAiInput'); const question=String(input?.value||'').trim();
@@ -287,7 +288,7 @@ async function askAzAi(event) {
     } catch (error) { loading?.remove(); const detail=String(error?.message||'').slice(0,180); appendAzAiMessage('assistant',`تعذر تشغيل AZ ai حاليًا. تحقق من نشر الوظيفة ومفتاح الذكاء الاصطناعي في Supabase.${detail?`\nالتفصيل: ${detail}`:''}`); console.error(error); }
 }
 
-const AZ_RELEASE_VERSION = '2026.08-owner-control-release-notes';
+const AZ_RELEASE_VERSION = '2026.08-modern-ui-portfolio-ai';
 function showReleaseNotesIfNeeded() {
     if (!currentUser) return;
     const key = `az_release_seen_${currentUser.id}_${AZ_RELEASE_VERSION}`;
@@ -305,6 +306,7 @@ function acknowledgeReleaseNotes() {
 
 const NEWS_CATEGORY_LABELS = { earnings:'أرباح', dividend:'توزيعات', filing:'إفصاح', positive:'إيجابي', negative:'سلبي', general:'عام' };
 const NEWS_IMPACT_LABELS = { positive:'إيجابي محتمل', negative:'سلبي محتمل', neutral:'محايد' };
+function newsImpactVisual(news) { if (news?.impact === 'positive') return { key:'positive', label:'إيجابي' }; if (news?.impact === 'negative') return { key:'negative', label:'سلبي' }; if (news?.is_material || ['earnings','dividend','filing'].includes(news?.category)) return { key:'caution', label:'مهم للمتابعة' }; return { key:'neutral', label:'محايد' }; }
 function escapeNewsText(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch])); }
 function formatNewsAge(value) { const t = new Date(value); if (Number.isNaN(t.getTime())) return ''; const mins = Math.max(0, Math.round((Date.now()-t.getTime())/60000)); if (mins < 60) return `منذ ${mins} دقيقة`; const hours = Math.round(mins/60); if (hours < 24) return `منذ ${hours} ساعة`; return t.toLocaleDateString('ar-SA',{year:'numeric',month:'short',day:'numeric'}); }
 async function refreshCompanyNews() {
@@ -314,7 +316,7 @@ async function refreshCompanyNews() {
         const { data, error } = await sb.from('company_news').select('symbol,company_name,title,summary,source_name,source_url,published_at,category,impact,impact_reason,is_material').order('published_at',{ascending:false}).limit(30);
         if (error) throw error;
         if (!data?.length) { box.innerHTML = '<div class="news-empty">لا توجد أخبار مرتبطة بالمحاكي حتى الآن. سيظهر المحتوى بعد تشغيل جامع الأخبار الخلفي.</div>'; return; }
-        box.innerHTML = data.map(n => `<article class="news-item"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div class="news-item-title">${escapeNewsText(n.title)}</div><div class="news-item-sub">${escapeNewsText(n.source_name || 'مصدر عام')} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(n.impact_reason || '')}</div><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || 'عام'}</span><br><span class="news-impact ${n.impact || 'neutral'}">${NEWS_IMPACT_LABELS[n.impact] || 'محايد'}</span></div></article>`).join('');
+        box.innerHTML = data.map(n => { const visual = newsImpactVisual(n); return `<article class="news-item impact-${visual.key}"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div class="news-item-title">${escapeNewsText(n.title)}</div><div class="news-item-sub">${escapeNewsText(n.source_name || 'مصدر عام')} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(n.impact_reason || '')}</div><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || 'عام'}</span><br><span class="news-impact ${visual.key}">${visual.label}</span></div></article>`; }).join('');
     } catch (error) { console.warn('تعذر تحميل أخبار الشركات:', error); box.innerHTML = '<div class="news-empty">تعذر تحميل الأخبار الآن. تحقق من نشر جدول company_news وتشغيل التحديث الخلفي.</div>'; }
 }
 
@@ -331,12 +333,19 @@ async function refreshEarningsCalendar() {
 }
 
 // ===== APP INIT =====
+function placeVirtualPortfolioSummary() {
+    const mount = document.getElementById('virtualPortfolioSummary');
+    const summary = document.querySelector('.sidebar .sidebar-global-stats');
+    if (mount && summary && !mount.contains(summary)) mount.appendChild(summary);
+}
+
 async function initApp(user, profile) {
     currentUser = user;
     currentProfile = profile;
     document.getElementById('authScreen').style.display='none';
     document.getElementById('waitingScreen').classList.remove('active');
     document.getElementById('appContainer').classList.add('active');
+    placeVirtualPortfolioSummary();
     document.getElementById('userName').textContent = profile.name || profile.email;
     document.getElementById('userAvatar').textContent = (profile.name || profile.email).charAt(0).toUpperCase();
     const displayNameInput = document.getElementById('displayNameInput'); if (displayNameInput) displayNameInput.value = profile.name || '';
@@ -2169,6 +2178,8 @@ function resetVirtualTrader() {
     toast('إعادة ضبط المحاكي تتم من الخادم مع حفظ السجل السابق؛ لا تُحذف الصفقات من الواجهة.', 'info');
     syncVirtualTraderFromServer();
 }
+function movementClass(value) { const n = Number(value); return n > 0 ? 'text-green' : n < 0 ? 'text-red' : 'text-neutral'; }
+function movementSign(value) { const n = Number(value); return n > 0 ? '+' : ''; }
 function renderVirtualTrader() {
     const equity = virtualEquity();
     const invested = Object.values(virtualTrader.positions).reduce((sum, p) => sum + Number(p.qty) * Number(p.entryPrice), 0);
@@ -2179,16 +2190,16 @@ function renderVirtualTrader() {
     const returnPct = (pnl / VIRTUAL_STARTING_CASH) * 100;
     const winRate = sells.length ? (sells.filter(t => Number(t.pnl) > 0).length / sells.length) * 100 : null;
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
-    set('vtCash', `$${virtualTrader.cash.toFixed(2)}`); set('vtEquity', `$${equity.toFixed(2)}`); set('vtInvested', `$${invested.toFixed(2)}`); set('vtPnl', `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`); set('vtReturnPct', `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`); set('vtRealizedPnl', `${realized >= 0 ? '+' : ''}$${realized.toFixed(2)}`); set('vtUnrealizedPnl', `${unrealized >= 0 ? '+' : ''}$${unrealized.toFixed(2)}`); set('vtWinRate', winRate == null ? '—' : `${winRate.toFixed(1)}%`); set('vtOpenPositions', String(Object.keys(virtualTrader.positions).length));
+    set('vtCash', `$${virtualTrader.cash.toFixed(2)}`); set('vtEquity', `$${equity.toFixed(2)}`); set('vtInvested', `$${invested.toFixed(2)}`); set('vtPnl', `${movementSign(pnl)}$${pnl.toFixed(2)}`); set('vtReturnPct', `${movementSign(returnPct)}${returnPct.toFixed(2)}%`); set('vtRealizedPnl', `${movementSign(realized)}$${realized.toFixed(2)}`); set('vtUnrealizedPnl', `${movementSign(unrealized)}$${unrealized.toFixed(2)}`); set('vtWinRate', winRate == null ? '—' : `${winRate.toFixed(1)}%`); set('vtOpenPositions', String(Object.keys(virtualTrader.positions).length));
     const posBody = document.getElementById('virtualPositionsBody');
     if (posBody) {
         const positions = Object.values(virtualTrader.positions);
-        posBody.innerHTML = positions.length ? positions.map(p => { const last = Number(p.lastPrice || p.entryPrice); const upnl = (last - Number(p.entryPrice)) * Number(p.qty); const pct = Number(p.entryPrice) ? ((last / Number(p.entryPrice) - 1) * 100) : 0; return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${upnl >= 0 ? 'text-green' : 'text-red'}">${upnl >= 0 ? '+' : ''}$${upnl.toFixed(2)}</td><td class="${pct >= 0 ? 'text-green' : 'text-red'}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
+        posBody.innerHTML = positions.length ? positions.map(p => { const last = Number(p.lastPrice || p.entryPrice); const upnl = (last - Number(p.entryPrice)) * Number(p.qty); const pct = Number(p.entryPrice) ? ((last / Number(p.entryPrice) - 1) * 100) : 0; return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${movementClass(upnl)}">${movementSign(upnl)}$${upnl.toFixed(2)}</td><td class="${movementClass(pct)}">${movementSign(pct)}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
     }
     const tradeBody = document.getElementById('virtualTradesBody');
-    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => { const pnlValue = t.pnl == null ? null : Number(t.pnl); const pct = t.action === 'sell' && t.entryPrice ? ((Number(t.price) / Number(t.entryPrice) - 1) * 100) : null; return `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td class="${pnlValue == null || pnlValue >= 0 ? 'text-green' : 'text-red'}">${pnlValue == null ? '—' : `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toFixed(2)}`}</td><td class="${pct == null || pct >= 0 ? 'text-green' : 'text-red'}">${pct == null ? '—' : `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`; }).join('') : '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
+    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => { const pnlValue = t.pnl == null ? null : Number(t.pnl); const pct = t.action === 'sell' && t.entryPrice ? ((Number(t.price) / Number(t.entryPrice) - 1) * 100) : null; const pnlClass = pnlValue == null ? 'text-neutral' : movementClass(pnlValue); const pctClass = pct == null ? 'text-neutral' : movementClass(pct); return `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td class="${pnlClass}">${pnlValue == null ? '—' : `${movementSign(pnlValue)}$${pnlValue.toFixed(2)}`}</td><td class="${pctClass}">${pct == null ? '—' : `${movementSign(pct)}${pct.toFixed(2)}%`}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`; }).join('') : '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
     set('virtualTraderStatus', virtualTrader.lastRun ? `آخر متابعة: ${new Date(virtualTrader.lastRun).toLocaleString('ar-SA')}` : 'لم تبدأ المتابعة الآلية بعد');
-    const pnlEl = document.getElementById('vtPnl'); if (pnlEl) pnlEl.className = `val ${pnl >= 0 ? 'pos' : 'neg'}`;
+    ['vtPnl','vtReturnPct','vtRealizedPnl','vtUnrealizedPnl'].forEach(id => { const el = document.getElementById(id); if (el) el.className = `val ${movementClass(Number(String(el.textContent || '').replace(/[$,%+ ]/g, '')))}`; });
 }
 
 // ===== SIGNAL-FIRST OVERVIEW MIRROR =====
@@ -2205,8 +2216,8 @@ function syncOverviewMetrics() {
     ['overviewPnl','overviewReturn','vtPnl','vtReturnPct','vtRealizedPnl','vtUnrealizedPnl'].forEach(id => {
         const el = document.getElementById(id); if (!el) return;
         const numeric = parseFloat(String(el.textContent || '').replace(/[$,%+ ]/g, ''));
-        el.classList.remove('text-green','text-red','pos','neg');
-        if (Number.isFinite(numeric)) el.classList.add(numeric >= 0 ? 'text-green' : 'text-red');
+        el.classList.remove('text-green','text-red','text-neutral','pos','neg');
+        if (Number.isFinite(numeric)) el.classList.add(movementClass(numeric));
     });
     const positionSymbols = Object.keys(virtualTrader?.positions || {});
     const latest = virtualTrader?.trades?.[0];

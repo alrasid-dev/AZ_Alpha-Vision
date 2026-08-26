@@ -280,11 +280,11 @@ async function askAzAi(event) {
     const loading=appendAzAiMessage('assistant','AZ ai يكتب...'); loading?.classList.add('loading');
     try {
         const { data: { session } } = await sb.auth.getSession();
-        const headers={'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY}; if (session?.access_token) headers.Authorization=`Bearer ${session.access_token}`;
-        const response=await fetch(AZ_AI_FUNCTION_URL,{method:'POST',headers,body:JSON.stringify({messages:azAiHistory})});
-        const data=await response.json(); if (!response.ok) throw new Error(data?.error||'تعذر الاتصال بالمساعد');
+        const { data, error } = await sb.functions.invoke('az-ai', { body: { messages: azAiHistory } });
+        if (error) throw new Error(error.message || 'تعذر الاتصال بالمساعد');
+        if (!data?.answer) throw new Error(data?.error || 'لم يصل رد صالح من AZ ai');
         loading?.remove(); appendAzAiMessage('assistant',data.answer); azAiHistory.push({role:'assistant',content:data.answer});
-    } catch (error) { loading?.remove(); appendAzAiMessage('assistant','تعذر تشغيل AZ ai حاليًا. تأكد من نشر الوظيفة وإضافة مفتاح الذكاء الاصطناعي في أسرار Supabase.'); console.error(error); }
+    } catch (error) { loading?.remove(); const detail=String(error?.message||'').slice(0,180); appendAzAiMessage('assistant',`تعذر تشغيل AZ ai حاليًا. تحقق من نشر الوظيفة ومفتاح الذكاء الاصطناعي في Supabase.${detail?`\nالتفصيل: ${detail}`:''}`); console.error(error); }
 }
 
 const AZ_RELEASE_VERSION = '2026.08-owner-control-release-notes';
@@ -538,6 +538,7 @@ async function refreshAdminData() {
     if (error || !users) { toast('تعذر تحميل بيانات الأدمن: ' + (error?.message||''), 'error'); return; }
 
     document.getElementById('totalUsers').textContent=users.length;
+    await loadBroadcastUsers();
     const targetSelect = document.getElementById('broadcastTargetUser');
     if (targetSelect) targetSelect.innerHTML = '<option value="">اختر مستخدمًا</option>' + users.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || u.id)}</option>`).join('');
     // نظام الموافقة الإدارية ملغى؛ جميع الحسابات المصادق عليها تظهر مفعّلة.
@@ -657,10 +658,20 @@ async function reviewUpgrade(requestId, status) {
 }
 
 // ===== OWNER BROADCASTS =====
-function toggleBroadcastAudience() {
+async function loadBroadcastUsers() {
+    const select = document.getElementById('broadcastTargetUser');
+    if (!select || !currentProfile || currentProfile.role !== 'admin') return;
+    select.innerHTML = '<option value="">جارٍ تحميل المستخدمين...</option>';
+    const { data, error } = await sb.from('profiles').select('id,name,email').order('created_at', { ascending:false });
+    if (error) { select.innerHTML = '<option value="">تعذر تحميل المستخدمين</option>'; console.warn('broadcast users', error); return; }
+    const users = (data || []).filter(u => u.id !== currentUser.id);
+    select.innerHTML = users.length ? '<option value="">اختر مستخدمًا</option>' + users.map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || `مستخدم ${String(u.id).slice(0,8)}`)}${u.email && u.name ? ` — ${escapeHtml(u.email)}` : ''}</option>`).join('') : '<option value="">لا يوجد مستخدمون آخرون</option>';
+}
+async function toggleBroadcastAudience() {
     const type = document.getElementById('broadcastAudience')?.value || 'all';
     const wrap = document.getElementById('broadcastUserWrap');
     if (wrap) wrap.style.display = type === 'user' ? 'block' : 'none';
+    if (type === 'user') await loadBroadcastUsers();
 }
 
 async function publishOwnerBroadcast() {

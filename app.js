@@ -7,6 +7,7 @@ const SUPABASE_URL = "https://riktmjqbixqlqwqwqoyc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TMew47Ce-t8NuuJ-4Mpw5w_sa6ckPjf";
 // مفتاح VAPID العام فقط؛ المفتاح الخاص يبقى داخل Supabase Edge Function Secrets.
 const WEB_PUSH_PUBLIC_KEY = "BNk6hCs1rlvB-_8NSo0cxXNLR964XlRSwVE6THODXYwST84y8OMfzY_EsIkwnpTzQV8c4XY_whs4C1SBaphooIM";
+const PUSH_KEY_VERSION = '2026-08-vapid-2';
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
@@ -208,7 +209,12 @@ async function enableBrowserNotifications() {
         if (permission !== 'granted') return toast('لم يتم السماح بإشعارات المتصفح', 'warn');
         const registration = await registerPushWorker();
         let subscription = await registration.pushManager.getSubscription();
+        if (subscription && localStorage.getItem('az_push_key_version') !== PUSH_KEY_VERSION) {
+            await subscription.unsubscribe().catch(() => {});
+            subscription = null;
+        }
         if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY) });
+        localStorage.setItem('az_push_key_version', PUSH_KEY_VERSION);
         const { error } = await sb.from('notification_subscriptions').upsert({
             user_id: currentUser.id, email: currentUser.email || currentProfile?.email || null,
             endpoint: subscription.endpoint, push_subscription: subscription.toJSON(), push_enabled: true, updated_at: new Date().toISOString()

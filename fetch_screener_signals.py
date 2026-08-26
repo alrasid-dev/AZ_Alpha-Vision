@@ -192,16 +192,17 @@ def smart_money_entry(row: dict[str, Any]) -> tuple[bool, str]:
     distance20 = num(row, "distance_from_sma20")
     if price is None:
         return False, "لا يوجد سعر صالح"
-    chase = (rsi is not None and rsi >= 68) or change >= 5 or (distance20 is not None and distance20 > 8)
+    # الوضع المتوازن: يزيد الفرص دون السماح بمطاردة الارتفاعات الحادة.
+    chase = (rsi is not None and rsi >= 72) or change >= 7 or (distance20 is not None and distance20 > 10)
     if chase:
         return False, "السعر في منطقة مطاردة/قمة؛ انتظار تراجع"
     bullish_structure = bool(
         sma20 is not None and sma50 is not None and (
             (price >= sma20 and sma20 >= sma50) or
-            (price >= sma50 * 0.98 and price <= sma20 * 1.05)
+            (price >= sma50 * 0.98 and price <= sma20 * 1.10)
         )
     ) or bool(
-        sma50 is not None and sma200 is not None and price >= sma200 * 0.98 and price <= sma50 * 1.05 and (rsi is None or rsi < 62)
+        sma50 is not None and sma200 is not None and price >= sma200 * 0.98 and price <= sma50 * 1.10 and (rsi is None or rsi < 65)
     )
     volume_ok = relvol is None or relvol >= 1.0
     if not bullish_structure:
@@ -222,7 +223,7 @@ def entry_score(row: dict[str, Any], spec: dict[str, Any]) -> tuple[int, dict[st
     signals = {
         "fibonacci": bool(sma20 is not None and sma50 is not None and price > sma20 > sma50),
         "smc_atr": smc_ok,
-        "candlestick": bool(change > 0 and (rsi is None or rsi < 68)),
+        "candlestick": bool(change > 0 and (rsi is None or rsi < 72)),
         "volume": bool(relvol > 1.5),
     }
     # اجعل أساسيات القالب تأكيدًا إضافيًا، مع الاحتفاظ بأربع مفاتيح الإشارة المتوافقة مع الواجهة.

@@ -6,7 +6,7 @@
 const SUPABASE_URL = "https://riktmjqbixqlqwqwqoyc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_TMew47Ce-t8NuuJ-4Mpw5w_sa6ckPjf";
 // مفتاح VAPID العام فقط؛ المفتاح الخاص يبقى داخل Supabase Edge Function Secrets.
-const WEB_PUSH_PUBLIC_KEY = "BLCSJ98tUAcH2QNuzmjdf2wdAZ0eKTRob4yhDM5-QrEPPhmkdz1cSz2aAEUdKxXKMFLriTcIcXH96dqRPBYU49M";
+const WEB_PUSH_PUBLIC_KEY = "BNk6hCs1rlvB-_8NSo0cxXNLR964XlRSwVE6THODXYwST84y8OMfzY_EsIkwnpTzQV8c4XY_whs4C1SBaphooIM";
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
@@ -532,6 +532,8 @@ async function refreshAdminData() {
     if (error || !users) { toast('تعذر تحميل بيانات الأدمن: ' + (error?.message||''), 'error'); return; }
 
     document.getElementById('totalUsers').textContent=users.length;
+    const targetSelect = document.getElementById('broadcastTargetUser');
+    if (targetSelect) targetSelect.innerHTML = '<option value="">اختر مستخدمًا</option>' + users.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || u.id)}</option>`).join('');
     // نظام الموافقة الإدارية ملغى؛ جميع الحسابات المصادق عليها تظهر مفعّلة.
     document.getElementById('pendingUsers').textContent='0';
     document.getElementById('activeUsers').textContent=users.filter(u=>(!u.trial_end||new Date(u.trial_end).getTime()>Date.now())).length;
@@ -649,11 +651,20 @@ async function reviewUpgrade(requestId, status) {
 }
 
 // ===== OWNER BROADCASTS =====
+function toggleBroadcastAudience() {
+    const type = document.getElementById('broadcastAudience')?.value || 'all';
+    const wrap = document.getElementById('broadcastUserWrap');
+    if (wrap) wrap.style.display = type === 'user' ? 'block' : 'none';
+}
+
 async function publishOwnerBroadcast() {
     if (!currentProfile || currentProfile.role !== 'admin') return toast('هذه الأداة متاحة للمالك فقط', 'error');
     const title = String(document.getElementById('broadcastTitle')?.value || '').trim();
     const body = String(document.getElementById('broadcastBody')?.value || '').trim();
     if (title.length < 2 || body.length < 2) return toast('أدخل عنوانًا ونصًا للإشعار', 'warn');
+    const audienceType = document.getElementById('broadcastAudience')?.value || 'all';
+    const targetUserId = document.getElementById('broadcastTargetUser')?.value || null;
+    if (audienceType === 'user' && !targetUserId) return toast('اختر المستخدم المحدد أولًا', 'warn');
     const file = document.getElementById('broadcastImage')?.files?.[0];
     let imageUrl = null;
     try {
@@ -665,7 +676,7 @@ async function publishOwnerBroadcast() {
             imageUrl = sb.storage.from('broadcast-media').getPublicUrl(path).data.publicUrl;
         }
         const endsValue = document.getElementById('broadcastEndsAt')?.value;
-        const payload = { created_by: currentUser.id, title, body, image_url: imageUrl, popup_enabled: !!document.getElementById('broadcastPopup')?.checked, push_enabled: !!document.getElementById('broadcastPush')?.checked, email_enabled: !!document.getElementById('broadcastEmail')?.checked, ends_at: endsValue ? new Date(endsValue).toISOString() : null, status: 'published', published_at: new Date().toISOString() };
+        const payload = { created_by: currentUser.id, title, body, image_url: imageUrl, audience_type: audienceType, target_user_id: audienceType === 'user' ? targetUserId : null, popup_enabled: !!document.getElementById('broadcastPopup')?.checked, push_enabled: !!document.getElementById('broadcastPush')?.checked, email_enabled: !!document.getElementById('broadcastEmail')?.checked, ends_at: endsValue ? new Date(endsValue).toISOString() : null, status: 'published', published_at: new Date().toISOString() };
         const { data, error } = await sb.from('admin_broadcasts').insert(payload).select('id').single();
         if (error) throw error;
         toast('تم نشر الإعلان وحفظه بنجاح', 'success');
@@ -679,7 +690,7 @@ async function publishOwnerBroadcast() {
 }
 function closeOwnerAnnouncement() { const modal = document.getElementById('ownerAnnouncementModal'); if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden','true'); } }
 async function loadActiveOwnerAnnouncement() {
-    const { data, error } = await sb.from('admin_broadcasts').select('id,title,body,image_url').eq('status','published').eq('popup_enabled',true).lte('starts_at',new Date().toISOString()).or(`ends_at.is.null,ends_at.gt.${new Date().toISOString()}`).order('published_at',{ascending:false}).limit(1).maybeSingle();
+    const { data, error } = await sb.from('admin_broadcasts').select('id,title,body,image_url').eq('status','published').eq('popup_enabled',true).lte('starts_at',new Date().toISOString()).or(`audience_type.eq.all,target_user_id.eq.${currentUser.id}`).or(`ends_at.is.null,ends_at.gt.${new Date().toISOString()}`).order('published_at',{ascending:false}).limit(1).maybeSingle();
     if (error || !data || localStorage.getItem(`az_broadcast_seen_${data.id}`)) return;
     document.getElementById('ownerAnnouncementTitle').textContent = data.title;
     document.getElementById('ownerAnnouncementBody').textContent = data.body;
@@ -2174,6 +2185,12 @@ function syncOverviewMetrics() {
     copy('vtPnl', 'overviewPnl', '$0.00');
     copy('vtReturnPct', 'overviewReturn', '0.00%');
     copy('vtOpenPositions', 'overviewPositions', '0');
+    ['overviewPnl','overviewReturn','vtPnl','vtReturnPct','vtRealizedPnl','vtUnrealizedPnl'].forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        const numeric = parseFloat(String(el.textContent || '').replace(/[$,%+ ]/g, ''));
+        el.classList.remove('text-green','text-red','pos','neg');
+        if (Number.isFinite(numeric)) el.classList.add(numeric >= 0 ? 'text-green' : 'text-red');
+    });
     const positionSymbols = Object.keys(virtualTrader?.positions || {});
     const latest = virtualTrader?.trades?.[0];
     const signal = document.getElementById('overviewSignal');

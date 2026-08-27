@@ -95,15 +95,49 @@ def sec_items(symbol: str, company: str, cik_map: dict[str, str]) -> list[dict[s
     return out[:5]
 
 def upsert(rows: list[dict[str, Any]]) -> None:
-    if not rows: return
-    payload = []
+    if not rows:
+        return
+    # نحذف التكرار داخل نتيجة الجمع نفسها قبل مخاطبة قاعدة البيانات.
+    candidates: dict[str, dict[str, Any]] = {}
     for row in rows:
+        source_url = str(row.get("source_url") or "").strip()
+        if not source_url:
+            continue
         category, impact, reason, material = classify(row["title"], row.get("summary", ""), row["source_name"])
-        payload.append({**row, "category": category, "impact": impact, "impact_reason": reason, "is_material": material})
-    h = {**HEADERS, "Prefer": "resolution=ignore-duplicates,return=minimal"}
-    # source_url هو المفتاح الفريد؛ نحدد هدف التعارض صراحة كي تُتجاهل الأخبار التي حُفظت في تشغيل سابق.
-    r = requests.post(f"{SUPABASE_URL}/rest/v1/company_news?on_conflict=source_url", headers=h, data=json.dumps(payload, ensure_ascii=False), timeout=60)
-    r.raise_for_status(); log.info("تمت معالجة %s خبرًا", len(payload))
+        candidates.setdefault(source_url, {**row, "category": category, "impact": impact, "impact_reason": reason, "is_material": material})
+    if not candidates:
+        return
+
+    # نقرأ الروابط المحفوظة مسبقًا حتى لا يؤدي خبر قديم واحد إلى فشل الدفعة كلها.
+    known: set[str] = set()
+    try:
+        response = requests.get(f"{SUPABASE_URL}/rest/v1/company_news?select=source_url&limit=20000", headers=HEADERS, timeout=60)
+        response.raise_for_status()
+        known = {str(item.get("source_url") or "") for item in response.json() or []}
+    except requests.RequestException as exc:
+        log.warning("تعذر قراءة روابط الأخبار السابقة؛ سنعالج التعارضات فرديًا: %s", exc)
+    payload = [row for url, row in candidates.items() if url not in known]
+    if not payload:
+        log.info("لا توجد أخبار جديدة للحفظ؛ الأخبار الحالية محدثة")
+        return
+
+    h = {**HEADERS, "Prefer": "return=minimal"}
+    saved = 0
+    for start in range(0, len(payload), 100):
+        batch = payload[start:start + 100]
+        response = requests.post(f"{SUPABASE_URL}/rest/v1/company_news", headers=h, data=json.dumps(batch, ensure_ascii=False), timeout=60)
+        if response.status_code != 409:
+            response.raise_for_status()
+            saved += len(batch)
+            continue
+        # حماية إضافية: إن ظهر تعارض متزامن، نحفظ كل خبر جديد ونترك الموجود دون إيقاف Workflow.
+        for item in batch:
+            one = requests.post(f"{SUPABASE_URL}/rest/v1/company_news", headers=h, data=json.dumps([item], ensure_ascii=False), timeout=30)
+            if one.status_code == 409:
+                continue
+            one.raise_for_status()
+            saved += 1
+    log.info("تم حفظ %s خبر جديد وتجاوز الأخبار المكررة بأمان", saved)
 
 def main() -> None:
     # المصدر الموحد للرموز: المراكز المفتوحة ثم جميع إشارات القوالب، ثم المتابعة الشخصية ومرشحو الفلاتر النشطون.

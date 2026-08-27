@@ -101,7 +101,8 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         category, impact, reason, material = classify(row["title"], row.get("summary", ""), row["source_name"])
         payload.append({**row, "category": category, "impact": impact, "impact_reason": reason, "is_material": material})
     h = {**HEADERS, "Prefer": "resolution=ignore-duplicates,return=minimal"}
-    r = requests.post(f"{SUPABASE_URL}/rest/v1/company_news", headers=h, data=json.dumps(payload, ensure_ascii=False), timeout=60)
+    # source_url هو المفتاح الفريد؛ نحدد هدف التعارض صراحة كي تُتجاهل الأخبار التي حُفظت في تشغيل سابق.
+    r = requests.post(f"{SUPABASE_URL}/rest/v1/company_news?on_conflict=source_url", headers=h, data=json.dumps(payload, ensure_ascii=False), timeout=60)
     r.raise_for_status(); log.info("تمت معالجة %s خبرًا", len(payload))
 
 def main() -> None:

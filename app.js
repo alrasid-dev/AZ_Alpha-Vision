@@ -201,6 +201,21 @@ async function registerPushWorker() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('المتصفح لا يدعم Web Push');
     return navigator.serviceWorker.register('./sw.js', { scope: './' });
 }
+async function syncExistingPushSubscription() {
+    try {
+        if (!currentUser || !window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return;
+        const registration = await registerPushWorker();
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY) });
+        const { error } = await sb.from('notification_subscriptions').upsert({ user_id: currentUser.id, email: currentUser.email || currentProfile?.email || null,
+            endpoint: subscription.endpoint, push_subscription: subscription.toJSON(), push_enabled: true, updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        if (error) throw error;
+    } catch (error) { console.warn('تعذر تحديث اشتراك Push في الخلفية:', error); }
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'az-push-subscription-change') syncExistingPushSubscription();
+});
 async function enableBrowserNotifications() {
     try {
         if (!currentUser) return toast('سجّل الدخول أولًا لتفعيل الإشعارات', 'warn');
@@ -346,7 +361,7 @@ async function refreshCompanyNews() {
     const box = document.getElementById('companyNewsList'); if (!box || !sb) return;
     const tracked = platformRelevantSymbols(); const symbols = [...tracked.keys()];
     if (!symbols.length) { box.innerHTML = '<div class="news-empty">لا توجد مراكز أو ترشيحات فعّالة بعد. سيعرض المحاكي الأخبار بعد تشغيل الماسح أو فتح مركز محاكى.</div>'; return; }
-    box.innerHTML = '<div class="news-empty">جارٍ تحديث الأخبار المرتبطة بالترشيحات…</div>';
+    box.innerHTML = cardSkeleton(3);
     try {
         const { data, error } = await sb.from('company_news').select('symbol,company_name,title,summary,source_name,source_url,published_at,category,impact,impact_reason,is_material').in('symbol', symbols).order('published_at',{ascending:false}).limit(30);
         if (error) throw error;
@@ -370,7 +385,7 @@ async function refreshEarningsCalendar() {
     const box = document.getElementById('earningsList'); if (!box || !sb) return;
     const tracked = platformRelevantSymbols(); const symbols = [...tracked.keys()];
     if (!symbols.length) { box.innerHTML = '<div class="earnings-empty">لا توجد مراكز أو ترشيحات فعّالة لعرض تقويم أرباحها.</div>'; return; }
-    box.innerHTML = '<div class="earnings-empty">جارٍ تحديث تقويم أرباح الترشيحات…</div>';
+    box.innerHTML = cardSkeleton(3);
     try {
         const { data, error } = await sb.from('earnings_events').select('symbol,company_name,event_date,source_name,source_url,analyst_eps_avg,analyst_eps_low,analyst_eps_high,analyst_count,estimate_period,tracking_sources,estimates_fetched_at').in('symbol', symbols).gte('event_date', new Date(Date.now()-86400000).toISOString()).lte('event_date', new Date(Date.now()+45*86400000).toISOString()).order('event_date',{ascending:true}).limit(28);
         if (error) throw error;
@@ -393,6 +408,7 @@ async function initApp(user, profile) {
     document.getElementById('waitingScreen').classList.remove('active');
     document.getElementById('appContainer').classList.add('active');
     placeVirtualPortfolioSummary();
+    initPremiumShell();
     document.getElementById('userName').textContent = profile.name || profile.email;
     document.getElementById('userAvatar').textContent = (profile.name || profile.email).charAt(0).toUpperCase();
     const displayNameInput = document.getElementById('displayNameInput'); if (displayNameInput) displayNameInput.value = profile.name || '';
@@ -401,6 +417,7 @@ async function initApp(user, profile) {
     await loadWatchlist();
     await loadMySupportTickets();
     await loadEmailAlertPreference();
+    syncExistingPushSubscription();
     await loadActiveOwnerAnnouncement();
     showReleaseNotesIfNeeded();
     updateTrial(); updateSitePerformance(); setInterval(updateTrial, 60000);
@@ -597,7 +614,7 @@ async function refreshAdminData() {
     document.getElementById('totalUsers').textContent=users.length;
     await loadBroadcastUsers();
     const targetSelect = document.getElementById('broadcastTargetUser');
-    if (targetSelect) targetSelect.innerHTML = '<option value="">اختر مستخدمًا</option>' + users.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || u.id)}</option>`).join('');
+    if (targetSelect) targetSelect.innerHTML = '<option value="">اختر مستخدمًا</option>' + users.map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || u.id)}${u.id === currentUser.id ? ' — حسابك' : ''}</option>`).join('');
     // نظام الموافقة الإدارية ملغى؛ جميع الحسابات المصادق عليها تظهر مفعّلة.
     document.getElementById('pendingUsers').textContent='0';
     document.getElementById('activeUsers').textContent=users.filter(u=>(!u.trial_end||new Date(u.trial_end).getTime()>Date.now())).length;
@@ -721,8 +738,8 @@ async function loadBroadcastUsers() {
     select.innerHTML = '<option value="">جارٍ تحميل المستخدمين...</option>';
     const { data, error } = await sb.from('profiles').select('id,name,email').order('created_at', { ascending:false });
     if (error) { select.innerHTML = '<option value="">تعذر تحميل المستخدمين</option>'; console.warn('broadcast users', error); return; }
-    const users = (data || []).filter(u => u.id !== currentUser.id);
-    select.innerHTML = users.length ? '<option value="">اختر مستخدمًا</option>' + users.map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || `مستخدم ${String(u.id).slice(0,8)}`)}${u.email && u.name ? ` — ${escapeHtml(u.email)}` : ''}</option>`).join('') : '<option value="">لا يوجد مستخدمون آخرون</option>';
+    const users = data || [];
+    select.innerHTML = users.length ? '<option value="">اختر مستخدمًا</option>' + users.map(u => `<option value="${u.id}">${escapeHtml(u.name || u.email || `مستخدم ${String(u.id).slice(0,8)}`)}${u.id === currentUser.id ? ' — حسابك' : ''}${u.email && u.name ? ` — ${escapeHtml(u.email)}` : ''}</option>`).join('') : '<option value="">لا يوجد مستخدمون</option>';
 }
 async function toggleBroadcastAudience() {
     const type = document.getElementById('broadcastAudience')?.value || 'all';
@@ -860,39 +877,180 @@ const EXCLUDED_SYMBOLS = new Set([
 
 const LIVE_TRACKED = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','AMD','NFLX','CRM','SHOP','SQ','UBER','ABNB','COIN','ROKU','SNAP','PINS','ETSY','TWLO','DDOG','NET','OKTA','ZS','CRWD','PLTR','SNOW','FSLR','ENPH','RUN','U','RBLX','SOFI','AFRM','HOOD','UPST','AI','SOUN','BBAI','PLUG','QS','SPCE','RKLB','ASTS','LLAP','BABA','JD','PDD','FUTU','TIGR'];
 
-// ===== MAIN CHART (still a generic decorative candle view, not yet wired to per-symbol real OHLC — noted as a remaining item) =====
+// ===== MAIN CHART =====
+// لا نعرض أي شموع مصطنعة. الرسم لا يظهر إلا عندما تتوفر سلسلة OHLC فعلية للرمز المختار.
 function initChart() {
     const box = document.getElementById('chartBox');
     const cont = document.getElementById('chartContainer');
-    if (!box || !cont || box.clientWidth === 0) return;
+    if (!box || !cont) return;
     if (chartInstance) { chartInstance.remove(); chartInstance = null; }
-    chartInstance = LightweightCharts.createChart(cont, {
-        width: cont.clientWidth, height: cont.clientHeight,
-        layout: { background: { color: 'transparent' }, textColor: '#6b7280' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
-        timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.06)' },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
-        crosshair: { mode: 1, vertLine: { color: '#00f0ff', width: 1, style: 2 }, horzLine: { color: '#00f0ff', width: 1, style: 2 } }
-    });
-    const series = chartInstance.addCandlestickSeries({
-        upColor: '#00e676', downColor: '#ff1744',
-        borderUpColor: '#00e676', borderDownColor: '#ff1744',
-        wickUpColor: '#00e676', wickDownColor: '#ff1744'
-    });
-    const data = []; let v = 100;
-    for (let i = 60; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate()-i);
-        const o = v + (Math.random()-0.5)*3;
-        const c = o + (Math.random()-0.5)*4;
-        const h = Math.max(o,c) + Math.random()*2;
-        const l = Math.min(o,c) - Math.random()*2;
-        v = c;
-        data.push({ time: d.toISOString().split('T')[0], open: +o.toFixed(2), high: +h.toFixed(2), low: +l.toFixed(2), close: +c.toFixed(2) });
-    }
-    series.setData(data); chartInstance.timeScale().fitContent();
-    window.addEventListener('resize', () => { if(chartInstance&&cont)chartInstance.resize(cont.clientWidth,cont.clientHeight); });
+    cont.innerHTML = '<div class="chart-empty-state"><span class="chart-empty-icon">⌁</span><strong>الرسم البياني ينتظر بيانات تاريخية فعلية</strong><p>اختر سهمًا من الجدول لعرض الشموع والمؤشرات عند توفر بيانات OHLC الموثوقة.</p></div>';
 }
 
+const PREMIUM_PAGE_TITLES = { stocks: 'الرئيسية', portfolio: 'المحفظة', screener: 'فلترة الأسهم', signals: 'الماسح والتنبيهات', picks: 'ترشيحات الأسبوع', indicators: 'التحليل الفني', course: 'الدورة التعليمية', support: 'الدعم والتذاكر', admin: 'لوحة الإدارة' };
+function initPremiumShell() {
+    const mount = document.getElementById('premiumNavMount');
+    const tabs = document.querySelector('.tabs-wrap');
+    if (mount && tabs && !mount.contains(tabs)) mount.appendChild(tabs);
+    const active = document.querySelector('.tab-btn.active')?.dataset?.tab || 'stocks';
+    const title = document.getElementById('currentPageTitle'); if (title) title.textContent = PREMIUM_PAGE_TITLES[active] || 'الرئيسية';
+    initSignalGrid();
+    renderInAppNotificationCenter();
+}
+
+const SIGNAL_GRID_LAYOUT_KEY = 'az_signal_grid_layout_v1';
+let signalGridObserver = null;
+function renderSignalGridPicks() {
+    const body = document.getElementById('dashboardPicksBody');
+    if (!body) return;
+    const picks = Array.isArray(LocalCache.getPicks()) ? LocalCache.getPicks().slice(0, 5) : [];
+    if (!picks.length) {
+        body.innerHTML = '<tr><td colspan="3" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
+        return;
+    }
+    body.innerHTML = picks.map((pick, index) => {
+        const price = Number(pick?.price);
+        const entry = Number(pick?.entryPrice);
+        const label = escapeHtml(String(pick?.entryStatus || 'للمتابعة'));
+        return `<tr><td><span class="grid-rank">${index + 1}</span><strong>${escapeHtml(pick?.symbol || '—')}</strong></td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : '—'}</td><td><span class="grid-entry ${String(pick?.entryStatus || '').includes('انتظار') ? 'caution' : ''}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : '—'} <small>${label}</small></span></td></tr>`;
+    }).join('');
+}
+function syncSignalGridFeed(sourceId, targetId, maxItems = 3) {
+    const source = document.getElementById(sourceId);
+    const target = document.getElementById(targetId);
+    if (!source || !target) return;
+    const items = [...source.children].slice(0, maxItems);
+    target.innerHTML = items.length ? items.map(item => item.outerHTML).join('') : '<div class="grid-feed-empty">ستظهر البيانات المرتبطة بالمنصة هنا عند توفرها.</div>';
+}
+function syncSignalGridFeeds() {
+    renderSignalGridPicks();
+    syncSignalGridFeed('companyNewsList', 'dashboardNewsList', 3);
+    syncSignalGridFeed('earningsList', 'dashboardEarningsList', 3);
+}
+function createSignalWidget(key, title, subtitle, nodes, className = '') {
+    const widget = document.createElement('section');
+    widget.className = `signal-widget ${className}`.trim();
+    widget.dataset.widget = key;
+    widget.dataset.size = 'normal';
+    const heading = document.createElement('header');
+    heading.className = 'signal-widget-head';
+    heading.innerHTML = `<span class="widget-grip" title="اسحب لترتيب الوحدة"><i></i><i></i><i></i><i></i><i></i><i></i></span><div><small>${escapeHtml(subtitle || 'AZ ALPHA VISION')}</small><h3>${escapeHtml(title)}</h3></div><button class="widget-expand" type="button" aria-label="تغيير حجم الوحدة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg></button>`;
+    widget.appendChild(heading);
+    nodes.filter(Boolean).forEach(node => widget.appendChild(node));
+    return widget;
+}
+function mountSignalGridDashboard() {
+    const grid = document.getElementById('signalGridDashboard');
+    const tab = document.getElementById('tab-stocks');
+    if (!grid || !tab || grid.dataset.mounted === '1') return;
+    const observatory = tab.querySelector('.decision-observatory');
+    const surface = observatory?.querySelector('.observatory-surface');
+    const metrics = observatory?.querySelector('.decision-metrics');
+    const thread = observatory?.querySelector('.decision-thread');
+    const market = tab.querySelector('.market-canvas');
+    const stream = tab.querySelector('.market-stream');
+    const aiPanel = document.createElement('div');
+    aiPanel.className = 'signal-ai-panel';
+    aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
+    const picksPanel = document.createElement('div');
+    picksPanel.className = 'signal-grid-table';
+    picksPanel.innerHTML = `<table><thead><tr><th>الترتيب</th><th>السعر</th><th>المنطقة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
+    const newsPanel = document.createElement('div');
+    newsPanel.className = 'signal-grid-feed'; newsPanel.id = 'dashboardNewsList';
+    newsPanel.innerHTML = '<div class="grid-feed-empty">جارٍ تحميل الأخبار المرتبطة</div>';
+    const earningsPanel = document.createElement('div');
+    earningsPanel.className = 'signal-grid-feed'; earningsPanel.id = 'dashboardEarningsList';
+    earningsPanel.innerHTML = '<div class="grid-feed-empty">جارٍ تحميل تقويم الأرباح</div>';
+    const reset = document.createElement('button');
+    reset.id = 'resetSignalGrid'; reset.type = 'button'; reset.className = 'grid-reset'; reset.textContent = 'استعادة ترتيب الوحدات';
+    const widgets = [
+        createSignalWidget('market', 'السوق', 'LIVE MARKET', [market], 'widget-market'),
+        createSignalWidget('signal', 'إشارة اليوم', 'SIGNAL CORE', [surface, thread], 'widget-signal'),
+        createSignalWidget('portfolio', 'المحفظة الافتراضية', 'VIRTUAL PORTFOLIO', [metrics], 'widget-portfolio'),
+        createSignalWidget('picks', 'أفضل ترشيحات الأسبوع', 'WEEKLY PICKS', [picksPanel], 'widget-picks'),
+        createSignalWidget('ai', 'AZ ai', 'CONTEXTUAL COPILOT', [aiPanel], 'widget-ai'),
+        createSignalWidget('earnings', 'الأرباح القادمة', 'EARNINGS CLOCK', [earningsPanel], 'widget-earnings'),
+        createSignalWidget('news', 'مزاج الأخبار', 'NEWS LENS', [newsPanel], 'widget-news'),
+        createSignalWidget('watch', 'قائمة المراقبة', 'WATCHLIST', [stream], 'widget-watch')
+    ];
+    widgets.forEach(widget => grid.appendChild(widget));
+    grid.appendChild(reset);
+    observatory?.remove();
+    grid.dataset.mounted = '1';
+}
+function signalGridStorageKey() { return `${SIGNAL_GRID_LAYOUT_KEY}_${currentUser?.id || 'local'}`; }
+function initSignalGrid() {
+    mountSignalGridDashboard();
+    const grid = document.getElementById('signalGridDashboard');
+    if (!grid || grid.dataset.ready === '1') { syncSignalGridFeeds(); return; }
+    grid.dataset.ready = '1';
+    let layout = {};
+    try { layout = JSON.parse(localStorage.getItem(signalGridStorageKey()) || '{}'); } catch (_) { layout = {}; }
+    const widgets = () => [...grid.querySelectorAll('.signal-widget[data-widget]')];
+    const save = () => {
+        const next = {};
+        widgets().forEach((widget, index) => { next[widget.dataset.widget] = { order: index, size: widget.dataset.size || 'normal' }; });
+        localStorage.setItem(signalGridStorageKey(), JSON.stringify(next));
+    };
+    widgets().sort((a, b) => (layout[a.dataset.widget]?.order ?? 99) - (layout[b.dataset.widget]?.order ?? 99)).forEach(widget => grid.appendChild(widget));
+    widgets().forEach(widget => {
+        widget.dataset.size = layout[widget.dataset.widget]?.size || widget.dataset.size || 'normal';
+        widget.draggable = true;
+        widget.addEventListener('dragstart', (event) => { grid.dataset.dragging = widget.dataset.widget; event.dataTransfer.effectAllowed = 'move'; widget.classList.add('is-dragging'); });
+        widget.addEventListener('dragend', () => { widget.classList.remove('is-dragging'); delete grid.dataset.dragging; save(); });
+        widget.addEventListener('dragover', event => event.preventDefault());
+        widget.addEventListener('drop', event => {
+            event.preventDefault();
+            const dragged = grid.querySelector(`[data-widget="${grid.dataset.dragging || ''}"]`);
+            if (dragged && dragged !== widget) grid.insertBefore(dragged, widget);
+            save();
+        });
+    });
+    grid.querySelectorAll('.widget-expand').forEach(button => button.addEventListener('click', event => {
+        event.stopPropagation();
+        const widget = button.closest('.signal-widget');
+        const sequence = ['normal', 'wide', 'tall'];
+        widget.dataset.size = sequence[(sequence.indexOf(widget.dataset.size || 'normal') + 1) % sequence.length];
+        button.setAttribute('aria-label', 'تغيير حجم الوحدة');
+        save();
+    }));
+    document.getElementById('resetSignalGrid')?.addEventListener('click', () => { localStorage.removeItem(signalGridStorageKey()); location.reload(); });
+    const news = document.getElementById('companyNewsList');
+    const earnings = document.getElementById('earningsList');
+    if (!signalGridObserver && (news || earnings)) {
+        signalGridObserver = new MutationObserver(syncSignalGridFeeds);
+        if (news) signalGridObserver.observe(news, { childList: true, subtree: true });
+        if (earnings) signalGridObserver.observe(earnings, { childList: true, subtree: true });
+    }
+    syncSignalGridFeeds();
+}
+function toggleNotificationCenter() {
+    const panel = document.getElementById('notificationCenter');
+    if (!panel) return;
+    const open = panel.classList.toggle('open');
+    panel.setAttribute('aria-hidden', String(!open));
+    if (open) renderInAppNotificationCenter();
+}
+function renderInAppNotificationCenter() {
+    const list = document.getElementById('inAppNotifications');
+    const badge = document.getElementById('notificationBadge');
+    if (!list) return;
+    const activity = [];
+    const trades = Array.isArray(virtualTrader?.trades) ? virtualTrader.trades.slice(0, 3) : [];
+    trades.forEach((trade) => activity.push({ title: `${trade.action === 'buy' ? 'عملية محاكاة جديدة' : 'إغلاق مركز محاكى'} — ${trade.symbol}`, body: `${trade.action === 'buy' ? 'تم تسجيل الدخول الافتراضي' : 'تم تسجيل البيع الافتراضي'} بسعر $${Number(trade.price || 0).toFixed(2)}`, at: trade.at }));
+    if (virtualTrader?.lastRun) activity.push({ title: 'تحديث المحاكي', body: 'تمت مزامنة حالة المحفظة المشتركة.', at: virtualTrader.lastRun });
+    if (!activity.length) { list.innerHTML = '<div class="notification-empty">لا توجد مستجدات جديدة. ستظهر هنا تنبيهات السوق والمحفظة عند توفرها.</div>'; if (badge) badge.hidden = true; return; }
+    list.innerHTML = activity.slice(0, 4).map((item) => `<article class="in-app-notification"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body)}</p><small>${new Date(item.at).toLocaleString('ar-SA')}</small></article>`).join('');
+    if (badge) { badge.hidden = false; badge.textContent = String(Math.min(activity.length, 9)); }
+}
+function quickStockSearch(event) {
+    if (event.key !== 'Enter') return;
+    const input = event.currentTarget; const symbol = String(input?.value || '').trim().toUpperCase();
+    if (!/^[A-Z]{1,5}$/.test(symbol)) return toast('اكتب رمزًا صحيحًا مثل AAPL', 'warn');
+    switchTab('stocks');
+    const addInput = document.getElementById('addSymbolInput'); if (addInput) addInput.value = symbol;
+    toast(`تم تحديد ${symbol}. يمكنك إضافته إلى قائمة المراقبة أو قراءة بياناته التعليمية.`, 'info');
+}
 function openTabFromHash() {
     if (!currentUser) return;
     const id = String(window.location.hash || '').replace(/^#/, '').trim();
@@ -907,6 +1065,7 @@ function switchTab(id) {
     const btn = document.querySelector(`.tab-btn[data-tab="${id}"]`);
     if (panel) panel.classList.remove('hidden');
     if (btn) btn.classList.add('active');
+    const title = document.getElementById('currentPageTitle'); if (title) title.textContent = PREMIUM_PAGE_TITLES[id] || 'الرئيسية';
 
     const chartBox = document.getElementById('chartBox');
     if (chartBox) {
@@ -926,6 +1085,7 @@ function switchTab(id) {
     if (id === 'indicators') { setTimeout(() => { initIndicatorChart(); updateChartIndicators(); }, 50); }
     if (id === 'portfolio') { renderPortfolio(); }
     if (id === 'picks') { updateSitePerformance(); }
+    renderInAppNotificationCenter();
 }
 
 // ===== INDICATORS (Fib / SMC / ATR — still overlaid on the decorative chart above, unchanged logic) =====
@@ -1291,7 +1451,7 @@ async function fetchPrice(sym) {
 async function runScanner() {
     document.getElementById('lastUpdate').textContent = 'جاري التحديث...';
     const tb = document.getElementById('stockTableBody');
-    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">جاري تحميل البيانات...</td></tr>';
+    tb.innerHTML = tableSkeleton(7, 4);
 
     const { data: liveRows } = await sb.from('live_quotes').select('*').in('symbol', LIVE_TRACKED);
     const universe = await fetchUniverse();
@@ -1376,7 +1536,7 @@ async function runScreener() {
 
     const tb = document.getElementById('screenerTableBody');
     const bar = document.getElementById('scanBar'); const track = document.getElementById('scanProgress'); const meta = document.getElementById('scanMeta');
-    tb.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">⏳ جاري التحميل من قاعدة البيانات...</td></tr>';
+    tb.innerHTML = tableSkeleton(13, 5);
     track.classList.add('active'); bar.style.width = '40%';
 
     const universe = await fetchUniverse();
@@ -1592,13 +1752,17 @@ function weeklyEntryPlan(row) {
 async function runWeeklyScan() {
     const tb = document.getElementById('picksTableBody');
     const watchTb = document.getElementById('watchPicksTableBody');
-    updateWeeklyScanMeta('جارٍ تجميع نتائج القوالب الجاهزة');
-    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري قراءة القوالب الأربعة...</td></tr>';
-    if (watchTb) watchTb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">🔄 جاري القراءة...</td></tr>';
+    if (!tb) return;
+    updateWeeklyScanMeta('جارٍ تحديث الترشيحات من بيانات الماسح');
+    tb.innerHTML = tableSkeleton(7, 3);
+    if (watchTb) watchTb.innerHTML = tableSkeleton(7, 3);
 
-    await loadInitialData();
-    const universe = await fetchUniverse(true);
-    const universeMap = Object.fromEntries(universe.map(row => [String(row.symbol || '').toUpperCase(), row]));
+    try {
+        await loadInitialData();
+        let universe = [];
+        try { universe = (await fetchUniverse(true)) || []; }
+        catch (error) { console.warn('تعذر جلب الكون الكامل؛ سيتم استخدام إشارات الماسح المتاحة.', error); universe = Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : []; }
+        const universeMap = Object.fromEntries(universe.map(row => [String(row.symbol || '').toUpperCase(), row]));
     const merged = new Map();
     // عند تشغيل قالب من أيقونة فلترة الأسهم، تكون نتائجه المحلية هي المصدر المباشر للأسبوع.
     // نستخدم بيانات screenerResults أولًا حتى لا تنفصل القائمة الأسبوعية عن الفلتر الظاهر.
@@ -1655,6 +1819,7 @@ async function runWeeklyScan() {
     if (watchTb) watchTb.innerHTML = '';
     if (!top.length) {
         LocalCache.setPicks([]);
+        renderSignalGridPicks();
         document.getElementById('sitePicksCount').textContent = '0';
         document.getElementById('siteAvgReturn').textContent = '0.00%';
         document.getElementById('siteWinRate').textContent = '0%';
@@ -1669,6 +1834,7 @@ async function runWeeklyScan() {
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
     const nowIso = new Date().toISOString();
     LocalCache.setPicks(top.map(s => ({ symbol: s.symbol, price: s.price, entryPrice: s.entryPlan?.price ?? s.price, entryStatus: s.entryPlan?.label, entryReason: s.entryPlan?.reason, exchange: s.exchange, industry: s.industry, company: s.company, date: nowIso.split('T')[0], scannedAt: nowIso, score: s.pickScore })));
+    renderSignalGridPicks();
     updateSitePerformance();
     refreshCompanyNews(); refreshEarningsCalendar();
 
@@ -1677,18 +1843,24 @@ async function runWeeklyScan() {
         const signals = [...s.signalNames].join('، ') || 'إشارة دخول من القالب';
         const plan = s.entryPlan || weeklyEntryPlan(s);
         const entryText = plan.price ? `$${plan.price.toFixed(2)} — ${plan.label}` : 'غير متاح';
-        const reason = `${watchOnly ? 'متابعة تحتاج تأكيدًا إضافيًا' : (plan.avoid ? 'إشارة قالب مع انتظار فني' : 'اختيار قوي')}؛ ظهر في ${s.templateCount} قالب: ${presets}. ${s.bestTier} (${s.bestEntryScore}/4)، والمؤشرات: ${signals}. سعر الدخول المقترح: ${entryText}. ${s.entry_reason ? sigEsc(s.entry_reason) + '؛ ' : ''}${plan.reason}.`;
-        const badge = watchOnly ? '👀 متابعة' : (s.bestTier === 'صريح' ? '⭐ صريح' : s.bestTier === 'مؤكد' ? '✅ مؤكد' : '📌 دخول');
+        const badge = watchOnly ? 'متابعة' : (s.bestTier === 'صريح' ? 'صريح' : s.bestTier === 'مؤكد' ? 'مؤكد' : 'دخول');
         const color = watchOnly ? 'var(--accent-gold)' : (s.bestTier === 'صريح' ? 'var(--accent-green)' : 'var(--accent-cyan)');
         const entryColor = plan.avoid ? 'var(--accent-gold)' : 'var(--accent-green)';
-        return `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono" style="color:${entryColor};font-weight:700;">${sigEsc(entryText)}</td><td>${sigEsc(presets)}</td><td><span style="color:${color};font-weight:700;">${badge}</span></td><td class="font-mono">${s.bestEntryScore}/4</td><td class="text-muted">${sigEsc(reason)}</td></tr>`;
+        const rowHint = `${watchOnly ? 'متابعة' : 'ترشيح'}: ${presets} · ${signals} · ${plan.reason}`;
+        return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono" style="color:${entryColor};font-weight:700;">${sigEsc(entryText)}</td><td>${sigEsc(presets)}</td><td><span style="color:${color};font-weight:700;">${badge}</span></td><td class="font-mono">${s.bestEntryScore}/4</td></tr>`;
     };
     top.forEach((s, i) => { tb.innerHTML += renderRow(s, i, false); });
     if (watchTb) {
         if (!watch.length) watchTb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
         else watch.forEach((s, i) => { watchTb.innerHTML += renderRow(s, i, true); });
     }
-    toast(`✅ تم اختيار ${top.length} ترشيحات و${watch.length} للمتابعة`);
+        toast(`تم اختيار ${top.length} ترشيحات و${watch.length} للمتابعة`);
+    } catch (error) {
+        console.error('تعذر تحديث ترشيحات الأسبوع:', error);
+        updateWeeklyScanMeta('تعذر التحديث الآن — سيتم استخدام آخر نتائج موثوقة عند المحاولة التالية');
+        tb.innerHTML = '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
+        if (watchTb) watchTb.innerHTML = '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
+    }
 }
 
 async function updateSitePerformance() {
@@ -1697,12 +1869,14 @@ async function updateSitePerformance() {
     // الترشيحات القديمة بلا exchange/industry غير موثوقة؛ تُمسح بدل عرض رموز أدوات مالية.
     if (picks.some(p => !['NYSE','NASDAQ'].includes(String(p.exchange || '').toUpperCase()))) {
         LocalCache.setPicks([]);
+        renderSignalGridPicks();
         document.getElementById('sitePicksCount').textContent = '0';
         document.getElementById('sitePicksDesc').textContent = 'تم حذف ترشيحات قديمة غير موثوقة؛ شغّل مسح الأسبوع لإنشاء قائمة جديدة.';
         return;
     }
     picks = picks.filter(p => isCommonStockRow(p));
     LocalCache.setPicks(picks);
+    renderSignalGridPicks();
     document.getElementById('sitePicksCount').textContent = picks.length;
 
     const prices = await Promise.all(picks.map(p => fetchPrice(p.symbol)));
@@ -2231,12 +2405,14 @@ function virtualBuyEligible(row) {
 function runVirtualTrader(mode = 'manual') {
     // التشغيل والتنفيذ في Supabase/GitHub Actions فقط؛ هذه الدالة تحدّث العرض ولا تنفذ أوامر.
     syncVirtualTraderFromServer();
-    if (mode === 'manual') toast('المتداول يعمل في الخلفية؛ الواجهة تعرض السجل فقط', 'info');
+    if (mode === 'manual') toast('جارٍ مزامنة حالة المحاكي من الخلفية', 'info');
 }
 function resetVirtualTrader() {
     toast('إعادة ضبط المحاكي تتم من الخادم مع حفظ السجل السابق؛ لا تُحذف الصفقات من الواجهة.', 'info');
     syncVirtualTraderFromServer();
 }
+function tableSkeleton(columns, rows = 3) { return Array.from({ length: rows }, () => `<tr class="skeleton-row"><td colspan="${columns}"><span class="skeleton-line"></span></td></tr>`).join(''); }
+function cardSkeleton(rows = 3) { return Array.from({ length: rows }, () => '<div class="skeleton-card"><span class="skeleton-line"></span><span class="skeleton-line short"></span></div>').join(''); }
 function movementClass(value) { const n = Number(value); return n > 0 ? 'text-green' : n < 0 ? 'text-red' : 'text-neutral'; }
 function movementSign(value) { const n = Number(value); return n > 0 ? '+' : ''; }
 function renderVirtualTrader() {
@@ -2253,10 +2429,10 @@ function renderVirtualTrader() {
     const posBody = document.getElementById('virtualPositionsBody');
     if (posBody) {
         const positions = Object.values(virtualTrader.positions);
-        posBody.innerHTML = positions.length ? positions.map(p => { const last = Number(p.lastPrice || p.entryPrice); const upnl = (last - Number(p.entryPrice)) * Number(p.qty); const pct = Number(p.entryPrice) ? ((last / Number(p.entryPrice) - 1) * 100) : 0; return `<tr><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${movementClass(upnl)}">${movementSign(upnl)}$${upnl.toFixed(2)}</td><td class="${movementClass(pct)}">${movementSign(pct)}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td><td>${escapeHtml(p.reason)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">لا توجد مراكز مفتوحة محاكية</td></tr>';
+        posBody.innerHTML = positions.length ? positions.map(p => { const last = Number(p.lastPrice || p.entryPrice); const upnl = (last - Number(p.entryPrice)) * Number(p.qty); const pct = Number(p.entryPrice) ? ((last / Number(p.entryPrice) - 1) * 100) : 0; return `<tr title="${escapeHtml(p.reason || '')}"><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${movementClass(upnl)}">${movementSign(upnl)}$${upnl.toFixed(2)}</td><td class="${movementClass(pct)}">${movementSign(pct)}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td></tr>`; }).join('') : '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا توجد مراكز مفتوحة حاليًا</td></tr>';
     }
     const tradeBody = document.getElementById('virtualTradesBody');
-    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 100).map(t => { const pnlValue = t.pnl == null ? null : Number(t.pnl); const pct = t.action === 'sell' && t.entryPrice ? ((Number(t.price) / Number(t.entryPrice) - 1) * 100) : null; const pnlClass = pnlValue == null ? 'text-neutral' : movementClass(pnlValue); const pctClass = pct == null ? 'text-neutral' : movementClass(pct); return `<tr><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td class="${pnlClass}">${pnlValue == null ? '—' : `${movementSign(pnlValue)}$${pnlValue.toFixed(2)}`}</td><td class="${pctClass}">${pct == null ? '—' : `${movementSign(pct)}${pct.toFixed(2)}%`}</td><td>${escapeHtml(t.tier)}</td><td>${escapeHtml(t.reason)}</td></tr>`; }).join('') : '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:30px;">لا توجد صفقات محاكية بعد</td></tr>';
+    if (tradeBody) tradeBody.innerHTML = virtualTrader.trades.length ? virtualTrader.trades.slice(0, 20).map(t => { const pnlValue = t.pnl == null ? null : Number(t.pnl); const pct = t.action === 'sell' && t.entryPrice ? ((Number(t.price) / Number(t.entryPrice) - 1) * 100) : null; const pnlClass = pnlValue == null ? 'text-neutral' : movementClass(pnlValue); const pctClass = pct == null ? 'text-neutral' : movementClass(pct); return `<tr title="${escapeHtml(t.reason || '')}"><td>${new Date(t.at).toLocaleString('ar-SA')}</td><td class="font-mono">${escapeHtml(t.symbol)}</td><td class="${t.action === 'buy' ? 'text-green' : 'text-red'}">${t.action === 'buy' ? 'شراء محاكى' : 'بيع محاكى'}</td><td>${t.qty}</td><td>$${Number(t.price).toFixed(2)}</td><td class="${pnlClass}">${pnlValue == null ? '—' : `${movementSign(pnlValue)}$${pnlValue.toFixed(2)}`}</td><td class="${pctClass}">${pct == null ? '—' : `${movementSign(pct)}${pct.toFixed(2)}%`}</td><td>${escapeHtml(t.tier)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا توجد عمليات محاكية مسجلة بعد</td></tr>';
     const runInfo = virtualTrader.runInfo;
     const runTime = virtualTrader.lastRun ? new Date(virtualTrader.lastRun).toLocaleString('ar-SA') : null;
     const status = runInfo
@@ -2289,7 +2465,7 @@ function syncOverviewMetrics() {
     const entry = document.getElementById('overviewEntry');
     const position = document.getElementById('overviewPosition');
     const result = document.getElementById('overviewResult');
-    if (signal) signal.textContent = positionSymbols.length ? `مركز مفتوح: ${positionSymbols.join('، ')}` : 'بانتظار إشارة مجتازة';
+    if (signal) signal.textContent = positionSymbols.length ? `مركز مفتوح: ${positionSymbols.join('، ')}` : 'لا توجد إشارة دخول جديدة';
     if (entry) entry.textContent = latest?.action === 'buy' ? `دخول عند $${Number(latest.price || 0).toFixed(2)}` : 'السعر المقترح';
     if (position) position.textContent = positionSymbols.length ? `${positionSymbols.length} مركز مشترك` : 'لا توجد مراكز مفتوحة';
     if (result) result.textContent = latest?.action === 'sell' ? 'آخر نتيجة: بيع محاكى' : 'قياس الأداء مستمر';

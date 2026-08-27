@@ -1,0 +1,38 @@
+name: AZ Alpha Vision - Company News
+on:
+  workflow_dispatch: {}
+  schedule:
+    # GitHub قد يؤخر الجدولة قليلًا؛ الجمع يقتصر على الأسهم ذات الصلة بالمحاكي.
+    - cron: '10 * * * 1-5'
+permissions:
+  contents: read
+jobs:
+  company-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check --no-cache-dir requests
+      - name: Fetch and classify company news
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python fetch_company_news.py
+      - name: Send material company-news notifications
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "${NOTIFY_RUN_KEY}" ]; then echo "NOTIFY_RUN_KEY is not configured; skipping news notifications."; exit 0; fi
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "${SUPABASE_URL}/functions/v1/send-news-notifications?minutes=120" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}'

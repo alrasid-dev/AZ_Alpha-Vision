@@ -31,7 +31,7 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     sys.exit(1)
 
 MIN_PRICE = float(os.environ.get("MIN_PRICE", "5"))
-MAX_PRICE = float(os.environ.get("MAX_PRICE", "50"))
+MAX_PRICE = float(os.environ.get("MAX_PRICE", "70"))
 MAX_UNIVERSE = max(100, int(os.environ.get("MAX_UNIVERSE", "5000")))
 BATCH_SIZE = max(10, int(os.environ.get("YF_BATCH_SIZE", "50")))
 
@@ -40,6 +40,15 @@ LIVE_TRACKED = [
     "ABNB", "COIN", "ROKU", "SNAP", "PINS", "ETSY", "TWLO", "DDOG", "NET", "OKTA", "ZS", "CRWD", "PLTR",
     "SNOW", "FSLR", "ENPH", "RUN", "RBLX", "SOFI", "AFRM", "HOOD", "UPST", "AI", "SOUN", "BBAI",
 ]
+
+# مؤشرات سوق عامة مستقلة عن كون الأسهم المؤهلة للمحاكي.
+MARKET_PULSE_SYMBOLS = {
+    "^DJI": ("داو جونز", "index"),
+    "^IXIC": ("ناسداك المركب", "index"),
+    "CL=F": ("النفط الخام WTI", "commodity"),
+    "GC=F": ("الذهب", "commodity"),
+    "^VIX": ("مؤشر الخوف VIX", "volatility"),
+}
 
 # رموز ظهرت سابقًا كأدوات غير عادية أو غير مرغوبة في المنصة.
 EXCLUDED_SYMBOLS = {
@@ -156,11 +165,16 @@ def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
             return round((price / float(close.iloc[-period - 1]) - 1) * 100, 2)
         return None
 
+    # RSI14 وفق تنعيم Wilder (RMA/SMMA)، مع معالجة حالات الصعود أو الثبات الكامل.
     delta = close.diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
+    gains = delta.clip(lower=0)
+    losses = -delta.clip(upper=0)
+    avg_gain = gains.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    avg_loss = losses.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi_series = 100 - (100 / (1 + rs))
+    rsi_series = rsi_series.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    rsi_series = rsi_series.mask((avg_loss == 0) & (avg_gain == 0), 50.0)
     rsi = rsi_series.iloc[-1] if len(rsi_series) >= 15 else None
     prev_close = close.shift(1)
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
@@ -189,6 +203,8 @@ def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
         "sma50_change": round((sma(50) / previous_sma(50) - 1) * 100, 4) if sma(50) is not None and previous_sma(50) not in (None, 0) else None,
         "sma200_change": round((sma(200) / previous_sma(200) - 1) * 100, 4) if sma(200) is not None and previous_sma(200) not in (None, 0) else None,
         "distance_from_sma20": round((price / sma(20) - 1) * 100, 4) if sma(20) not in (None, 0) else None,
+        "distance_from_sma50": round((price / sma(50) - 1) * 100, 4) if sma(50) not in (None, 0) else None,
+        "distance_from_sma200": round((price / sma(200) - 1) * 100, 4) if sma(200) not in (None, 0) else None,
         "rsi14": round(float(rsi), 2) if rsi is not None and pd.notna(rsi) else None,
         "atr14": round(float(atr), 4) if atr is not None and pd.notna(atr) else None,
         "perf_week": perf_week,
@@ -328,27 +344,55 @@ def run_full():
 
 def load_quick_symbols() -> list[str]:
     symbols = set(LIVE_TRACKED)
-    try:
-        response = requests.get(
-            f"{SUPABASE_URL}/rest/v1/screener_signals?select=symbol&limit=5000",
-            headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"},
-            timeout=30,
-        )
-        response.raise_for_status()
-        for row in response.json() or []:
-            symbol = str(row.get("symbol") or "").strip().upper()
-            if symbol and symbol not in EXCLUDED_SYMBOLS:
-                symbols.add(symbol)
-    except Exception as exc:
-        log.warning("تعذر تحميل رموز screener_signals؛ سيُستخدم التتبع الثابت فقط: %s", exc)
+    headers = {"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}
+    sources = [
+        ("screener_signals", "symbol&entry_score=gt.0"),
+        ("watchlist", "symbol"),
+        ("research_requests", "symbol&status=eq.active"),
+    ]
+    for table, query in sources:
+        try:
+            response = requests.get(f"{SUPABASE_URL}/rest/v1/{table}?select={query}&limit=5000", headers=headers, timeout=30)
+            response.raise_for_status()
+            for row in response.json() or []:
+                symbol = str(row.get("symbol") or "").strip().upper()
+                if symbol and symbol not in EXCLUDED_SYMBOLS:
+                    symbols.add(symbol)
+        except Exception as exc:
+            log.warning("تعذر تحميل رموز %s: %s", table, exc)
     selected = sorted(symbols - EXCLUDED_SYMBOLS)
-    log.info("تحديث الأسعار السريع لعدد %s رمزًا، منها رموز الماسح الحالية", len(selected))
+    log.info("تحديث الأسعار السريع لعدد %s رمزًا، منها رموز الماسح والمراقبة والبحث", len(selected))
     return selected
+
+
+def fetch_market_pulse() -> list[dict[str, Any]]:
+    """يجلب المؤشرات العامة من yfinance ويحفظ آخر سعر وتغير فقط."""
+    import yfinance as yf
+    symbols = list(MARKET_PULSE_SYMBOLS)
+    try:
+        data = yf.download(symbols, period="5d", group_by="ticker", threads=False, auto_adjust=False, progress=False, timeout=45)
+    except Exception as exc:
+        log.warning("تعذر تحميل نبض السوق: %s", exc)
+        return []
+    now = pd.Timestamp.now(tz="UTC").isoformat()
+    rows: list[dict[str, Any]] = []
+    for symbol, (label_ar, asset_type) in MARKET_PULSE_SYMBOLS.items():
+        try:
+            frame = data[symbol].dropna(how="all") if len(symbols) > 1 else data.dropna(how="all")
+            closes = pd.to_numeric(frame["Close"], errors="coerce").dropna()
+            if closes.empty:
+                continue
+            price = float(closes.iloc[-1])
+            previous = float(closes.iloc[-2]) if len(closes) > 1 else price
+            rows.append({"symbol": symbol, "label_ar": label_ar, "asset_type": asset_type, "price": round(price, 2), "change_pct": round((price / previous - 1) * 100, 2) if previous else 0, "updated_at": now, "source_name": "Yahoo Finance عبر yfinance"})
+        except Exception as exc:
+            log.warning("تعذر حساب نبض %s: %s", symbol, exc)
+    return rows
 
 
 def run_quick():
     # نستخدم تاريخ سنة حتى لا تبقى RSI وSMA20/SMA50/SMA200 فارغة.
-    # هذا المسار يحدّث الأسعار الحية والفنيات معًا لرموز الماسح الحالية.
+    # هذا المسار يحدّث الأسعار الحية والفنيات لرموز الماسح والمراقبة والبحث.
     technicals = fetch_prices_and_technicals(load_quick_symbols(), full_history=True)
     now = pd.Timestamp.now(tz="UTC").isoformat()
     quote_rows = [{"symbol": symbol, "price": values["price"], "change_pct": values["change_pct"], "volume": values["volume"], "updated_at": now} for symbol, values in technicals.items()]
@@ -357,6 +401,9 @@ def run_quick():
         raise RuntimeError("لم تُحفظ أي أسعار حية")
     if upsert_rows("market_technicals", technical_rows) == 0:
         raise RuntimeError("لم تُحفظ أي مؤشرات فنية")
+    pulse = fetch_market_pulse()
+    if pulse:
+        upsert_rows("market_pulse", pulse)
 
 
 if __name__ == "__main__":

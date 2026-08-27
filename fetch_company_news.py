@@ -105,7 +105,7 @@ def upsert(rows: list[dict[str, Any]]) -> None:
     r.raise_for_status(); log.info("تمت معالجة %s خبرًا", len(payload))
 
 def main() -> None:
-    # المصدر الموحد للرموز: المراكز المفتوحة ثم أقوى الترشيحات ثم مرشحو فلترة الأسهم النشطون.
+    # المصدر الموحد للرموز: المراكز المفتوحة ثم جميع إشارات القوالب، ثم المتابعة الشخصية ومرشحو الفلاتر النشطون.
     symbols: dict[str, str] = {}
     def add(rows: list[dict[str, Any]]) -> None:
         for row in rows:
@@ -114,14 +114,23 @@ def main() -> None:
                 symbols.setdefault(symbol, str(row.get("company") or row.get("company_name") or symbol))
 
     add(rest_get("shared_virtual_positions", "symbol", {"simulation_id": "eq.global"}))
-    add(rest_get("screener_signals", "symbol,company,entry_score", {"entry_score": "gt.0", "order": "entry_score.desc", "limit": "14"}))
+    # لا نحدّها إلى قالب واحد أو أربعة أزرار واجهة؛ هذه نتيجة جميع القوالب المخزنة.
+    add(rest_get("screener_signals", "symbol,company,entry_score", {"entry_score": "gt.0", "order": "entry_score.desc", "limit": "50"}))
+    try:
+        add(rest_get("watchlist", "symbol", {"order": "added_at.desc", "limit": "50"}))
+    except requests.RequestException as exc:
+        log.warning("تعذر قراءة قائمة المراقبة: %s", exc)
+    try:
+        add(rest_get("research_requests", "symbol", {"status": "eq.active", "order": "requested_at.desc", "limit": "50"}))
+    except requests.RequestException as exc:
+        log.warning("تعذر قراءة طلبات البحث: %s", exc)
     try:
         add(rest_get("manual_filter_candidates", "symbol", {"status": "eq.active", "expires_at": "gt." + datetime.now(timezone.utc).isoformat(), "order": "updated_at.desc", "limit": "14"}))
     except requests.RequestException as exc:
         log.warning("تعذر قراءة مرشحي فلترة الأسهم: %s", exc)
 
     if not symbols:
-        log.info("لا توجد مراكز أو ترشيحات أو مرشحو فلترة لجلب أخبارها")
+        log.info("لا توجد مراكز أو ترشيحات أو أسهم متابعة أو مرشحو فلترة لجلب أخبارها")
         return
     cik_map = {}
     try:
@@ -129,7 +138,7 @@ def main() -> None:
         for x in t.json().values(): cik_map[str(x["ticker"]).upper()] = str(x["cik_str"])
     except Exception as exc: log.warning("تعذر تحميل خريطة SEC: %s", exc)
     rows = []
-    for symbol, company in list(symbols.items())[:28]:
+    for symbol, company in list(symbols.items())[:60]:
         try:
             rows.extend(rss_items(symbol, company)); rows.extend(sec_items(symbol, company, cik_map))
         except Exception as exc: log.warning("تعذر جلب أخبار %s: %s", symbol, exc)

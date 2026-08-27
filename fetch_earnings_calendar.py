@@ -51,9 +51,18 @@ def get_symbols() -> dict[str, dict[str, Any]]:
 
     add(rest_get("shared_virtual_positions", "symbol", {"simulation_id": "eq.global"}), "محفظة المحاكي")
     add(
-        rest_get("screener_signals", "symbol,company,entry_score", {"entry_score": "gt.0", "order": "entry_score.desc", "limit": "14"}),
-        "ترشيحات المحاكي",
+        # تشمل النتيجة جميع القوالب المخزنة، لا القوالب الأربعة المعروضة فقط في أزرار الواجهة.
+        rest_get("screener_signals", "symbol,company,entry_score", {"entry_score": "gt.0", "order": "entry_score.desc", "limit": "50"}),
+        "ترشيحات المنصة",
     )
+    try:
+        add(rest_get("watchlist", "symbol", {"order": "added_at.desc", "limit": "50"}), "قائمة المراقبة")
+    except requests.RequestException as exc:
+        log.warning("تعذر قراءة قائمة المراقبة: %s", exc)
+    try:
+        add(rest_get("research_requests", "symbol", {"status": "eq.active", "order": "requested_at.desc", "limit": "50"}), "بحث AZ ai")
+    except requests.RequestException as exc:
+        log.warning("تعذر قراءة طلبات البحث: %s", exc)
     # هذا الجدول اختياري في بعض النسخ القديمة؛ لا نوقف التقويم إذا لم يكن قد أُنشئ بعد.
     try:
         add(
@@ -67,7 +76,7 @@ def get_symbols() -> dict[str, dict[str, Any]]:
     except requests.RequestException as exc:
         log.warning("تعذر قراءة مرشحي فلترة الأسهم: %s", exc)
 
-    return dict(list(symbols.items())[:28])
+    return dict(list(symbols.items())[:60])
 
 
 def as_iso(value: Any) -> str | None:

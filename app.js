@@ -918,6 +918,21 @@ function deterministicMarketBrief(rows) {
         : "والتذبذب ضمن نطاق متوسط";
   return `قراءة تعليمية: مزاج السوق ${tone} ${risk}. راقب تغير المؤشرات وبيانات الشركات قبل تفسير أي إشارة.`;
 }
+let activeMarketLens = "day";
+function setMarketLens(range) {
+  activeMarketLens = ["day", "week", "month", "all"].includes(range) ? range : "day";
+  document.querySelectorAll("[data-market-range]").forEach((button) => button.classList.toggle("active", button.dataset.marketRange === activeMarketLens));
+  const labels = { day: "اليوم", week: "الأسبوع", month: "الشهر", all: "منذ البداية" };
+  const rows = Array.isArray(window.__marketPulseRows) ? window.__marketPulseRows : [];
+  const changes = rows.map((row) => Number(row.change_pct)).filter(Number.isFinite);
+  const average = changes.length ? changes.reduce((sum, value) => sum + value, 0) / changes.length : null;
+  const brief = document.getElementById("marketDailyBrief");
+  if (brief) brief.textContent = average == null
+    ? `ملخص ${labels[activeMarketLens]}: بانتظار مؤشرات السوق الموثوقة.`
+    : `ملخص ${labels[activeMarketLens]}: متوسط التغير المتاح ${average >= 0 ? "+" : ""}${average.toFixed(2)}%. قراءة تعليمية وليست توقعًا للسعر.`;
+  const chart = document.getElementById("chartContainer");
+  if (chart && !chartInstance) chart.innerHTML = `<div class="chart-empty-state market-summary-chart"><span class="chart-empty-icon">${average == null ? "—" : average >= 0 ? "↗" : "↘"}</span><strong>ملخص ${labels[activeMarketLens]}</strong><p>${average == null ? "لا توجد سلسلة OHLC فعلية للرسم حتى الآن." : `متوسط التغير الحالي ${average >= 0 ? "+" : ""}${average.toFixed(2)}% عبر المؤشرات المتاحة.`}</p></div>`;
+}
 async function loadMarketPulse() {
   const grid = document.getElementById("marketPulseGrid");
   const brief = document.getElementById("marketDailyBrief");
@@ -930,6 +945,7 @@ async function loadMarketPulse() {
       .order("symbol");
     if (error) throw error;
     const rows = Array.isArray(data) ? data : [];
+    window.__marketPulseRows = rows;
     if (!rows.length) {
       grid.innerHTML =
         '<div class="market-pulse-empty">تُجهز مؤشرات السوق في الخلفية. ستظهر هنا بعد أول دورة تحديث موثوقة.</div>';
@@ -949,6 +965,7 @@ async function loadMarketPulse() {
       .join("");
     const fallback = deterministicMarketBrief(rows);
     if (brief) brief.textContent = fallback;
+    setMarketLens(activeMarketLens);
     const dayKey = `az_market_brief_${new Date().toISOString().slice(0, 10)}`;
     if (!sessionStorage.getItem(dayKey)) {
       sessionStorage.setItem(dayKey, "pending");
@@ -1061,6 +1078,10 @@ async function initApp(user, profile) {
       5 * 60 * 1000,
     );
   removeBrokenCounterText();
+  if (!window.__azCounterSanitizer) {
+    window.__azCounterSanitizer = new MutationObserver(() => removeBrokenCounterText());
+    window.__azCounterSanitizer.observe(document.body, { childList: true, subtree: true });
+  }
   showReconnectBriefing();
   const c = LocalCache.getScreener();
   if (c && c.t > Date.now() - 86400000) {
@@ -1214,7 +1235,7 @@ async function renderWatchlist() {
     updateStats(0, 0, 0, 0, 0);
     return;
   }
-  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol)));
+  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol).catch(() => null)));
   let wins = 0,
     losses = 0,
     totalPnl = 0,
@@ -1246,7 +1267,12 @@ async function renderWatchlist() {
     const referenceText = hasReference
       ? `${item.mode === "buy" ? "شراء محاكى" : "مرجع دخول"} $${reference.toFixed(2)} × ${qty}`
       : "مراقبة وتنبيهات فقط";
-    const rowHtml = `<div class="watch-item"><div class="watch-item-top"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice && pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>${referenceText}</span><span class="pnl ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-cyan"}">${pnlCell}</span></div><div class="watch-actions"><span class="watch-mode">${item.mode === "buy" ? "شراء محاكى" : "مراقبة"}</span><button class="del" type="button" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</button></div></div>`;
+    const matchedPick = (LocalCache.getPicks() || []).find((pick) => pick.symbol === item.symbol);
+    const pickScore = Number(matchedPick?.companyRating);
+    const pickText = matchedPick
+      ? `درجة ${(pickScore / 10).toFixed(1)}/10 · ${matchedPick.entryStatus || "انتظار"}${matchedPick.entryPrice ? ` · دخول $${Number(matchedPick.entryPrice).toFixed(2)}` : ""}`
+      : "لا توجد إشارة مؤكدة — انتظار";
+    const rowHtml = `<div class="watch-item"><div class="watch-item-top"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice && pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>${referenceText}</span><span class="pnl ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-cyan"}">${pnlCell}</span></div><div class="watch-signal">${escapeHtml(pickText)}</div><div class="watch-actions"><span class="watch-mode">${item.mode === "buy" ? "شراء محاكى" : "مراقبة"}</span><button class="del" type="button" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</button></div></div>`;
     containers.forEach((container) => {
       container.insertAdjacentHTML("beforeend", rowHtml);
     });
@@ -1280,7 +1306,7 @@ async function renderPortfolio() {
       '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:40px;">لا توجد صفقات</td></tr>';
     return;
   }
-  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol)));
+  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol).catch(() => null)));
   let totalPnl = 0,
     totalInvested = 0,
     totalCurrent = 0;
@@ -3146,15 +3172,18 @@ function renderSignalGridPicks() {
     : [];
   if (!picks.length) {
     body.innerHTML =
-      '<tr><td colspan="3" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
+      '<tr><td colspan="5" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
     return;
   }
   body.innerHTML = picks
     .map((pick, index) => {
       const price = Number(pick?.price);
       const entry = Number(pick?.entryPrice);
-      const label = escapeHtml(String(pick?.entryStatus || "للمتابعة"));
-      return `<tr><td><span class="grid-rank">${index + 1}</span><strong>${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td><span class="grid-entry ${String(pick?.entryStatus || "").includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"} <small>${label}</small></span></td></tr>`;
+      const score = Number(pick?.companyRating);
+      const score10 = Number.isFinite(score) ? `${(score / 10).toFixed(1)}/10` : "—";
+      const label = escapeHtml(String(pick?.entryStatus || "انتظار"));
+      const signal = escapeHtml(String(pick?.bestTier || pick?.entryStatus || "انتظار"));
+      return `<tr><td><strong class="font-mono">${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${score10}</td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td>${signal}</td><td><span class="grid-entry ${label.includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"}</span></td></tr>`;
     })
     .join("");
 }
@@ -3203,7 +3232,7 @@ function mountSignalGridDashboard() {
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
   const picksPanel = document.createElement("div");
   picksPanel.className = "signal-grid-table";
-  picksPanel.innerHTML = `<table><thead><tr><th>الترتيب</th><th>السعر</th><th>المنطقة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
+  picksPanel.innerHTML = `<div class="signal-grid-table-scroll"><table><thead><tr><th>الرمز</th><th>التقييم</th><th>السعر</th><th>الإشارة</th><th>الدخول</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="5" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table></div><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
   const newsPanel = document.createElement("div");
   newsPanel.className = "signal-grid-feed";
   newsPanel.id = "dashboardNewsList";
@@ -4296,18 +4325,24 @@ async function fetchUniverse(forceRefresh = false) {
 }
 
 async function fetchPrice(sym) {
-  const { data: live } = await sb
-    .from("live_quotes")
-    .select("price")
-    .eq("symbol", sym)
-    .maybeSingle();
-  if (live && live.price != null) return Number(live.price);
-  const { data: tech } = await sb
-    .from("market_technicals")
-    .select("price")
-    .eq("symbol", sym)
-    .maybeSingle();
-  return tech && tech.price != null ? Number(tech.price) : null;
+  if (!sb || !sym) return null;
+  try {
+    const { data: live } = await sb
+      .from("live_quotes")
+      .select("price")
+      .eq("symbol", sym)
+      .maybeSingle();
+    if (live && live.price != null) return Number(live.price);
+    const { data: tech } = await sb
+      .from("market_technicals")
+      .select("price")
+      .eq("symbol", sym)
+      .maybeSingle();
+    return tech && tech.price != null ? Number(tech.price) : null;
+  } catch (error) {
+    console.warn(`تعذر جلب سعر ${sym}:`, error);
+    return null;
+  }
 }
 // ===== LIVE STOCKS TAB (now: live_quotes for price, market_technicals for signal context) =====
 async function runScanner() {
@@ -5332,10 +5367,9 @@ async function runWeeklyScan() {
           : assessment.score >= 62
             ? "text-cyan"
             : "text-gold";
-      const company = sigEsc(s.company || s.symbol);
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${company}</div><div class="sym-sub">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${assessment.score}/100</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym font-mono">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${(Number(assessment.score || 0) / 10).toFixed(1)}/10</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);

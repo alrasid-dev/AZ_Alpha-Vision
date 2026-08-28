@@ -1027,7 +1027,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                 <button class="tab-btn" onclick="switchTab('portfolio')" data-tab="portfolio"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span>المحفظة</button>
                 <button class="tab-btn active" onclick="switchTab('stocks')" data-tab="stocks"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m6 15 4-4 3 2 5-6"/></svg></span>الرئيسية</button>
                 <button class="tab-btn" onclick="switchTab('screener')" data-tab="screener"><span class="tab-icon"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></span>الفلترة</button>
-                <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 12h3l2-6 4 12 2-6h5"/></svg></span>الماسح</button>
+                <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 12h3l2-6 4 12 2-6h5"/></svg></span>إشارة اليوم</button>
                 <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></svg></span>الترشيحات</button>
                 <button class="tab-btn" onclick="switchTab('indicators')" data-tab="indicators"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 18V6"/><path d="M4 18h16"/><path d="M7 15h3M12 11h3M17 7h1"/></svg></span>التحليل</button>
                 <button class="tab-btn" onclick="switchTab('course'); openCourse()" data-tab="course"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21.5Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5a2.5 2.5 0 0 1 2.5 2.5Z"/></svg></span>التعليم</button>
@@ -1052,7 +1052,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <div class="decision-metrics"><article><span>الربح / الخسارة</span><strong id="overviewPnl">$0.00</strong><small>من بداية المحاكاة</small></article><article><span>العائد الكلي</span><strong id="overviewReturn">0.00%</strong><small>أداء تراكمي</small></article><article><span>المراكز المفتوحة</span><strong id="overviewPositions">0</strong><small>داخل المحاكي</small></article><article class="education-tile"><span>وضع التعليم</span><strong>محاكاة فقط</strong><small>بدون أموال حقيقية</small></article></div>
                         <div class="decision-thread" aria-label="مسار الإشارة"><div class="thread-label">مسار الإشارة</div><article><span class="thread-step">01</span><div><small>الإشارة</small><strong id="overviewSignal">لا توجد إشارة دخول جديدة</strong></div></article><i></i><article><span class="thread-step">02</span><div><small>المنطقة المرجعية</small><strong id="overviewEntry">السعر المقترح</strong></div></article><i></i><article><span class="thread-step">03</span><div><small>حالة المركز</small><strong id="overviewPosition">مركز افتراضي</strong></div></article><i></i><article><span class="thread-step">04</span><div><small>المتابعة</small><strong id="overviewResult">متابعة الأداء</strong></div></article><details><summary>كيف يقرأ المحاكي الإشارة؟</summary><p>يعرض المحاكي إشارات النظام ونتائجها التعليمية، ولا يشكل توصية أو أمر تداول.</p></details></div>
                     </section>
-                    <section class="market-canvas" aria-label="سوق الأسهم"><div class="canvas-head"><div><span class="eyebrow">MARKET LENS</span><h3>عدسة السوق</h3></div><div class="time-lenses"><span class="active">اليوم</span><span>الأسبوع</span><span>الشهر</span><span>منذ البداية</span></div></div><div id="marketPulseGrid" class="market-pulse-grid" aria-live="polite"><div class="market-pulse-empty">جارٍ تحميل نبض السوق من المصدر.</div></div><div id="marketDailyBrief" class="market-daily-brief">ستظهر قراءة AZ ai التعليمية بعد وصول مؤشرات السوق الفعلية.</div><div class="chart-box" id="chartBox"><div id="chartContainer" style="width:100%;height:100%;"></div></div></section>
+                    <section class="market-canvas" aria-label="سوق الأسهم"><div class="canvas-head"><div><span class="eyebrow">MARKET LENS</span><h3>عدسة السوق</h3></div><div class="time-lenses" role="tablist" aria-label="الفترة الزمنية"><button class="active" type="button" data-market-range="day" onclick="setMarketLens('day')">اليوم</button><button type="button" data-market-range="week" onclick="setMarketLens('week')">الأسبوع</button><button type="button" data-market-range="month" onclick="setMarketLens('month')">الشهر</button><button type="button" data-market-range="all" onclick="setMarketLens('all')">منذ البداية</button></div></div><div id="marketPulseGrid" class="market-pulse-grid" aria-live="polite"><div class="market-pulse-empty">جارٍ تحميل نبض السوق من المصدر.</div></div><div id="marketDailyBrief" class="market-daily-brief">ستظهر قراءة AZ ai التعليمية بعد وصول مؤشرات السوق الفعلية.</div><div class="chart-box" id="chartBox"><div id="chartContainer" style="width:100%;height:100%;"></div></div></section>
                     <section class="market-stream"><div class="stream-head"><div><span class="eyebrow">LIVE UNIVERSE</span><h3>الأسهم المتابعة</h3></div><button class="orbital-button small" onclick="switchTab('screener')">افتح الفلترة <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button></div><div class="market-table-wrap"><table class="data-table"><thead><tr><th>الرمز</th><th>السعر</th><th>التغيير</th><th>الحجم</th><th>RSI</th><th>الإشارة</th><th></th></tr></thead><tbody id="stockTableBody"></tbody></table></div></section>
                 </div>
 
@@ -1551,14 +1551,27 @@ body{overflow-x:hidden}.bg-mesh{opacity:1!important;background:radial-gradient(e
       .add-stock-form input,.dashboard-watch-add input{min-height:36px}
       .watch-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
       .watch-mode{font-size:10px;color:var(--app-muted);padding:3px 7px;border-radius:6px;background:rgba(85,207,142,.08)}
+      .watch-signal{margin-top:7px;overflow-x:auto;white-space:nowrap;color:#9bb4c4;font-size:10px;line-height:1.6;direction:rtl}
+      .time-lenses{display:flex;align-items:center;gap:4px;overflow-x:auto;white-space:nowrap}
+      .time-lenses button{border:1px solid transparent;border-radius:7px;background:transparent;color:var(--app-muted);padding:6px 9px;cursor:pointer;font:inherit;font-size:11px;white-space:nowrap}
+      .time-lenses button:hover,.time-lenses button.active{color:var(--app-text-strong);background:rgba(85,207,142,.11);border-color:rgba(85,207,142,.28)}
+      .signal-grid-table-scroll{overflow-x:auto;max-width:100%}.signal-grid-table-scroll table{min-width:560px}
+      .weekly-table-wrap,.virtual-ledger,.signal-grid-table,.market-table-wrap{overflow-x:auto;max-width:100%}
+      .weekly-table,.virtual-table{min-width:720px}
+      .sym,.sym-sub,.weekly-reason{overflow-wrap:normal;word-break:normal}
       .watch-item .del{position:static!important;opacity:1!important;min-width:22px}
       .dashboard-watch-add{grid-template-columns:minmax(0,1.2fr) minmax(130px,.8fr) minmax(120px,.8fr) minmax(90px,.55fr) auto!important;align-items:center}
       @media(max-width:860px){
         .sidebar{height:76px!important;padding:5px 8px!important;overflow:visible!important}
         .sidebar .tabs-wrap{height:64px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;flex-wrap:nowrap!important;gap:4px!important}
         .sidebar .tab-btn{display:flex!important;flex:0 0 72px!important;width:72px!important;height:56px!important;white-space:normal!important}
-        .sidebar .add-stock-form,.sidebar .watchlist-scroll,.sidebar .stats-block,.sidebar .btn-logout,.sidebar .sidebar-header{display:none!important}
-        .dashboard-watch-add{grid-template-columns:1fr 1fr!important}
+        .sidebar .add-stock-form,.sidebar .stats-block,.sidebar .btn-logout,.sidebar .sidebar-header{display:none!important}.sidebar .watchlist-scroll{display:block!important}
+        .dashboard-watch-add{grid-template-columns:1fr 1fr!important;overflow-x:visible!important}
+        .time-lenses{justify-content:flex-start!important}
+        .market-canvas,.market-stream,.weekly-table-wrap,.virtual-ledger,.signal-grid-table-scroll{overflow-x:auto!important}
+        .market-canvas{min-width:0!important}
+        .market-pulse-grid{min-width:560px!important}
+        .weekly-reason{min-width:180px!important;white-space:normal!important}
         .dashboard-watch-add button{grid-column:1/-1!important}
         .signal-watchlist-panel{display:block!important}
         .signal-watchlist-panel .watch-item{min-width:0!important}

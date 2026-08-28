@@ -5205,22 +5205,17 @@ function weeklyCompanyAssessment(row) {
   const plan = weeklyEntryPlan(row);
   if (plan.avoid) score -= 13;
   score = Math.max(0, Math.min(100, Math.round(score)));
-  const label = score >= 78 ? "قوي" : score >= 62 ? "متوازن" : "للمتابعة";
-  return { score, label, evidence, plan };
+  const companyGrade = score >= 78 ? "A" : score >= 62 ? "B" : score >= 48 ? "C" : "D";
+  const label = companyGrade === "A" ? "قوة ونمو مرتفعان" : companyGrade === "B" ? "قوة ونمو جيدان" : companyGrade === "C" ? "قوة متوسطة" : "ضعف أو مخاطر أعلى";
+  return { score, grade: companyGrade, label, evidence, plan };
 }
 function weeklyReason(row) {
   const assessment = row.companyAssessment || weeklyCompanyAssessment(row);
-  const presets = [...(row.presets || [])]
-    .map((p) => SIG_PRESET_LABEL[p] || p)
-    .filter(Boolean);
   const technical = [...(row.signalNames || [])].filter(Boolean);
-  const parts = [
-    assessment.evidence[0],
-    presets[0] && `من قالب ${presets[0]}`,
-    technical[0],
-  ].filter(Boolean);
-  if (assessment.plan?.avoid) parts.push("بانتظار تأكيد منطقة الدخول");
-  return parts.slice(0, 3).join(" • ") || "توافق مؤشرات المنصة المتاحة";
+  const compact = technical.slice(0, 2).join(" + ");
+  if (compact) return compact;
+  if (assessment.evidence.includes("سيولة داعمة")) return "نمط فني + حجم";
+  return "إشارة فنية قيد المتابعة";
 }
 function weeklyEntryPlan(row) {
   const price = Number(row?.price);
@@ -5427,15 +5422,11 @@ async function runWeeklyScan() {
             ? "إشارة مؤكدة"
             : "إشارة دخول";
       const stateClass = watchOnly || plan.avoid ? "text-gold" : "text-green";
-      const ratingClass =
-        assessment.score >= 78
-          ? "text-green"
-          : assessment.score >= 62
-            ? "text-cyan"
-            : "text-gold";
+      const companyGrade = assessment.grade || (assessment.score >= 78 ? "A" : assessment.score >= 62 ? "B" : assessment.score >= 48 ? "C" : "D");
+      const ratingClass = `company-grade grade-${String(companyGrade).toLowerCase()}`;
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym font-mono">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${(Number(assessment.score || 0) / 10).toFixed(1)}/10</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym font-mono">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${(Number(assessment.score || 0) / 10).toFixed(1)}/10 · ${companyGrade}</strong><div class="sym-sub">قوة الشركة والنمو</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5518,14 +5509,15 @@ let SIGNALS_CACHE = null,
 let signalChartInstance = null;
 
 const SIG_TIER_COLOR = {
-  صريح: "badge-strong-buy",
-  مؤكد: "badge-buy",
-  دخول: "badge-hold",
+  صريح: "badge-entry",
+  مؤكد: "badge-entry",
+  دخول: "badge-entry",
+  مراقبة: "badge-watch",
 };
 const SIG_TIER_COLOR_EXIT = {
-  صريح: "badge-strong-sell",
-  مؤكد: "badge-sell",
-  خروج: "badge-hold",
+  صريح: "badge-exit",
+  مؤكد: "badge-exit",
+  خروج: "badge-exit",
 };
 const SIG_LABEL = {
   fibonacci: "فيبوناتشي",
@@ -5861,6 +5853,19 @@ function renderSignalsTable(stocks) {
     .join("");
 }
 
+function signalSessionLabel(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  const total = hour * 60 + minute;
+  if (total < 570) return "قبل الافتتاح — تنبيه فقط";
+  if (total >= 960) return "بعد الإغلاق — تنبيه فقط";
+  return "ضمن الجلسة النظامية";
+}
 function renderSignalAlerts() {
   const tb = document.getElementById("signalsAlertsBody");
   if (!SIGNALS_ALERTS || !SIGNALS_ALERTS.length) {
@@ -5878,14 +5883,13 @@ function renderSignalAlerts() {
     const entryPlan = isEntry
       ? weeklyEntryPlan({ ...context, price: a.price ?? context.price })
       : null;
-    const badge = isEntry
-      ? SIG_TIER_COLOR[a.tier]
-      : SIG_TIER_COLOR_EXIT[a.tier];
+    const badge = isEntry ? "badge-entry" : "badge-exit";
+    const session = signalSessionLabel(a.ts);
     return `<tr>
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString("ar-SA")}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} ${a.tier} (${a.score}/4)</span></td>
+            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} ${a.tier} (${a.score}/4)</span><div class="signal-session ${session.includes("تنبيه فقط") ? "neutral" : "active"}">${session}</div></td>
             <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan?.label || "")}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
         </tr>`;
   }).join("");

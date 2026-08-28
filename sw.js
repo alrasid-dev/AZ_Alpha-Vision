@@ -1,4 +1,4 @@
-const CACHE_NAME = 'az-alpha-shell-v2';
+const CACHE_NAME = 'az-alpha-shell-v3';
 const APP_URL = './';
 
 self.addEventListener('install', (event) => {
@@ -7,7 +7,14 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((key) => key.startsWith('az-alpha-shell-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -22,8 +29,8 @@ self.addEventListener('push', (event) => {
     const direction = data.direction === 'up' ? 'up' : data.direction === 'down' ? 'down' : 'neutral';
     const options = {
       body: data.body || 'وصلت إشارة تعليمية جديدة من الماسح.',
-      icon: data.icon || './icon.svg',
-      badge: data.badge || './icon.svg',
+      icon: data.icon || './icon-192.png',
+      badge: data.badge || './icon-192.png',
       tag: data.tag || `az-signal-${Date.now()}`,
       data: { url: data.url || './#signals', direction, alertType: data.alertType || 'general' },
       color: data.color || (direction === 'up' ? '#76d6a2' : direction === 'down' ? '#e98c91' : '#6bd8d0'),

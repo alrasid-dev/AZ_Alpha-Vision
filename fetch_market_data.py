@@ -216,17 +216,63 @@ def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
 
 
 def download_chunk_with_retry(yf, chunk: list[str], period: str) -> pd.DataFrame | None:
+    """تنزيل دفعة، مع إعادة المحاولة ثم إرجاع None كي تُعاد الدفعة مقسمة."""
     for attempt in range(1, 4):
         try:
             # threads=False مهم لتجنب قفل SQLite/crumb cache في GitHub Actions.
-            data = yf.download(chunk, period=period, group_by="ticker", threads=False, auto_adjust=False, progress=False, timeout=60)
+            data = yf.download(
+                chunk,
+                period=period,
+                group_by="ticker",
+                threads=False,
+                auto_adjust=False,
+                progress=False,
+                timeout=60,
+            )
             if data is not None and not data.empty:
                 return data
-            log.warning("دفعة فارغة (%s/%s)", attempt, 3)
+            log.warning("دفعة فارغة (%s/%s): %s سهم", attempt, 3, len(chunk))
         except Exception as exc:
-            log.warning("فشل تنزيل الدفعة (%s/3): %s", attempt, exc)
-        time.sleep(5 * attempt)
+            log.warning("فشل تنزيل الدفعة (%s/3) وعددها %s: %s", attempt, len(chunk), exc)
+        time.sleep(4 * attempt)
     return None
+
+
+def _download_with_fallback(yf, chunk: list[str], period: str) -> list[tuple[str, pd.DataFrame]]:
+    """يحافظ على التغطية: الدفعة الفاشلة تنقسم نصفين، ثم تُجرّب منفردة عند الحاجة."""
+    data = download_chunk_with_retry(yf, chunk, period)
+    if data is not None:
+        frames: list[tuple[str, pd.DataFrame]] = []
+        for ticker in chunk:
+            try:
+                if len(chunk) > 1:
+                    levels = data.columns.get_level_values(0)
+                    if ticker not in levels:
+                        continue
+                    frame = data[ticker].dropna(how="all")
+                else:
+                    frame = data.dropna(how="all")
+                if not frame.empty and "Close" in frame.columns:
+                    frames.append((ticker, frame))
+            except Exception as exc:
+                log.warning("تعذر استخراج %s من الدفعة: %s", ticker, exc)
+        # إذا أعاد المصدر دفعة جزئية، أعد محاولة الرموز المفقودة منفردة لاحقًا.
+        found = {ticker for ticker, _ in frames}
+        missing = [ticker for ticker in chunk if ticker not in found]
+        if missing and len(chunk) > 1:
+            # لا تعاود نفس الدفعة إذا كانت كل الأعمدة غير قابلة للاستخراج؛ قسّمها.
+            if len(missing) == len(chunk):
+                midpoint = max(1, len(chunk) // 2)
+                return _download_with_fallback(yf, chunk[:midpoint], period) + _download_with_fallback(yf, chunk[midpoint:], period)
+            for ticker, frame in _download_with_fallback(yf, missing, period):
+                frames.append((ticker, frame))
+        return frames
+    if len(chunk) == 1:
+        log.error("تعذر تنزيل الرمز بعد إعادة المحاولة: %s", chunk[0])
+        return []
+    midpoint = max(1, len(chunk) // 2)
+    log.warning("تقسيم الدفعة المتعثرة %s إلى %s + %s", len(chunk), midpoint, len(chunk) - midpoint)
+    return _download_with_fallback(yf, chunk[:midpoint], period) + _download_with_fallback(yf, chunk[midpoint:], period)
 
 
 def fetch_prices_and_technicals(tickers: list[str], full_history=True) -> dict[str, dict[str, Any]]:
@@ -236,27 +282,16 @@ def fetch_prices_and_technicals(tickers: list[str], full_history=True) -> dict[s
     chunks = [tickers[i:i + BATCH_SIZE] for i in range(0, len(tickers), BATCH_SIZE)]
     for index, chunk in enumerate(chunks, 1):
         log.info("yfinance دفعة %s/%s: %s سهم", index, len(chunks), len(chunk))
-        data = download_chunk_with_retry(yf, chunk, period)
-        if data is None:
-            log.error("تخطي الدفعة بعد 3 محاولات: %s", ",".join(chunk[:5]))
-            continue
-        for ticker in chunk:
+        for ticker, frame in _download_with_fallback(yf, chunk, period):
             try:
-                if len(chunk) > 1:
-                    if ticker not in data.columns.get_level_values(0):
-                        continue
-                    frame = data[ticker].dropna(how="all")
-                else:
-                    frame = data.dropna(how="all")
-                if frame.empty or "Close" not in frame.columns:
-                    continue
                 rec = compute_technical(frame)
                 price = rec.get("price")
-                if price is None or price < MIN_PRICE or price > MAX_PRICE:
+                # لا نحذف السهم هنا بسبب نطاق السعر؛ القوالب هي التي تطبق نطاقاتها الصارمة.
+                if price is None or price <= 0:
                     continue
                 results[ticker] = rec
             except Exception as exc:
-                log.warning("تعذر معالجة %s: %s", ticker, exc)
+                log.warning("تعذر حساب فنيات %s: %s", ticker, exc)
         time.sleep(1)
     log.info("نجح جلب بيانات %s من أصل %s سهم", len(results), len(tickers))
     return results

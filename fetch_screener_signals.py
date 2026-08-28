@@ -178,6 +178,41 @@ def matches(row: dict[str, Any], spec: dict[str, Any]) -> bool:
     return True
 
 
+def monitoring_progress(row: dict[str, Any], spec: dict[str, Any]) -> tuple[bool, int, int]:
+    """يرجع تقدّمًا جزئيًا للقالب كي تظهر أسهم المراقبة بصدق دون تسميتها دخولًا."""
+    price = num(row, "price")
+    if price is None or not (spec.get("lo", MIN_PRICE) <= price <= spec.get("hi", MAX_PRICE)):
+        return False, 0, 0
+    checks: list[bool] = []
+    change, perf, rsi = num(row, "change_pct") or 0, num(row, "perf_week"), num(row, "rsi14")
+    sma20, sma50, sma200 = num(row, "sma20"), num(row, "sma50"), num(row, "sma200")
+    relvol, volume = num(row, "rel_volume", "rel_volume_9") or 0, num(row, "volume") or 0
+    pb, growth, next_growth, eps5y, debt = num(row, "pb"), num(row, "eps_growth_this_year"), num(row, "eps_growth_next_year"), num(row, "eps_growth_5y"), num(row, "lt_debt_equity")
+    if "change" in spec: checks.append(change >= spec["change"])
+    if "change_below" in spec: checks.append(change < spec["change_below"])
+    if "perf" in spec: checks.append(perf is not None and perf >= spec["perf"])
+    if "perf_below" in spec: checks.append(perf is not None and perf < spec["perf_below"])
+    if spec.get("rsi") == "neutral": checks.append(rsi is not None and 30 <= rsi <= 70)
+    if spec.get("rsi") == "oversold": checks.append(rsi is not None and rsi < 30)
+    if spec.get("above50"): checks.append(sma50 is not None and price > sma50)
+    if spec.get("below50"): checks.append(sma50 is not None and price < sma50)
+    if spec.get("above200"): checks.append(sma200 is not None and price > sma200)
+    if spec.get("below200"): checks.append(sma200 is not None and price < sma200)
+    if spec.get("sma20") == "above": checks.append(sma20 is not None and price > sma20)
+    if spec.get("sma20") == "below": checks.append(sma20 is not None and price < sma20)
+    if "relvol" in spec: checks.append(relvol >= spec["relvol"])
+    if "volume" in spec: checks.append(volume >= spec["volume"])
+    if "pb_hi" in spec: checks.append(pb is not None and pb < spec["pb_hi"])
+    if "pb_lo" in spec: checks.append(pb is not None and pb >= spec["pb_lo"])
+    if "growth" in spec: checks.append(growth is not None and growth > spec["growth"])
+    if "next" in spec: checks.append(next_growth is not None and next_growth > spec["next"])
+    if "eps5y" in spec: checks.append(eps5y is not None and eps5y > spec["eps5y"])
+    if "debt" in spec: checks.append(debt is not None and debt < spec["debt"])
+    passed, total = sum(checks), len(checks)
+    # لا نتابع سهمًا لم يحقق على الأقل مؤشرين واضحين ونصف ما تتوفر له من شروط القالب.
+    return total > 0 and passed >= 2 and passed / total >= 0.50, passed, total
+
+
 def smart_money_entry(row: dict[str, Any]) -> tuple[bool, str]:
     """SMC-style open proxy: bullish structure/order-block proxy + no chase.
 
@@ -259,7 +294,9 @@ def upsert(rows: list[dict[str, Any]]) -> None:
 
     # لا نعتمد على اسم قيد فريد قد يختلف بين مشاريع Supabase.
     # نحذف نتائج القوالب التي ستُحدّث فقط، ثم نضيف الدفعة الجديدة بدون on_conflict.
-    presets = sorted({str(row["preset"]) for row in rows if row.get("preset")})
+    # هذه القوالب الأربعة عشر هي المصدر الكامل لنتائج الماسح؛ نحذف نتائجها القديمة
+    # كلها في كل تشغيل حتى لا تبقى إشارات stale لقالب لم ينتج تطابقًا اليوم.
+    presets = sorted(TEMPLATES)
     preset_filter = "in.(" + ",".join(presets) + ")"
     delete_headers = {**HEADERS, "Prefer": "return=minimal"}
     deleted = requests.delete(
@@ -273,6 +310,9 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         deleted.raise_for_status()
 
     insert_headers = {**HEADERS, "Prefer": "return=minimal"}
+    if not rows:
+        log.info("اكتمل تشغيل القوالب الأربعة عشر؛ لا توجد إشارات دخول/متابعة مطابقة حاليًا")
+        return
     res = requests.post(
         f"{SUPABASE_URL}/rest/v1/screener_signals",
         headers=insert_headers,
@@ -302,13 +342,14 @@ def main() -> None:
     for preset, spec in TEMPLATES.items():
         count = 0
         for row in universe:
-            if not matches(row, spec):
+            strict_match = matches(row, spec)
+            monitor_ok, progress, required = monitoring_progress(row, spec)
+            if not strict_match and not monitor_ok:
                 continue
             smc_ok, smc_reason = smart_money_entry(row)
-            # لا نحذف نتيجة القالب بالكامل إذا فشل الحارس؛ نعرضها كمتابعة/انتظار.
-            # الحارس سيمنع الشراء الآلي ويمنع تنبيه الدخول حتى يتحسن السعر.
+            # نتيجة المراقبة تعرض قرب اكتمال شروط قالب فعلي، لكنها ليست دخولًا ولا تصل للمتداول الافتراضي.
             score, signals = entry_score(row, spec)
-            if score <= 0:
+            if strict_match and score <= 0:
                 continue
             output.append({
                 # هذه هي أعمدة screener_signals الموجودة فعليًا فقط.
@@ -321,18 +362,19 @@ def main() -> None:
                 "pe": num(row, "pe"),
                 "price": num(row, "price"),
                 "change_pct": num(row, "change_pct"),
-                "entry_score": score,
-                "entry_tier": tier(score),
-                "entry_signals": {**signals, "smc_atr": smc_ok},
+                "entry_score": score if strict_match else max(1, min(2, progress)),
+                "entry_tier": tier(score) if strict_match else "مراقبة",
+                "entry_signals": {**signals, "smc_atr": smc_ok, "template_progress": f"{progress}/{required}"},
                 "exit_score": 0,
                 "exit_tier": None,
                 "exit_signals": {},
                 "fib_ratio": None,
             })
             count += 1
-        log.info("[%s — %s] %s إشارة", preset, LABELS[preset], count)
+        log.info("[%s — %s] %s نتيجة دخول/متابعة", preset, LABELS[preset], count)
+    produced_presets = {str(row.get("preset")) for row in output}
+    missing_presets = sorted(set(TEMPLATES) - produced_presets)
+    log.info("اكتمل فحص %s قالبًا: %s قالبًا أنتج نتائج و%s قالبًا بلا تطابق", len(TEMPLATES), len(produced_presets), len(missing_presets))
     upsert(output)
-
-
 if __name__ == "__main__":
     main()

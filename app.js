@@ -754,6 +754,48 @@ function platformRelevantSymbols() {
     .forEach((item) => add(item.symbol, "فلترة الأسهم"));
   return items;
 }
+function arabicNewsFallback(news) {
+  const symbol = String(news?.symbol || "الشركة").toUpperCase();
+  const category = NEWS_CATEGORY_LABELS[news?.category] || "تحديث للشركة";
+  const impact = String(news?.impact_reason || "").trim();
+  return impact ? `AZ ai: ${impact}` : `AZ ai: ${category} مرتبط بـ ${symbol}`;
+}
+async function enrichArabicNewsHeadlines(rows) {
+  if (!sb || !Array.isArray(rows) || !rows.length) return;
+  const selected = rows.slice(0, 8).filter((row) => String(row?.title || "").trim());
+  if (!selected.length) return;
+  const cacheKey = "az_ar_news_titles_v1";
+  let cache = {};
+  try { cache = JSON.parse(localStorage.getItem(cacheKey) || "{}"); } catch (_) {}
+  const pending = selected.filter((row) => !cache[`${row.symbol}|${row.title}`]);
+  if (!pending.length) {
+    selected.forEach((row, index) => {
+      const node = document.getElementById(`azNewsTitle${index}`);
+      const text = cache[`${row.symbol}|${row.title}`];
+      if (node && text) node.textContent = text;
+    });
+    return;
+  }
+  try {
+    const prompt = `أنت مترجم الأخبار في منصة تعليمية عربية. ترجم العناوين التالية إلى العربية ترجمة موجزة ودقيقة. أعد فقط سطورًا مرقمة بنفس الترتيب 1. 2. دون مقدمة أو نص إضافي.\n${pending.map((row, i) => `${i + 1}. [${row.symbol}] ${row.title}`).join("\n")}`;
+    const { data, error } = await sb.functions.invoke("az-ai", {
+      body: { messages: [{ role: "user", content: prompt }] },
+    });
+    if (error || !data?.answer) return;
+    const lines = String(data.answer).split("\n").map((line) => line.replace(/^\s*\d+[.)،:-]?\s*/, "").trim()).filter(Boolean);
+    pending.forEach((row, i) => {
+      if (lines[i]) cache[`${row.symbol}|${row.title}`] = lines[i];
+    });
+    localStorage.setItem(cacheKey, JSON.stringify(cache));
+    selected.forEach((row, index) => {
+      const node = document.getElementById(`azNewsTitle${index}`);
+      const text = cache[`${row.symbol}|${row.title}`];
+      if (node && text) node.textContent = text;
+    });
+  } catch (error) {
+    console.warn("تعذر ترجمة عناوين الأخبار عبر AZ ai:", error);
+  }
+}
 function trackedSourcesText(value) {
   return Array.isArray(value) && value.length
     ? value.join(" · ")
@@ -786,14 +828,15 @@ async function refreshCompanyNews() {
       return;
     }
     box.innerHTML = data
-      .map((n) => {
+      .map((n, index) => {
         const visual = newsImpactVisual(n);
         const sources = trackedSourcesText([
           ...(tracked.get(String(n.symbol || "").toUpperCase()) || []),
         ]);
-        return `<article class="news-item impact-${visual.key}"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div class="news-item-title">${escapeNewsText(n.title)}</div><div class="news-item-sub">${escapeNewsText(n.source_name || "مصدر عام")} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(sources)} · ${escapeNewsText(n.impact_reason || "")}</div><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || "عام"}</span><br><span class="news-impact ${visual.key}">${visual.label}</span></div></article>`;
+        return `<article class="news-item impact-${visual.key}"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div id="azNewsTitle${index}" class="news-item-title">${escapeNewsText(arabicNewsFallback(n))}</div><div class="news-item-sub">${escapeNewsText(n.source_name || "مصدر عام")} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(sources)} · ${escapeNewsText(n.impact_reason || "")}</div><details class="news-original"><summary>العنوان الأصلي</summary><p>${escapeNewsText(n.title || "—")}</p></details><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || "عام"}</span><br><span class="news-impact ${visual.key}">${visual.label}</span></div></article>`;
       })
       .join("");
+    enrichArabicNewsHeadlines(data);
   } catch (error) {
     console.warn("تعذر تحميل أخبار الشركات:", error);
     box.innerHTML =
@@ -1042,14 +1085,9 @@ async function initApp(user, profile) {
   updateTrial();
   updateSitePerformance();
   setInterval(updateTrial, 60000);
-  document.getElementById("liveTime").textContent =
-    new Date().toLocaleTimeString("ar-SA");
-  setInterval(
-    () =>
-      (document.getElementById("liveTime").textContent =
-        new Date().toLocaleTimeString("ar-SA")),
-    1000,
-  );
+  // لا نعرض ساعة ثانية في الرأس؛ وقت التحديث يظهر داخل كل لوحة بيانات لتفادي قيم جهاز مشوهة مثل n/n.
+  const liveTime = document.getElementById("liveTime");
+  if (liveTime) liveTime.textContent = "";
   setTimeout(() => initChart(), 100);
   // الماسح الحقيقي والصفقات يعملان في الخلفية. المتصفح يقرأ الحالة المشتركة فقط.
   subscribeSignalRealtime();
@@ -3164,6 +3202,29 @@ const SIGNAL_GRID_LAYOUT_KEY = "az_signal_grid_layout_v1";
 // الترتيب ثابت للمستخدم العادي؛ أدوات السحب وتغيير الحجم أزيلت لتجنب التداخل خصوصًا على الجوال.
 const SIGNAL_GRID_CUSTOMIZATION_ENABLED = false;
 let signalGridObserver = null;
+function renderSignalToday() {
+  const box = document.getElementById("dashboardSignalToday");
+  if (!box) return;
+  const candidates = (Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : [])
+    .filter((row) => Number(row?.entry_score ?? 0) > 0)
+    .sort((a, b) => Number(b.entry_score || 0) - Number(a.entry_score || 0));
+  const row = candidates[0];
+  if (!row) {
+    box.innerHTML = `<div class="signal-today-empty"><strong>لا توجد إشارة دخول مكتملة الآن</strong><span>يتابع الماسح القوالب الأربعة عشر، وسيظهر هنا الرمز ومنطقة الدخول عند تحقق الشروط.</span><button type="button" onclick="switchTab('signals')">فتح الإشارات</button></div>`;
+    return;
+  }
+  const plan = weeklyEntryPlan(row);
+  const price = Number(row?.price);
+  const score = Math.max(0, Math.min(4, Number(row?.entry_score || 0)));
+  const signalNames = Object.entries(row?.entry_signals || {})
+    .filter(([, active]) => active)
+    .map(([key]) => SIG_LABEL[key] || key)
+    .slice(0, 2)
+    .join(" · ") || "توافق فني من الماسح";
+  const tone = plan.avoid ? "wait" : "entry";
+  box.innerHTML = `<article class="signal-today-card ${tone}"><div class="signal-today-top"><span class="signal-today-symbol font-mono">${sigEsc(row.symbol || "—")}</span><span class="signal-today-grade">${score}/4</span></div><div class="signal-today-price">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "السعر غير متاح"}</div><div class="signal-today-entry">${plan.avoid ? "انتظار حتى منطقة الدخول" : "منطقة دخول تعليمية"}: <strong>${Number.isFinite(Number(plan.price)) ? `$${Number(plan.price).toFixed(2)}` : "—"}</strong></div><p>${sigEsc(signalNames)}</p><div class="signal-today-actions"><button type="button" onclick="switchTab('signals')">تفاصيل الإشارة</button><button type="button" onclick="switchTab('portfolio')">أداء المحاكي</button></div></article>`;
+}
+
 function renderSignalGridPicks() {
   const body = document.getElementById("dashboardPicksBody");
   if (!body) return;
@@ -3226,7 +3287,11 @@ function mountSignalGridDashboard() {
   const watchPanel = document.createElement("div");
   watchPanel.className = "signal-watchlist-panel";
   watchPanel.innerHTML =
-    '<div class="signal-watchlist-note">متابعة شخصية وتنفيذ محاكى تعليمي — أدخل السعر والكمية عند تسجيل شراء.</div><form class="dashboard-watch-add" onsubmit="event.preventDefault(); addToWatchlist(\'dashboardWatchSymbol\', \'dashboardWatchEntry\')"><input id="dashboardWatchSymbol" type="text" maxlength="10" autocomplete="off" placeholder="رمز السهم مثل AAPL" aria-label="رمز السهم"><select id="dashboardWatchMode" aria-label="نوع العملية"><option value="watch">مراقبة وتنبيهات</option><option value="buy">تسجيل شراء محاكى</option></select><input id="dashboardWatchEntry" type="number" min="0" step="0.01" placeholder="سعر الدخول — اختياري للمراقبة"><input id="dashboardWatchQty" type="number" min="1" step="1" value="1" placeholder="الكمية"><button type="submit">إضافة</button></form><div id="dashboardWatchlistBody"></div>';
+    '<div class="signal-watchlist-note">متابعة شخصية وتنفيذ محاكى تعليمي — أدخل السعر والكمية عند تسجيل شراء.</div><form class="dashboard-watch-add" onsubmit="event.preventDefault(); addToWatchlist(\'dashboardWatchSymbol\', \'dashboardWatchEntry\')"><input id="dashboardWatchSymbol" type="text" maxlength="10" autocomplete="off" placeholder="رمز السهم مثل AAPL" aria-label="رمز السهم"><select id="dashboardWatchMode" aria-label="نوع العملية"><option value="watch">مراقبة وتنبيهات</option><option value="buy">تسجيل شراء محاكى</option></select><input id="dashboardWatchEntry" type="number" min="0" step="0.01" placeholder="سعر الدخول — اختياري للمراقبة"><label class="watch-qty-field"><span>عدد الأسهم</span><input id="dashboardWatchQty" type="number" min="1" step="1" value="1" aria-label="عدد الأسهم"></label><button type="submit">إضافة</button></form><div id="dashboardWatchlistBody"></div>';
+  const todayPanel = document.createElement("div");
+  todayPanel.id = "dashboardSignalToday";
+  todayPanel.className = "signal-today-panel";
+  todayPanel.innerHTML = '<div class="signal-today-empty">جارٍ قراءة إشارات الماسح...</div>';
   const aiPanel = document.createElement("div");
   aiPanel.className = "signal-ai-panel";
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
@@ -3260,7 +3325,7 @@ function mountSignalGridDashboard() {
       "signal",
       "إشارة اليوم",
       "SIGNAL CORE",
-      [surface, thread],
+      [todayPanel],
       "widget-signal",
     ),
     createSignalWidget(
@@ -3307,6 +3372,7 @@ function mountSignalGridDashboard() {
     ),
   ];
   widgets.forEach((widget) => grid.appendChild(widget));
+  renderSignalToday();
   grid.appendChild(reset);
   observatory?.remove();
   grid.dataset.mounted = "1";
@@ -5609,6 +5675,8 @@ async function loadSignalsData(force = false) {
     SIGNALS_PERF = perf || [];
     SIGNALS_CACHE_AT = Date.now();
     meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString("ar-SA") : "--"}</span> — تم تحميل ${SIGNALS_CACHE.length} إشارة من جميع القوالب النشطة`;
+    renderSignalToday();
+    renderSignalGridPicks();
     renderSignalAlerts();
     renderSignalPerformance("month");
     if (!window.__weeklyRefreshQueued) {

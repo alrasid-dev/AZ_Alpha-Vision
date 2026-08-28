@@ -3222,7 +3222,11 @@ function renderSignalToday() {
     .slice(0, 2)
     .join(" · ") || "توافق فني من الماسح";
   const tone = plan.avoid ? "wait" : "entry";
-  box.innerHTML = `<article class="signal-today-card ${tone}"><div class="signal-today-top"><span class="signal-today-symbol font-mono">${sigEsc(row.symbol || "—")}</span><span class="signal-today-grade">${score}/4</span></div><div class="signal-today-price">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "السعر غير متاح"}</div><div class="signal-today-entry">${plan.avoid ? "انتظار حتى منطقة الدخول" : "منطقة دخول تعليمية"}: <strong>${Number.isFinite(Number(plan.price)) ? `$${Number(plan.price).toFixed(2)}` : "—"}</strong></div><p>${sigEsc(signalNames)}</p><div class="signal-today-actions"><button type="button" onclick="switchTab('signals')">تفاصيل الإشارة</button><button type="button" onclick="switchTab('portfolio')">أداء المحاكي</button></div></article>`;
+  const isFeatured = score >= 3 && !plan.avoid;
+  const assessment = weeklyCompanyAssessment({ ...row, bestEntryScore: score });
+  const companyGrade = assessment.grade || "C";
+  const cupIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0V3Z"/><path d="M7 5H4a3 3 0 0 0 3 3M17 5h3a3 3 0 0 1-3 3M12 13v4M8 21h8M9 17h6"/></svg>';
+  box.innerHTML = `<article class="signal-today-card ${tone}"><div class="signal-trophy" title="فرصة اليوم التعليمية">${cupIcon}</div><div class="signal-today-top"><div><span class="signal-today-kicker">${isFeatured ? "إشارة اليوم — فرصة مميزة" : "فرصة اليوم تحت المراقبة"}</span><span class="signal-today-symbol font-mono">${sigEsc(row.symbol || "—")}</span></div><span class="signal-today-grade">${score}/4</span></div><div class="signal-today-statline"><div><small>السعر الحالي</small><strong class="signal-today-price">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</strong></div><div><small>قوة الشركة والنمو</small><strong class="company-grade grade-${String(companyGrade).toLowerCase()}">${(assessment.score / 10).toFixed(1)}/10 · ${companyGrade}</strong></div></div><div class="signal-today-entry ${plan.avoid ? "waiting" : "ready"}">${plan.avoid ? "انتظار منطقة الدخول" : "دخول عند التأكيد"}: <strong>${Number.isFinite(Number(plan.price)) ? `$${Number(plan.price).toFixed(2)}` : "—"}</strong></div><p>${sigEsc(signalNames)}</p><div class="signal-today-actions"><button type="button" onclick="switchTab('signals')">تفاصيل الإشارة</button><button type="button" onclick="switchTab('portfolio')">أداء المحاكي</button></div></article>`;
 }
 
 function renderSignalGridPicks() {
@@ -5658,10 +5662,14 @@ async function loadSignalsData(force = false) {
     if (!SIGNALS_CACHE.length && storedSignals.length) {
       meta.innerHTML = `تم تحميل ${storedSignals.length} إشارة، لكن لم تجتز حارس السهم/السعر — راجع مصدر السعر أو نوع الأداة`;
     }
-    // تنبيهات الخروج تبقى ظاهرة، أما دخول غير آمن/بعد ارتفاع حاد فيتحول إلى متابعة فقط.
+    // لا نعرض تنبيهات قديمة من تشغيل سابق؛ الاعتماد على آخر دورة ماسح يمنع خلط دخول قديم بخروج أحدث أو العكس.
+    const latestSignalAt = Math.max(...storedSignals.map((row) => new Date(row.updated_at || 0).getTime()).filter(Number.isFinite), 0);
+    const alertFloor = Math.max(Date.now() - 48 * 60 * 60 * 1000, latestSignalAt ? latestSignalAt - 15 * 60 * 1000 : 0);
+    // دخول غير آمن يتحول إلى متابعة، وتنبيه خروج ضعيف يبقى مجرد تنبيه ولا يعني صفقة محاكي.
     SIGNALS_ALERTS = (alerts || [])
       .map(withContext)
       .filter(validSignalRow)
+      .filter((a) => new Date(a.ts || a.updated_at || 0).getTime() >= alertFloor)
       .filter((a) => a.type !== "entry" || technicalEntryGuard(a).allow);
     playNewSignalAlertSound(SIGNALS_ALERTS);
     SIGNALS_PERF = perf || [];
@@ -5884,12 +5892,15 @@ function renderSignalAlerts() {
       ? weeklyEntryPlan({ ...context, price: a.price ?? context.price })
       : null;
     const badge = isEntry ? "badge-entry" : "badge-exit";
+    const score = Math.max(0, Math.min(4, Number(a.score || 0)));
+    const tierText = isEntry ? (a.tier || "دخول") : (score >= 3 ? "خروج مؤكد" : "خروج يحتاج تأكيد");
     const session = signalSessionLabel(a.ts);
+    const executionNote = !isEntry && score < 3 ? "تنبيه فقط — لا يغلق المحاكي الصفقة" : session;
     return `<tr>
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString("ar-SA")}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} ${a.tier} (${a.score}/4)</span><div class="signal-session ${session.includes("تنبيه فقط") ? "neutral" : "active"}">${session}</div></td>
+            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} — ${tierText} (${score}/4)</span><div class="signal-session ${executionNote.includes("تنبيه فقط") ? "neutral" : "active"}">${executionNote}</div></td>
             <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan?.label || "")}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
         </tr>`;
   }).join("");

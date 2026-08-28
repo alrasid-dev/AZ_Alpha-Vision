@@ -6189,18 +6189,22 @@ function virtualTraderKey() {
 function saveVirtualTrader() {
   localStorage.setItem(virtualTraderKey(), JSON.stringify(virtualTrader));
 }
-function loadVirtualTrader() {
-  // المصدر الوحيد للمحاكي هو Supabase؛ الواجهة لا تنفذ صفقات ولا تعتمد على localStorage.
-  virtualTrader = {
-    cash: VIRTUAL_STARTING_CASH,
-    positions: {},
-    trades: [],
-    startedAt: null,
-    lastRun: null,
-    runInfo: null,
-  };
-  renderVirtualTrader();
-  syncVirtualTraderFromServer();
+let virtualTraderLoaded = false;
+async function loadVirtualTrader() {
+  // المصدر الوحيد للمحاكي هو Supabase؛ لا نعيد تصفير العرض عند فتح التبويب.
+  if (!virtualTraderLoaded) {
+    virtualTrader = {
+      cash: VIRTUAL_STARTING_CASH,
+      positions: {},
+      trades: [],
+      startedAt: null,
+      lastRun: null,
+      runInfo: null,
+    };
+    renderVirtualTrader();
+  }
+  await syncVirtualTraderFromServer();
+  virtualTraderLoaded = true;
 }
 async function syncVirtualTraderFromServer() {
   if (!currentUser?.id || !sb) return;
@@ -6274,6 +6278,8 @@ async function syncVirtualTraderFromServer() {
     runInfo,
   };
   renderVirtualTrader();
+  const updated = document.getElementById("lastUpdate");
+  if (updated) updated.textContent = new Date().toLocaleString("ar-SA");
 }
 async function refreshVirtualTraderFromServer() {
   return syncVirtualTraderFromServer();
@@ -6700,7 +6706,6 @@ const _oldRenderPortfolio =
   typeof renderPortfolio === "function" ? renderPortfolio : null;
 renderPortfolio = function () {
   loadVirtualTrader();
-  renderVirtualTrader();
 };
 const _oldLoadWatchlist = loadWatchlist;
 loadWatchlist = async function () {
@@ -6710,9 +6715,6 @@ loadWatchlist = async function () {
 const _oldSwitchTab = switchTab;
 switchTab = function (id) {
   const result = _oldSwitchTab(id);
-  if (id === "portfolio") {
-    loadVirtualTrader();
-    renderVirtualTrader();
-  }
+  if (id === "portfolio") loadVirtualTrader();
   return result;
 };

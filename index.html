@@ -1558,6 +1558,12 @@ body{overflow-x:hidden}.bg-mesh{opacity:1!important;background:radial-gradient(e
       .signal-grid-table-scroll{overflow-x:auto;max-width:100%}.signal-grid-table-scroll table{min-width:560px}
       .weekly-table-wrap,.virtual-ledger,.signal-grid-table,.market-table-wrap{overflow-x:auto;max-width:100%}
       .weekly-table,.virtual-table{min-width:720px}
+      #portfolioTableBody,#virtualPositionsBody,#virtualTradesBody{min-height:72px}
+      #virtualTradesBody,#virtualPositionsBody{display:table-row-group}
+      .notification-center{max-height:min(78dvh,720px);overflow-y:auto;overscroll-behavior:contain}
+      .notification-center .notification-list{max-height:none;overflow:visible}
+      #lastUpdate{white-space:nowrap;overflow-x:auto;max-width:100%;display:block}
+      .watchlist-scroll,.signal-watchlist-panel,.weekly-table-wrap,.signal-grid-table-scroll{scrollbar-width:thin;overscroll-behavior-x:contain}
       .sym,.sym-sub,.weekly-reason{overflow-wrap:normal;word-break:normal}
       .watch-item .del{position:static!important;opacity:1!important;min-width:22px}
       .dashboard-watch-add{grid-template-columns:minmax(0,1.2fr) minmax(130px,.8fr) minmax(120px,.8fr) minmax(90px,.55fr) auto!important;align-items:center}
@@ -1567,6 +1573,12 @@ body{overflow-x:hidden}.bg-mesh{opacity:1!important;background:radial-gradient(e
         .sidebar .tab-btn{display:flex!important;flex:0 0 72px!important;width:72px!important;height:56px!important;white-space:normal!important}
         .sidebar .add-stock-form,.sidebar .stats-block,.sidebar .btn-logout,.sidebar .sidebar-header{display:none!important}.sidebar .watchlist-scroll{display:block!important}
         .dashboard-watch-add{grid-template-columns:1fr 1fr!important;overflow-x:visible!important}
+        .dashboard-watch-add input,.dashboard-watch-add select{min-width:0!important}
+        #tab-portfolio .section-title,#tab-picks .section-title{font-size:14px!important}
+        #tab-portfolio .virtual-trader-card,#tab-portfolio .virtual-portfolio-summary{min-width:0!important}
+        .notification-center{max-height:calc(100dvh - 86px)!important;overflow-y:auto!important}
+        .weekly-table-wrap{width:100%!important;overflow-x:auto!important}
+        .weekly-table{min-width:680px!important}
         .time-lenses{justify-content:flex-start!important}
         .market-canvas,.market-stream,.weekly-table-wrap,.virtual-ledger,.signal-grid-table-scroll{overflow-x:auto!important}
         .market-canvas{min-width:0!important}

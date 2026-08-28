@@ -630,7 +630,7 @@ function removeBrokenCounterText() {
   let node;
   while ((node = walker.nextNode())) nodes.push(node);
   nodes.forEach((textNode) => {
-    textNode.nodeValue = textNode.nodeValue.replace(/\b[nN]\s*\/\s*[nN]\b/g, "—");
+    textNode.nodeValue = textNode.nodeValue.replace(/\bNaN\s*\/\s*NaN\b|\b[nN]\s*\/\s*[nN]\b/gi, "—");
   });
 }
 function showReconnectBriefing() {

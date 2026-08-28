@@ -1552,6 +1552,16 @@ body{overflow-x:hidden}.bg-mesh{opacity:1!important;background:radial-gradient(e
       .watch-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
       .watch-mode{font-size:10px;color:var(--app-muted);padding:3px 7px;border-radius:6px;background:rgba(85,207,142,.08)}
       .watch-signal{margin-top:7px;overflow-x:auto;white-space:nowrap;color:#9bb4c4;font-size:10px;line-height:1.6;direction:rtl}
+      /* compact market surface: vertical cards, no decorative lens controls */
+      .market-canvas .time-lenses,.market-canvas .market-daily-brief{display:none!important}
+      .market-canvas .market-pulse-grid{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;min-width:0!important}
+      .market-canvas .market-pulse-item{width:100%!important;min-width:0!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto auto!important;align-items:center!important}
+      .signal-grid-dashboard .widget-portfolio{display:none!important}
+      .decision-observatory,.observatory-surface{min-height:0!important}
+      .decision-observatory{margin-bottom:10px!important}
+      .signal-orbit{transform:scale(.78);transform-origin:center!important}
+      .market-canvas .chart-box{height:150px!important}
+      .market-summary-chart{padding:14px!important;min-height:120px!important}
       .time-lenses{display:flex;align-items:center;gap:4px;overflow-x:auto;white-space:nowrap}
       .time-lenses button{border:1px solid transparent;border-radius:7px;background:transparent;color:var(--app-muted);padding:6px 9px;cursor:pointer;font:inherit;font-size:11px;white-space:nowrap}
       .time-lenses button:hover,.time-lenses button.active{color:var(--app-text-strong);background:rgba(85,207,142,.11);border-color:rgba(85,207,142,.28)}
@@ -1582,7 +1592,10 @@ body{overflow-x:hidden}.bg-mesh{opacity:1!important;background:radial-gradient(e
         .time-lenses{justify-content:flex-start!important}
         .market-canvas,.market-stream,.weekly-table-wrap,.virtual-ledger,.signal-grid-table-scroll{overflow-x:auto!important}
         .market-canvas{min-width:0!important}
-        .market-pulse-grid{min-width:560px!important}
+        .market-pulse-grid{min-width:0!important;grid-template-columns:1fr!important}
+        .market-canvas .market-pulse-item{grid-template-columns:minmax(0,1fr) auto auto!important;padding:9px!important}
+        .signal-grid-dashboard .widget-portfolio{display:none!important}
+        .signal-orbit{transform:scale(.68)!important}
         .weekly-reason{min-width:180px!important;white-space:normal!important}
         .dashboard-watch-add button{grid-column:1/-1!important}
         .signal-watchlist-panel{display:block!important}

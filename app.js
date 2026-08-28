@@ -24,7 +24,8 @@ let currentUser = null,
   chartInstance = null,
   watchlist = [],
   screenerResults = [],
-  isScanning = false;
+  isScanning = false,
+  marketPulseTimer = null;
 let activePresetKey = null;
 
 // ===== UTILS =====
@@ -1006,6 +1007,11 @@ async function initApp(user, profile) {
   await loadVirtualTrader();
   await loadSignalsData(true);
   await loadMarketPulse();
+  if (marketPulseTimer) clearInterval(marketPulseTimer);
+  marketPulseTimer = setInterval(() => {
+    loadMarketPulse();
+    loadWatchlist();
+  }, 5 * 60 * 1000);
   openTabFromHash();
   await refreshCompanyNews();
   await refreshEarningsCalendar();
@@ -1055,7 +1061,7 @@ async function loadWatchlist() {
         qty: Number(r.qty) || 1,
         added: new Date(r.added_at || r.created_at || Date.now()).getTime(),
       }))
-      .filter((r) => r.symbol && r.entry_price > 0)
+      .filter((r) => r.symbol)
       .sort((a, b) => a.added - b.added);
     localStorage.setItem(
       `az_watchlist_${currentUser.id}`,
@@ -1065,59 +1071,67 @@ async function loadWatchlist() {
   renderWatchlist();
   renderPortfolio();
 }
-async function addToWatchlist() {
-  const sym = document
-    .getElementById("addSymbolInput")
-    .value.toUpperCase()
+async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "addEntryPrice") {
+  const symbolInput = document.getElementById(symbolInputId);
+  const entryInput = document.getElementById(entryInputId);
+  const sym = String(symbolInput?.value || "")
+    .toUpperCase()
     .trim();
-  const ep = parseFloat(document.getElementById("addEntryPrice").value);
-  if (!sym || !ep || ep <= 0) {
-    toast("أدخل رمز وسعر صحيح", "error");
+  if (!/^[A-Z][A-Z.\-]{0,9}$/.test(sym)) {
+    toast("أدخل رمز سهم صحيحًا مثل AAPL", "error");
     return;
   }
-  if (watchlist.find((x) => x.symbol === sym)) {
-    toast("السهم موجود", "warn");
+  if (watchlist.some((x) => x.symbol === sym)) {
+    toast("السهم موجود مسبقًا في قائمة المراقبة", "warn");
     return;
   }
-  const { data: inserted, error } = await sb
-    .from("watchlist")
-    .insert({ user_id: currentUser.id, symbol: sym, entry_price: ep, qty: 1 })
-    .select()
-    .single();
+  let referencePrice = Number.parseFloat(entryInput?.value || "");
+  if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
+    try {
+      const fetched = await fetchPrice(sym);
+      referencePrice = Number.isFinite(fetched) && fetched > 0 ? fetched : 0;
+    } catch (_) {
+      referencePrice = 0;
+    }
+  }
   const localItem = {
-    id: inserted?.id || `local-${Date.now()}`,
+    id: `local-${Date.now()}`,
     symbol: sym,
-    entry_price: ep,
+    entry_price: referencePrice,
     qty: 1,
     added: Date.now(),
   };
+  const { data: inserted, error } = await sb
+    .from("watchlist")
+    .insert({
+      user_id: currentUser.id,
+      symbol: sym,
+      entry_price: referencePrice,
+      qty: 1,
+    })
+    .select()
+    .single();
   if (error) {
-    const localItems = [
-      ...watchlist.filter((x) => x.symbol !== sym),
-      localItem,
-    ];
-    watchlist = localItems;
+    watchlist = [...watchlist, localItem];
     localStorage.setItem(
       `az_watchlist_${currentUser.id}`,
-      JSON.stringify(localItems),
+      JSON.stringify(watchlist),
     );
-    renderWatchlist();
-    renderPortfolio();
-    toast(
-      "تمت الإضافة محليًا؛ أصلح سياسات watchlist في Supabase للمزامنة",
-      "warn",
-    );
+    await renderWatchlist();
+    requestSymbolResearch(sym);
+    toast("أضيف السهم محليًا، وستتم مزامنته عند عودة الاتصال", "warn");
     return;
   }
-  const localItems = [...watchlist.filter((x) => x.symbol !== sym), localItem];
+  localItem.id = inserted?.id || localItem.id;
   localStorage.setItem(
     `az_watchlist_${currentUser.id}`,
-    JSON.stringify(localItems),
+    JSON.stringify([...watchlist, localItem]),
   );
-  document.getElementById("addSymbolInput").value = "";
-  document.getElementById("addEntryPrice").value = "";
+  if (symbolInput) symbolInput.value = "";
+  if (entryInput) entryInput.value = "";
   await loadWatchlist();
-  toast(`✅ أضيف ${sym}`);
+  requestSymbolResearch(sym);
+  toast(`تمت إضافة ${sym} للمراقبة والتنبيهات`, "success");
 }
 async function removeFromWatchlist(sym) {
   const item = watchlist.find((x) => x.symbol === sym);
@@ -1137,11 +1151,18 @@ async function removeFromWatchlist(sym) {
 }
 
 async function renderWatchlist() {
-  const c = document.getElementById("watchlistContainer");
-  c.innerHTML = "";
+  const containers = [
+    document.getElementById("watchlistContainer"),
+    document.getElementById("dashboardWatchlistBody"),
+  ].filter(Boolean);
+  containers.forEach((container) => {
+    container.innerHTML = "";
+  });
   if (watchlist.length === 0) {
-    c.innerHTML =
-      '<div class="empty-state" style="padding:20px;font-size:12px;">لا توجد أسهم</div>';
+    containers.forEach((container) => {
+      container.innerHTML =
+        '<div class="empty-state" style="padding:20px;font-size:12px;">لا توجد أسهم متابعة</div>';
+    });
     updateStats(0, 0, 0, 0, 0);
     return;
   }
@@ -1155,25 +1176,32 @@ async function renderWatchlist() {
     const p = prices[i];
     const hasPrice = Number.isFinite(p) && p > 0;
     const qty = item.qty || 1;
-    const invested = item.entry_price * qty;
+    const reference = Number(item.entry_price || 0);
+    const hasReference = Number.isFinite(reference) && reference > 0;
+    const invested = hasReference ? reference * qty : 0;
     const current = hasPrice ? p * qty : null;
-    const pnl = hasPrice ? current - invested : null;
-    const pct = hasPrice && invested > 0 ? (pnl / invested) * 100 : null;
-    if (hasPrice) {
+    const pnl = hasPrice && hasReference ? current - invested : null;
+    const pct = pnl !== null && invested > 0 ? (pnl / invested) * 100 : null;
+    if (hasPrice && hasReference) {
       totalPnl += pnl;
       totalInvested += invested;
       totalCurrent += current;
       pnl >= 0 ? wins++ : losses++;
-    } else {
-      totalInvested += invested;
     }
     const priceCell = hasPrice
       ? `$${p.toFixed(2)}`
       : '<span class="text-muted">بانتظار السعر</span>';
-    const pnlCell = hasPrice
-      ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pct.toFixed(1)}%)`
-      : "—";
-    c.innerHTML += `<div class="watch-item"><div style="display:flex;justify-content:space-between;align-items:center;"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>دخول $${item.entry_price.toFixed(2)} × ${qty}</span><span class="pnl ${hasPrice ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pnlCell}</span></div><span class="del" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></div>`;
+    const pnlCell =
+      pnl !== null
+        ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pct.toFixed(1)}%)`
+        : "تنبيهات مفعلة";
+    const referenceText = hasReference
+      ? `مرجع $${reference.toFixed(2)} × ${qty}`
+      : "متابعة وتنبيهات فقط";
+    const rowHtml = `<div class="watch-item"><div class="watch-item-top"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice && pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>${referenceText}</span><span class="pnl ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-cyan"}">${pnlCell}</span></div><button class="del" type="button" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</button></div>`;
+    containers.forEach((container) => {
+      container.insertAdjacentHTML("beforeend", rowHtml);
+    });
   });
   updateStats(wins, losses, totalPnl, totalInvested, totalCurrent);
 }
@@ -1211,11 +1239,16 @@ async function renderPortfolio() {
   watchlist.forEach((item, i) => {
     const p = prices[i];
     const hasPrice = Number.isFinite(p) && p > 0;
-    const qty = item.qty || 1;
-    const invested = item.entry_price * qty;
+    const qty = Number(item.qty || 1);
+    const entry = Number(item.entry_price || 0);
+    const invested = entry > 0 ? entry * qty : 0;
     const current = hasPrice ? p * qty : null;
-    const pnl = hasPrice ? current - invested : null;
-    const pct = hasPrice && invested > 0 ? (pnl / invested) * 100 : null;
+    const pnl = hasPrice && entry > 0 ? current - invested : null;
+    const pct = pnl !== null && invested > 0 ? (pnl / invested) * 100 : null;
+    const matchedPick = (LocalCache.getPicks() || []).find((pick) => pick.symbol === item.symbol);
+    const guidePrice = Number(matchedPick?.entryPrice || 0);
+    const statusLabel = !hasPrice ? "بانتظار السعر" : !entry ? "مراقبة" : pnl >= 0 ? "ارتفاع" : "تراجع";
+    const statusClass = !hasPrice || !entry ? "text-muted" : pnl >= 0 ? "text-green" : "text-red";
     totalInvested += invested;
     if (hasPrice) {
       totalPnl += pnl;
@@ -1224,9 +1257,10 @@ async function renderPortfolio() {
     const currentCell = hasPrice
       ? `$${p.toFixed(2)}`
       : '<span class="text-muted">بانتظار السعر</span>';
-    const pnlCell = hasPrice ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` : "—";
-    const pctCell = hasPrice ? `${pct.toFixed(2)}%` : "—";
-    tb.innerHTML += `<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub">${qty} سهم</div></td><td class="font-mono">$${item.entry_price.toFixed(2)}</td><td class="font-mono">${currentCell}</td><td class="font-mono ${hasPrice ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pnlCell}</td><td class="font-mono ${hasPrice ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pctCell}</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">${hasPrice ? `$${current.toFixed(2)}` : "—"}</td><td><span style="color:var(--text-dim);cursor:pointer;font-size:16px;" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</span></td></tr>`;
+    const pnlCell = pnl !== null ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` : "—";
+    const pctCell = pct !== null ? `${pct.toFixed(2)}%` : "—";
+    const guideCell = guidePrice > 0 ? `$${guidePrice.toFixed(2)} تقريبًا` : "تُحدد مع اكتمال الإشارة";
+    tb.innerHTML += `<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub ${statusClass}">${statusLabel} · ${qty} سهم</div></td><td class="font-mono">${entry > 0 ? `$${entry.toFixed(2)}` : "—"}<div class="sym-sub">منطقة الدخول: ${guideCell}</div></td><td class="font-mono">${currentCell}</td><td class="font-mono ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pnlCell}</td><td class="font-mono ${pct !== null ? (pct >= 0 ? "text-green" : "text-red") : "text-muted"}">${pctCell}</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">${hasPrice ? `$${current.toFixed(2)}` : "—"}</td><td><button type="button" class="watch-remove" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">إزالة</button></td></tr>`;
   });
   if (watchlist.length > 0) {
     const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
@@ -3112,6 +3146,10 @@ function mountSignalGridDashboard() {
   const thread = observatory?.querySelector(".decision-thread");
   const market = tab.querySelector(".market-canvas");
   const stream = tab.querySelector(".market-stream");
+  const watchPanel = document.createElement("div");
+  watchPanel.className = "signal-watchlist-panel";
+  watchPanel.innerHTML =
+    '<div class="signal-watchlist-note">متابعة شخصية — تنبيهات السعر والأخبار، دون تنفيذ صفقة.</div><form class="dashboard-watch-add" onsubmit="event.preventDefault(); addToWatchlist(\'dashboardWatchSymbol\', \'dashboardWatchEntry\')"><input id="dashboardWatchSymbol" type="text" maxlength="10" autocomplete="off" placeholder="رمز السهم مثل AAPL" aria-label="رمز السهم"><input id="dashboardWatchEntry" type="hidden" value=""><button type="submit">إضافة للمتابعة</button></form><div id="dashboardWatchlistBody"></div>';
   const aiPanel = document.createElement("div");
   aiPanel.className = "signal-ai-panel";
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
@@ -3187,7 +3225,7 @@ function mountSignalGridDashboard() {
       "watch",
       "قائمة المراقبة",
       "WATCHLIST",
-      [stream],
+      [watchPanel],
       "widget-watch",
     ),
   ];
@@ -3973,6 +4011,35 @@ function isCommonStockRow(row) {
   );
 }
 
+// إشارات screener_signals تأتي من مجمّع خلفي تحقق من NYSE/NASDAQ؛ قد تتأخر حقول الإثراء في الجلسة.
+// لا نسقط الإشارة الصحيحة لمجرد أن جدول الأساسيات لم يُحدّث في اللحظة نفسها.
+function isStoredSignalCommonStock(row) {
+  const symbol = String(row?.symbol || "")
+    .trim()
+    .toUpperCase();
+  const text = [
+    row?.industry,
+    row?.company,
+    row?.sector,
+    row?.finviz_sector,
+    row?.security_type,
+    row?.quote_type,
+    row?.asset_type,
+  ]
+    .map((v) => String(v || "").toLowerCase())
+    .join(" ");
+  const price = Number(row?.price || 0);
+  if (!symbol || EXCLUDED_SYMBOLS.has(symbol) || /[.\-\^]/.test(symbol))
+    return false;
+  if (NON_COMMON_INSTRUMENT_RE.test(text) || EXCLUDED_SECTOR_RE.test(text))
+    return false;
+  if (row?.exchange) return isCommonStockRow(row);
+  return (
+    price >= GENERAL_MARKET_RULE.minPrice &&
+    price <= GENERAL_MARKET_RULE.maxPrice
+  );
+}
+
 // حارس مستوحى من SMC: بنية صاعدة أو ارتداد قريب من المتوسط، مع منع مطاردة السعر.
 // لا يدّعي حساب Order Block حقيقيًا لأن قاعدة البيانات الحالية لا تحفظ OHLC/سيولة مؤسسية.
 function technicalEntryGuard(row) {
@@ -4203,25 +4270,17 @@ async function runScanner() {
   const { data: liveRows } = await sb
     .from("live_quotes")
     .select("*")
-    .in("symbol", LIVE_TRACKED);
+    .limit(5000);
   const universe = await fetchUniverse();
   const universeMap = Object.fromEntries(universe.map((r) => [r.symbol, r]));
   const liveMap = Object.fromEntries(
     (liveRows || []).map((r) => [r.symbol, r]),
   );
 
-  const bannedSectors = new Set([
-    "finance",
-    "financial",
-    "financials",
-    "healthcare",
-    "energy",
-    "reits",
-  ]);
-  const results = LIVE_TRACKED.map((sym) => {
-    const base = universeMap[sym];
+  const results = universe.map((base) => {
+    const sym = String(base.symbol || "").toUpperCase();
     const live = liveMap[sym];
-    if (!base || !live) return null;
+    if (!base) return null;
     if (!isCommonStockRow(base)) return null;
     const price = live?.price ?? base?.price ?? null;
     if (
@@ -4243,7 +4302,7 @@ async function runScanner() {
       sma200: base?.sma200 ?? null,
       sector: base?.sector ?? "other",
     };
-  }).filter((d) => d && !bannedSectors.has(d.sector));
+  }).filter(Boolean);
 
   let html = "";
   results.forEach((d) => {
@@ -5096,7 +5155,7 @@ async function runWeeklyScan() {
       const preset = String(row?.preset || "").trim();
       const price = Number(row?.price ?? base?.price);
       const source = { ...(base || {}), ...row, symbol, price };
-      const sourceSafe = isCommonStockRow(source);
+      const sourceSafe = isStoredSignalCommonStock(source);
       if (!sourceSafe || entryScore <= 0) return;
       let item = merged.get(symbol);
       if (!item) {
@@ -5154,8 +5213,11 @@ async function runWeeklyScan() {
           (b.change ?? 0) - (a.change ?? 0),
       );
 
-    const top = candidates.slice(0, 7);
-    const watch = candidates.slice(7, 14);
+    // «متابعة» ناتجة من مطابقة جزئية للقوالب: ظاهرة للتعلم ولا تصلح تلقائيًا للدخول أو التداول.
+    const actionable = candidates.filter((item) => !item.tiers.has("مراقبة"));
+    const monitoring = candidates.filter((item) => item.tiers.has("مراقبة"));
+    const top = actionable.slice(0, 7);
+    const watch = [...actionable.slice(7), ...monitoring].slice(0, 7);
     tb.innerHTML = "";
     if (watchTb) watchTb.innerHTML = "";
     if (!top.length) {
@@ -5164,16 +5226,16 @@ async function runWeeklyScan() {
       document.getElementById("sitePicksCount").textContent = "0";
       document.getElementById("siteAvgReturn").textContent = "0.00%";
       document.getElementById("siteWinRate").textContent = "0%";
-      document.getElementById("sitePicksDesc").textContent =
-        "لا توجد إشارة دخول من القوالب الجاهزة حاليًا.";
-      updateWeeklyScanMeta("اكتمل الفحص — لا توجد إشارة دخول من القوالب");
+      document.getElementById("sitePicksDesc").textContent = watch.length
+        ? `لا توجد منطقة دخول مؤكدة الآن؛ توجد ${watch.length} أسهم للمراقبة من جميع القوالب.`
+        : "لا توجد إشارة دخول أو سهم متابعة مؤهل من القوالب حاليًا.";
+      updateWeeklyScanMeta(
+        watch.length
+          ? "اكتمل الفحص — أسهم تحت المراقبة حتى تتأكد منطقة الدخول"
+          : "اكتمل الفحص — لا توجد إشارة دخول من القوالب",
+      );
       tb.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">❌ لا توجد إشارات دخول من القوالب الجاهزة حاليًا</td></tr>';
-      if (watchTb)
-        watchTb.innerHTML =
-          '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم للمتابعة حاليًا</td></tr>';
-      toast("لم توجد إشارات دخول من القوالب الجاهزة", "warn");
-      return;
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
     }
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
@@ -5402,7 +5464,11 @@ async function loadSignalsData(force = false) {
       { data: fundamentals, error: e4 },
       { data: technicals, error: e5 },
     ] = await Promise.all([
-      sb.from("screener_signals").select("*"),
+      sb
+        .from("screener_signals")
+        .select("*")
+        .order("updated_at", { ascending: false })
+        .limit(10000),
       sb
         .from("screener_alerts")
         .select("*")
@@ -5444,8 +5510,14 @@ async function loadSignalsData(force = false) {
         price: row?.price ?? tech?.price ?? fund?.price,
       };
     };
-    const validSignalRow = (row) => isCommonStockRow(row);
-    SIGNALS_CACHE = (sig || []).map(withContext).filter(validSignalRow);
+    const validSignalRow = (row) => isStoredSignalCommonStock(row);
+    const storedSignals = (sig || []).map(withContext);
+    SIGNALS_CACHE = storedSignals.filter(
+      (row) => Number(row?.entry_score ?? row?.entryScore ?? 0) > 0 && validSignalRow(row),
+    );
+    if (!SIGNALS_CACHE.length && storedSignals.length) {
+      meta.innerHTML = `تم تحميل ${storedSignals.length} إشارة، لكن لم تجتز حارس السهم/السعر — راجع مصدر السعر أو نوع الأداة`;
+    }
     // تنبيهات الخروج تبقى ظاهرة، أما دخول غير آمن/بعد ارتفاع حاد فيتحول إلى متابعة فقط.
     SIGNALS_ALERTS = (alerts || [])
       .map(withContext)
@@ -5454,7 +5526,7 @@ async function loadSignalsData(force = false) {
     playNewSignalAlertSound(SIGNALS_ALERTS);
     SIGNALS_PERF = perf || [];
     SIGNALS_CACHE_AT = Date.now();
-    meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString("ar-SA") : "--"}</span> — جميع القوالب النشطة متاحة في المصدر الموحد`;
+    meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString("ar-SA") : "--"}</span> — تم تحميل ${SIGNALS_CACHE.length} إشارة من جميع القوالب النشطة`;
     renderSignalAlerts();
     renderSignalPerformance("month");
     if (!window.__weeklyRefreshQueued) {

@@ -1,31 +1,19 @@
-# Render Blueprint — AZ Alpha Vision unified X marketer
-# يبقى PUBLISH_MODE=draft إلى أن يُختبر الحساب ويُغيّر يدويًا إلى publish في Render.
 services:
   - type: cron
     name: az-alpha-vision-unified-marketer
     runtime: node
-    repo: https://github.com/alrasid-dev/AZ_Alpha-Vision.git
+    repo: https://github.com/REPLACE_WITH_YOUR_REPOSITORY.git
     branch: main
-    rootDir: az-alpha-marketer-unified
     schedule: "*/10 * * * *"
     buildCommand: npm ci
     startCommand: node index.js
-    autoDeployTrigger: commit
     envVars:
-      - key: POSTING_TIMEZONE
-        value: Asia/Riyadh
       - key: PUBLISH_MODE
         value: draft
-      - key: SITE_URL
-        value: https://alrasid-dev.github.io/AZ_Alpha-Vision
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-flash
       - key: X_API_KEY
         sync: false
       - key: X_API_SECRET
@@ -34,3 +22,7 @@ services:
         sync: false
       - key: X_ACCESS_TOKEN_SECRET
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-flash

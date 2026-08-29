@@ -6801,3 +6801,54 @@ switchTab = function (id) {
   if (id === "portfolio") loadVirtualTrader();
   return result;
 };
+
+// ===== SHARE SIMULATOR INVITE =====
+function getSimulatorShareText() {
+  const shareUrl = `${location.origin}${location.pathname}`;
+  return `مو كل قرار استثماري يبدأ بشراء… بعضه يبدأ بفهم اللعبة.\n\nجرّب AZ Alpha Vision: منصة عربية تجمع فلترة الأسهم، الإشارات الفنية، متابعة الأخبار، تقويم الأرباح، ومساعدًا ذكيًا — داخل محاكي افتراضي تتعلم فيه وتتابع الفرص بدون مخاطرة مالية حقيقية.\n\nراقب السهم، افهم سبب الإشارة، وشاهد كيف يتعامل المحاكي مع الدخول والخروج قبل أن تتخذ قرارك.\n\nتعليم أوضح. متابعة أذكى. قرارات أهدأ.\n\nجرّب المنصة: ${shareUrl}\n\nالمحتوى والعمليات داخل المنصة افتراضية ولأغراض التعليم فقط، وليست توصية استثمارية.`;
+}
+function openShareSimulator() {
+  const modal = document.getElementById('shareSimulatorModal');
+  const text = document.getElementById('shareSimulatorText');
+  if (!modal || !text) return;
+  text.value = getSimulatorShareText();
+  modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
+}
+function closeShareSimulator() {
+  const modal = document.getElementById('shareSimulatorModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  modal.setAttribute('aria-hidden', 'true');
+}
+async function copySimulatorShareText() {
+  const text = document.getElementById('shareSimulatorText');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text.value);
+  } catch (_) {
+    text.focus();
+    text.select();
+    document.execCommand('copy');
+    window.getSelection?.().removeAllRanges();
+  }
+  toast('تم نسخ إعلان المحاكي', 'success');
+}
+async function shareSimulatorInvite() {
+  const text = getSimulatorShareText();
+  const url = `${location.origin}${location.pathname}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'AZ Alpha Vision', text, url });
+      toast('تم فتح خيارات المشاركة', 'success');
+      return;
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }
+  await copySimulatorShareText();
+  toast('المشاركة غير مدعومة هنا؛ تم نسخ الإعلان', 'info');
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeShareSimulator();
+});

@@ -35,6 +35,9 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - name: تثبيت أدوات Android SDK وقبول الترخيص
+        uses: android-actions/setup-android@v3
+
       - name: تثبيت أدوات Capacitor
         working-directory: mobile
         run: npm install

@@ -1,7 +1,7 @@
 {
   "appId": "com.azalphavision.app",
   "appName": "AZ Alpha Vision",
-  "webDir": "..",
+  "webDir": "www",
   "bundledWebRuntime": false,
   "backgroundColor": "#071018",
   "plugins": {

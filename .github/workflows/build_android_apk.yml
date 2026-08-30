@@ -39,9 +39,16 @@ jobs:
         working-directory: mobile
         run: npm install
 
+      - name: تجميع ملفات الواجهة داخل مجلد www
+        working-directory: mobile
+        run: |
+          mkdir -p www
+          cp ../index.html ../app.js ../sw.js ../manifest.json ../icon.svg ../icon-192.png ../icon-512.png www/
+
       - name: إنشاء مشروع Android إن لم يكن موجوداً
         working-directory: mobile
         run: |
+          npx cap --version
           if [ ! -d "android" ]; then
             npx cap add android
           fi

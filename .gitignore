@@ -10,6 +10,7 @@ Thumbs.db
 mobile/android/
 mobile/ios/
 mobile/node_modules/
+mobile/www/
 
 # لقطات معاينة مؤقتة للثيمات (ليست جزءاً من التطبيق)
 preview-dark.png

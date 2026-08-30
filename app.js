@@ -346,15 +346,62 @@ async function savePushDevice(subscription) {
   );
   if (error) throw error;
 }
+function setBrowserNotificationControl(enabled, supported = true) {
+  const button = document.getElementById("notificationToggleBtn");
+  if (!button) return;
+  const active = Boolean(enabled && supported);
+  button.dataset.enabled = active ? "1" : "0";
+  button.setAttribute("aria-pressed", String(active));
+  button.setAttribute("aria-label", active ? "إيقاف إشعارات المتصفح" : "تفعيل إشعارات المتصفح");
+  button.title = active ? "إيقاف إشعارات المتصفح" : "تفعيل إشعارات المتصفح";
+  button.innerHTML = active
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="sr-only">مفعلة</span>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M4 4l16 16"/></svg><span class="sr-only">متوقفة</span>';
+  button.classList.toggle("is-enabled", active);
+}
+
+async function refreshBrowserNotificationControl() {
+  const supported = Boolean(window.isSecureContext && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window);
+  if (!supported) return setBrowserNotificationControl(false, false);
+  const enabled = localStorage.getItem("az_push_enabled") !== "0" && Notification.permission === "granted";
+  setBrowserNotificationControl(enabled, true);
+}
+
+async function disableBrowserNotifications() {
+  try {
+    localStorage.setItem("az_push_enabled", "0");
+    const registration = await navigator.serviceWorker.getRegistration("./");
+    const subscription = await registration?.pushManager?.getSubscription();
+    if (subscription && currentUser) {
+      await sb.from("notification_push_devices").update({ push_enabled: false, updated_at: new Date().toISOString() }).eq("user_id", currentUser.id).eq("endpoint", subscription.endpoint);
+      await subscription.unsubscribe().catch(() => {});
+    }
+    setBrowserNotificationControl(false, true);
+    toast("تم إيقاف إشعارات المتصفح لهذا الجهاز", "info");
+  } catch (error) {
+    console.warn("تعذر إيقاف إشعارات المتصفح:", error);
+    toast("تعذر إيقاف الإشعارات؛ تحقق من إعدادات المتصفح", "warn");
+  }
+}
+
+async function toggleBrowserNotifications() {
+  const button = document.getElementById("notificationToggleBtn");
+  if (button?.dataset.enabled === "1") return disableBrowserNotifications();
+  return enableBrowserNotifications();
+}
+
 async function syncExistingPushSubscription() {
   try {
     if (
       !currentUser ||
+      localStorage.getItem("az_push_enabled") === "0" ||
       !window.isSecureContext ||
       !("Notification" in window) ||
       Notification.permission !== "granted"
-    )
+    ) {
+      await refreshBrowserNotificationControl();
       return;
+    }
     const registration = await registerPushWorker();
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription)
@@ -363,8 +410,10 @@ async function syncExistingPushSubscription() {
         applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY),
       });
     await savePushDevice(subscription);
+    await refreshBrowserNotificationControl();
   } catch (error) {
     console.warn("تعذر تحديث اشتراك Push في الخلفية:", error);
+    await refreshBrowserNotificationControl();
   }
 }
 if ("serviceWorker" in navigator)
@@ -377,6 +426,7 @@ async function enableBrowserNotifications() {
     if (!currentUser)
       return toast("سجّل الدخول أولًا لتفعيل الإشعارات", "warn");
     if (!window.isSecureContext) return toast("الإشعارات تحتاج HTTPS", "warn");
+    localStorage.setItem("az_push_enabled", "1");
     const permission = await Notification.requestPermission();
     if (permission !== "granted")
       return toast("لم يتم السماح بإشعارات المتصفح", "warn");
@@ -398,9 +448,12 @@ async function enableBrowserNotifications() {
     await savePushDevice(subscription);
     const btn = document.getElementById("enablePushBtn");
     if (btn) btn.textContent = "إشعارات المتصفح مفعّلة";
+    setBrowserNotificationControl(true, true);
     toast("تم تفعيل إشعارات المتصفح خارج الموقع");
   } catch (e) {
+    localStorage.setItem("az_push_enabled", "0");
     console.error(e);
+    setBrowserNotificationControl(false, true);
     toast(
       "تعذر تفعيل إشعارات المتصفح: " + (e?.message || "تحقق من إعدادات الموقع"),
       "error",
@@ -622,38 +675,6 @@ async function askAzAi(event) {
   }
 }
 
-function removeBrokenCounterText() {
-  const root = document.body;
-  if (!root) return;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  let node;
-  while ((node = walker.nextNode())) nodes.push(node);
-  nodes.forEach((textNode) => {
-    textNode.nodeValue = textNode.nodeValue.replace(/\bNaN\s*\/\s*NaN\b|\b[nN]\s*\/\s*[nN]\b/gi, "—");
-  });
-}
-function showReconnectBriefing() {
-  if (!currentUser?.id) return;
-  const key = `az_last_seen_${currentUser.id}`;
-  const previous = Number(localStorage.getItem(key) || 0);
-  const now = Date.now();
-  localStorage.setItem(key, String(now));
-  if (!previous || now - previous < 3 * 60 * 60 * 1000) return;
-  const picks = LocalCache.getPicks() || [];
-  const watched = (watchlist || []).map((item) => {
-    const pick = picks.find((p) => p.symbol === item.symbol);
-    const rating = pick?.companyRating ? `درجة الشركة ${pick.companyRating}/100` : "التقييم قيد التحديث";
-    const reason = pick?.entryReason || pick?.aiReason || (item.mode === "buy" ? "عملية شراء محاكية مسجلة" : "متابعة وتنبيهات السعر والأخبار");
-    const entry = Number(pick?.entryPrice || item.entry_price || 0);
-    return `${item.symbol}: ${rating}؛ ${reason}${entry > 0 ? `؛ منطقة الدخول التعليمية $${entry.toFixed(2)}` : ""}`;
-  });
-  const headline = watched.length
-    ? `موجز العودة — راجعت ${watched.length} سهمًا في مراقبتك/محاكيك.`
-    : "موجز العودة — لا توجد أسهم محفوظة في قائمة المراقبة حاليًا.";
-  openAzAi();
-  appendAzAiMessage("assistant", `${headline}\n${watched.slice(0, 7).join("\n")}\n\nهذه قراءة تعليمية مبنية على آخر بيانات المنصة وليست توصية أو ضمانًا.`);
-}
 const AZ_RELEASE_VERSION = "2026.08-simulator-context-earnings";
 function showReleaseNotesIfNeeded() {
   if (!currentUser) return;
@@ -754,48 +775,6 @@ function platformRelevantSymbols() {
     .forEach((item) => add(item.symbol, "فلترة الأسهم"));
   return items;
 }
-function arabicNewsFallback(news) {
-  const symbol = String(news?.symbol || "الشركة").toUpperCase();
-  const category = NEWS_CATEGORY_LABELS[news?.category] || "تحديث للشركة";
-  const impact = String(news?.impact_reason || "").trim();
-  return impact ? `AZ ai: ${impact}` : `AZ ai: ${category} مرتبط بـ ${symbol}`;
-}
-async function enrichArabicNewsHeadlines(rows) {
-  if (!sb || !Array.isArray(rows) || !rows.length) return;
-  const selected = rows.slice(0, 8).filter((row) => String(row?.title || "").trim());
-  if (!selected.length) return;
-  const cacheKey = "az_ar_news_titles_v1";
-  let cache = {};
-  try { cache = JSON.parse(localStorage.getItem(cacheKey) || "{}"); } catch (_) {}
-  const pending = selected.filter((row) => !cache[`${row.symbol}|${row.title}`]);
-  if (!pending.length) {
-    selected.forEach((row, index) => {
-      const node = document.getElementById(`azNewsTitle${index}`);
-      const text = cache[`${row.symbol}|${row.title}`];
-      if (node && text) node.textContent = text;
-    });
-    return;
-  }
-  try {
-    const prompt = `أنت مترجم الأخبار في منصة تعليمية عربية. ترجم العناوين التالية إلى العربية ترجمة موجزة ودقيقة. أعد فقط سطورًا مرقمة بنفس الترتيب 1. 2. دون مقدمة أو نص إضافي.\n${pending.map((row, i) => `${i + 1}. [${row.symbol}] ${row.title}`).join("\n")}`;
-    const { data, error } = await sb.functions.invoke("az-ai", {
-      body: { messages: [{ role: "user", content: prompt }] },
-    });
-    if (error || !data?.answer) return;
-    const lines = String(data.answer).split("\n").map((line) => line.replace(/^\s*\d+[.)،:-]?\s*/, "").trim()).filter(Boolean);
-    pending.forEach((row, i) => {
-      if (lines[i]) cache[`${row.symbol}|${row.title}`] = lines[i];
-    });
-    localStorage.setItem(cacheKey, JSON.stringify(cache));
-    selected.forEach((row, index) => {
-      const node = document.getElementById(`azNewsTitle${index}`);
-      const text = cache[`${row.symbol}|${row.title}`];
-      if (node && text) node.textContent = text;
-    });
-  } catch (error) {
-    console.warn("تعذر ترجمة عناوين الأخبار عبر AZ ai:", error);
-  }
-}
 function trackedSourcesText(value) {
   return Array.isArray(value) && value.length
     ? value.join(" · ")
@@ -828,15 +807,14 @@ async function refreshCompanyNews() {
       return;
     }
     box.innerHTML = data
-      .map((n, index) => {
+      .map((n) => {
         const visual = newsImpactVisual(n);
         const sources = trackedSourcesText([
           ...(tracked.get(String(n.symbol || "").toUpperCase()) || []),
         ]);
-        return `<article class="news-item impact-${visual.key}"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div id="azNewsTitle${index}" class="news-item-title">${escapeNewsText(arabicNewsFallback(n))}</div><div class="news-item-sub">${escapeNewsText(n.source_name || "مصدر عام")} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(sources)} · ${escapeNewsText(n.impact_reason || "")}</div><details class="news-original"><summary>العنوان الأصلي</summary><p>${escapeNewsText(n.title || "—")}</p></details><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || "عام"}</span><br><span class="news-impact ${visual.key}">${visual.label}</span></div></article>`;
+        return `<article class="news-item impact-${visual.key}"><div class="news-symbol">${escapeNewsText(n.symbol)}</div><div><div class="news-item-title">${escapeNewsText(n.title)}</div><div class="news-item-sub">${escapeNewsText(n.source_name || "مصدر عام")} · ${formatNewsAge(n.published_at)} · ${escapeNewsText(sources)} · ${escapeNewsText(n.impact_reason || "")}</div><a class="news-source" href="${escapeNewsText(n.source_url)}" target="_blank" rel="noopener noreferrer">فتح المصدر ↗</a></div><div class="news-item-side"><span class="news-category">${NEWS_CATEGORY_LABELS[n.category] || "عام"}</span><br><span class="news-impact ${visual.key}">${visual.label}</span></div></article>`;
       })
       .join("");
-    enrichArabicNewsHeadlines(data);
   } catch (error) {
     console.warn("تعذر تحميل أخبار الشركات:", error);
     box.innerHTML =
@@ -961,21 +939,6 @@ function deterministicMarketBrief(rows) {
         : "والتذبذب ضمن نطاق متوسط";
   return `قراءة تعليمية: مزاج السوق ${tone} ${risk}. راقب تغير المؤشرات وبيانات الشركات قبل تفسير أي إشارة.`;
 }
-let activeMarketLens = "day";
-function setMarketLens(range) {
-  activeMarketLens = ["day", "week", "month", "all"].includes(range) ? range : "day";
-  document.querySelectorAll("[data-market-range]").forEach((button) => button.classList.toggle("active", button.dataset.marketRange === activeMarketLens));
-  const labels = { day: "اليوم", week: "الأسبوع", month: "الشهر", all: "منذ البداية" };
-  const rows = Array.isArray(window.__marketPulseRows) ? window.__marketPulseRows : [];
-  const changes = rows.map((row) => Number(row.change_pct)).filter(Number.isFinite);
-  const average = changes.length ? changes.reduce((sum, value) => sum + value, 0) / changes.length : null;
-  const brief = document.getElementById("marketDailyBrief");
-  if (brief) brief.textContent = average == null
-    ? `ملخص ${labels[activeMarketLens]}: بانتظار مؤشرات السوق الموثوقة.`
-    : `ملخص ${labels[activeMarketLens]}: متوسط التغير المتاح ${average >= 0 ? "+" : ""}${average.toFixed(2)}%. قراءة تعليمية وليست توقعًا للسعر.`;
-  const chart = document.getElementById("chartContainer");
-  if (chart && !chartInstance) chart.innerHTML = `<div class="chart-empty-state market-summary-chart"><span class="chart-empty-icon">${average == null ? "—" : average >= 0 ? "↗" : "↘"}</span><strong>ملخص ${labels[activeMarketLens]}</strong><p>${average == null ? "لا توجد سلسلة OHLC فعلية للرسم حتى الآن." : `متوسط التغير الحالي ${average >= 0 ? "+" : ""}${average.toFixed(2)}% عبر المؤشرات المتاحة.`}</p></div>`;
-}
 async function loadMarketPulse() {
   const grid = document.getElementById("marketPulseGrid");
   const brief = document.getElementById("marketDailyBrief");
@@ -988,7 +951,6 @@ async function loadMarketPulse() {
       .order("symbol");
     if (error) throw error;
     const rows = Array.isArray(data) ? data : [];
-    window.__marketPulseRows = rows;
     if (!rows.length) {
       grid.innerHTML =
         '<div class="market-pulse-empty">تُجهز مؤشرات السوق في الخلفية. ستظهر هنا بعد أول دورة تحديث موثوقة.</div>';
@@ -1008,7 +970,6 @@ async function loadMarketPulse() {
       .join("");
     const fallback = deterministicMarketBrief(rows);
     if (brief) brief.textContent = fallback;
-    setMarketLens(activeMarketLens);
     const dayKey = `az_market_brief_${new Date().toISOString().slice(0, 10)}`;
     if (!sessionStorage.getItem(dayKey)) {
       sessionStorage.setItem(dayKey, "pending");
@@ -1085,9 +1046,14 @@ async function initApp(user, profile) {
   updateTrial();
   updateSitePerformance();
   setInterval(updateTrial, 60000);
-  // لا نعرض ساعة ثانية في الرأس؛ وقت التحديث يظهر داخل كل لوحة بيانات لتفادي قيم جهاز مشوهة مثل n/n.
-  const liveTime = document.getElementById("liveTime");
-  if (liveTime) liveTime.textContent = "";
+  document.getElementById("liveTime").textContent =
+    new Date().toLocaleTimeString("ar-SA");
+  setInterval(
+    () =>
+      (document.getElementById("liveTime").textContent =
+        new Date().toLocaleTimeString("ar-SA")),
+    1000,
+  );
   setTimeout(() => initChart(), 100);
   // الماسح الحقيقي والصفقات يعملان في الخلفية. المتصفح يقرأ الحالة المشتركة فقط.
   subscribeSignalRealtime();
@@ -1115,12 +1081,6 @@ async function initApp(user, profile) {
       () => syncVirtualTraderFromServer(),
       5 * 60 * 1000,
     );
-  removeBrokenCounterText();
-  if (!window.__azCounterSanitizer) {
-    window.__azCounterSanitizer = new MutationObserver(() => removeBrokenCounterText());
-    window.__azCounterSanitizer.observe(document.body, { childList: true, subtree: true });
-  }
-  showReconnectBriefing();
   const c = LocalCache.getScreener();
   if (c && c.t > Date.now() - 86400000) {
     screenerResults = (c.r || []).filter(isCommonStockRow);
@@ -1152,7 +1112,6 @@ async function loadWatchlist() {
         symbol: String(r.symbol || "").toUpperCase(),
         entry_price: Number(r.entry_price ?? r.price ?? 0),
         qty: Number(r.qty) || 1,
-        mode: r.mode === "buy" ? "buy" : "watch",
         added: new Date(r.added_at || r.created_at || Date.now()).getTime(),
       }))
       .filter((r) => r.symbol)
@@ -1168,8 +1127,6 @@ async function loadWatchlist() {
 async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "addEntryPrice") {
   const symbolInput = document.getElementById(symbolInputId);
   const entryInput = document.getElementById(entryInputId);
-  const quantityInput = document.getElementById(symbolInputId === "addSymbolInput" ? "addQuantity" : "dashboardWatchQty");
-  const modeInput = document.getElementById(symbolInputId === "addSymbolInput" ? "addWatchMode" : "dashboardWatchMode");
   const sym = String(symbolInput?.value || "")
     .toUpperCase()
     .trim();
@@ -1181,14 +1138,7 @@ async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "
     toast("السهم موجود مسبقًا في قائمة المراقبة", "warn");
     return;
   }
-  const mode = String(modeInput?.value || "watch");
-  const rawQty = Number.parseInt(quantityInput?.value || "1", 10);
-  const qty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
   let referencePrice = Number.parseFloat(entryInput?.value || "");
-  if (mode === "buy" && (!Number.isFinite(referencePrice) || referencePrice <= 0)) {
-    toast("أدخل سعر الدخول عند تسجيل شراء محاكى", "error");
-    return;
-  }
   if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
     try {
       const fetched = await fetchPrice(sym);
@@ -1201,8 +1151,7 @@ async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "
     id: `local-${Date.now()}`,
     symbol: sym,
     entry_price: referencePrice,
-    qty,
-    mode,
+    qty: 1,
     added: Date.now(),
   };
   const { data: inserted, error } = await sb
@@ -1211,8 +1160,7 @@ async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "
       user_id: currentUser.id,
       symbol: sym,
       entry_price: referencePrice,
-      qty,
-      mode,
+      qty: 1,
     })
     .select()
     .single();
@@ -1234,8 +1182,6 @@ async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "
   );
   if (symbolInput) symbolInput.value = "";
   if (entryInput) entryInput.value = "";
-  if (quantityInput) quantityInput.value = "1";
-  if (modeInput) modeInput.value = "watch";
   await loadWatchlist();
   requestSymbolResearch(sym);
   toast(`تمت إضافة ${sym} للمراقبة والتنبيهات`, "success");
@@ -1273,7 +1219,7 @@ async function renderWatchlist() {
     updateStats(0, 0, 0, 0, 0);
     return;
   }
-  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol).catch(() => null)));
+  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol)));
   let wins = 0,
     losses = 0,
     totalPnl = 0,
@@ -1303,14 +1249,9 @@ async function renderWatchlist() {
         ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pct.toFixed(1)}%)`
         : "تنبيهات مفعلة";
     const referenceText = hasReference
-      ? `${item.mode === "buy" ? "شراء محاكى" : "مرجع دخول"} $${reference.toFixed(2)} × ${qty}`
-      : "مراقبة وتنبيهات فقط";
-    const matchedPick = (LocalCache.getPicks() || []).find((pick) => pick.symbol === item.symbol);
-    const pickScore = Number(matchedPick?.companyRating);
-    const pickText = matchedPick
-      ? `درجة ${(pickScore / 10).toFixed(1)}/10 · ${matchedPick.entryStatus || "انتظار"}${matchedPick.entryPrice ? ` · دخول $${Number(matchedPick.entryPrice).toFixed(2)}` : ""}`
-      : "لا توجد إشارة مؤكدة — انتظار";
-    const rowHtml = `<div class="watch-item"><div class="watch-item-top"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice && pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>${referenceText}</span><span class="pnl ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-cyan"}">${pnlCell}</span></div><div class="watch-signal">${escapeHtml(pickText)}</div><div class="watch-actions"><span class="watch-mode">${item.mode === "buy" ? "شراء محاكى" : "مراقبة"}</span><button class="del" type="button" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</button></div></div>`;
+      ? `مرجع $${reference.toFixed(2)} × ${qty}`
+      : "متابعة وتنبيهات فقط";
+    const rowHtml = `<div class="watch-item"><div class="watch-item-top"><span class="sym">${escapeHtml(item.symbol)}</span><span class="price ${hasPrice && pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${priceCell}</span></div><div class="meta"><span>${referenceText}</span><span class="pnl ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-cyan"}">${pnlCell}</span></div><button class="del" type="button" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">×</button></div>`;
     containers.forEach((container) => {
       container.insertAdjacentHTML("beforeend", rowHtml);
     });
@@ -1344,7 +1285,7 @@ async function renderPortfolio() {
       '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:40px;">لا توجد صفقات</td></tr>';
     return;
   }
-  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol).catch(() => null)));
+  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol)));
   let totalPnl = 0,
     totalInvested = 0,
     totalCurrent = 0;
@@ -1881,8 +1822,8 @@ async function loadActiveOwnerAnnouncement() {
     .order("published_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data || localStorage.getItem(`az_broadcast_seen_${data.id}`))
-    return;
+  const seenKey = currentUser ? `az_broadcast_seen_${currentUser.id}_${data?.id || ""}` : "";
+  if (error || !data || (seenKey && localStorage.getItem(seenKey))) return;
   document.getElementById("ownerAnnouncementTitle").textContent = data.title;
   document.getElementById("ownerAnnouncementBody").textContent = data.body;
   const img = document.getElementById("ownerAnnouncementImage");
@@ -1895,7 +1836,7 @@ async function loadActiveOwnerAnnouncement() {
     modal.style.display = "flex";
     modal.setAttribute("aria-hidden", "false");
   }
-  localStorage.setItem(`az_broadcast_seen_${data.id}`, "1");
+  if (seenKey) localStorage.setItem(seenKey, "1");
 }
 
 // ===== OWNERSHIP / COPY DETERRENCE =====
@@ -3202,33 +3143,6 @@ const SIGNAL_GRID_LAYOUT_KEY = "az_signal_grid_layout_v1";
 // الترتيب ثابت للمستخدم العادي؛ أدوات السحب وتغيير الحجم أزيلت لتجنب التداخل خصوصًا على الجوال.
 const SIGNAL_GRID_CUSTOMIZATION_ENABLED = false;
 let signalGridObserver = null;
-function renderSignalToday() {
-  const box = document.getElementById("dashboardSignalToday");
-  if (!box) return;
-  const candidates = (Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : [])
-    .filter((row) => Number(row?.entry_score ?? 0) > 0)
-    .sort((a, b) => Number(b.entry_score || 0) - Number(a.entry_score || 0));
-  const row = candidates[0];
-  if (!row) {
-    box.innerHTML = `<div class="signal-today-empty"><strong>لا توجد إشارة دخول مكتملة الآن</strong><span>يتابع الماسح القوالب الأربعة عشر، وسيظهر هنا الرمز ومنطقة الدخول عند تحقق الشروط.</span><button type="button" onclick="switchTab('signals')">فتح الإشارات</button></div>`;
-    return;
-  }
-  const plan = weeklyEntryPlan(row);
-  const price = Number(row?.price);
-  const score = Math.max(0, Math.min(4, Number(row?.entry_score || 0)));
-  const signalNames = Object.entries(row?.entry_signals || {})
-    .filter(([, active]) => active)
-    .map(([key]) => SIG_LABEL[key] || key)
-    .slice(0, 2)
-    .join(" · ") || "توافق فني من الماسح";
-  const tone = plan.avoid ? "wait" : "entry";
-  const isFeatured = score >= 3 && !plan.avoid;
-  const assessment = weeklyCompanyAssessment({ ...row, bestEntryScore: score });
-  const companyGrade = assessment.grade || "C";
-  const cupIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0V3Z"/><path d="M7 5H4a3 3 0 0 0 3 3M17 5h3a3 3 0 0 1-3 3M12 13v4M8 21h8M9 17h6"/></svg>';
-  box.innerHTML = `<article class="signal-today-card ${tone}"><div class="signal-trophy" title="فرصة اليوم التعليمية">${cupIcon}</div><div class="signal-today-top"><div><span class="signal-today-kicker">${isFeatured ? "إشارة اليوم — فرصة مميزة" : "فرصة اليوم تحت المراقبة"}</span><span class="signal-today-symbol font-mono">${sigEsc(row.symbol || "—")}</span></div><span class="signal-today-grade">${score}/4</span></div><div class="signal-today-statline"><div><small>السعر الحالي</small><strong class="signal-today-price">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</strong></div><div><small>قوة الشركة والنمو</small><strong class="company-grade grade-${String(companyGrade).toLowerCase()}">${(assessment.score / 10).toFixed(1)}/10 · ${companyGrade}</strong></div></div><div class="signal-today-entry ${plan.avoid ? "waiting" : "ready"}">${plan.avoid ? "انتظار منطقة الدخول" : "دخول عند التأكيد"}: <strong>${Number.isFinite(Number(plan.price)) ? `$${Number(plan.price).toFixed(2)}` : "—"}</strong></div><p>${sigEsc(signalNames)}</p><div class="signal-today-actions"><button type="button" onclick="switchTab('signals')">تفاصيل الإشارة</button><button type="button" onclick="switchTab('portfolio')">أداء المحاكي</button></div></article>`;
-}
-
 function renderSignalGridPicks() {
   const body = document.getElementById("dashboardPicksBody");
   if (!body) return;
@@ -3237,18 +3151,15 @@ function renderSignalGridPicks() {
     : [];
   if (!picks.length) {
     body.innerHTML =
-      '<tr><td colspan="5" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
+      '<tr><td colspan="3" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
     return;
   }
   body.innerHTML = picks
     .map((pick, index) => {
       const price = Number(pick?.price);
       const entry = Number(pick?.entryPrice);
-      const score = Number(pick?.companyRating);
-      const score10 = Number.isFinite(score) ? `${(score / 10).toFixed(1)}/10` : "—";
-      const label = escapeHtml(String(pick?.entryStatus || "انتظار"));
-      const signal = escapeHtml(String(pick?.bestTier || pick?.entryStatus || "انتظار"));
-      return `<tr><td><strong class="font-mono">${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${score10}</td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td>${signal}</td><td><span class="grid-entry ${label.includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"}</span></td></tr>`;
+      const label = escapeHtml(String(pick?.entryStatus || "للمتابعة"));
+      return `<tr><td><span class="grid-rank">${index + 1}</span><strong>${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td><span class="grid-entry ${String(pick?.entryStatus || "").includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"} <small>${label}</small></span></td></tr>`;
     })
     .join("");
 }
@@ -3291,17 +3202,13 @@ function mountSignalGridDashboard() {
   const watchPanel = document.createElement("div");
   watchPanel.className = "signal-watchlist-panel";
   watchPanel.innerHTML =
-    '<div class="signal-watchlist-note">متابعة شخصية وتنفيذ محاكى تعليمي — أدخل السعر والكمية عند تسجيل شراء.</div><form class="dashboard-watch-add" onsubmit="event.preventDefault(); addToWatchlist(\'dashboardWatchSymbol\', \'dashboardWatchEntry\')"><input id="dashboardWatchSymbol" type="text" maxlength="10" autocomplete="off" placeholder="رمز السهم مثل AAPL" aria-label="رمز السهم"><select id="dashboardWatchMode" aria-label="نوع العملية"><option value="watch">مراقبة وتنبيهات</option><option value="buy">تسجيل شراء محاكى</option></select><input id="dashboardWatchEntry" type="number" min="0" step="0.01" placeholder="سعر الدخول — اختياري للمراقبة"><label class="watch-qty-field"><span>عدد الأسهم</span><input id="dashboardWatchQty" type="number" min="1" step="1" value="1" aria-label="عدد الأسهم"></label><button type="submit">إضافة</button></form><div id="dashboardWatchlistBody"></div>';
-  const todayPanel = document.createElement("div");
-  todayPanel.id = "dashboardSignalToday";
-  todayPanel.className = "signal-today-panel";
-  todayPanel.innerHTML = '<div class="signal-today-empty">جارٍ قراءة إشارات الماسح...</div>';
+    '<div class="signal-watchlist-note">متابعة شخصية — تنبيهات السعر والأخبار، دون تنفيذ صفقة.</div><form class="dashboard-watch-add" onsubmit="event.preventDefault(); addToWatchlist(\'dashboardWatchSymbol\', \'dashboardWatchEntry\')"><input id="dashboardWatchSymbol" type="text" maxlength="10" autocomplete="off" placeholder="رمز السهم مثل AAPL" aria-label="رمز السهم"><input id="dashboardWatchEntry" type="hidden" value=""><button type="submit">إضافة للمتابعة</button></form><div id="dashboardWatchlistBody"></div>';
   const aiPanel = document.createElement("div");
   aiPanel.className = "signal-ai-panel";
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
   const picksPanel = document.createElement("div");
   picksPanel.className = "signal-grid-table";
-  picksPanel.innerHTML = `<div class="signal-grid-table-scroll"><table><thead><tr><th>الرمز</th><th>التقييم</th><th>السعر</th><th>الإشارة</th><th>الدخول</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="5" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table></div><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
+  picksPanel.innerHTML = `<table><thead><tr><th>الترتيب</th><th>السعر</th><th>المنطقة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
   const newsPanel = document.createElement("div");
   newsPanel.className = "signal-grid-feed";
   newsPanel.id = "dashboardNewsList";
@@ -3329,7 +3236,7 @@ function mountSignalGridDashboard() {
       "signal",
       "إشارة اليوم",
       "SIGNAL CORE",
-      [todayPanel],
+      [surface, thread],
       "widget-signal",
     ),
     createSignalWidget(
@@ -3376,7 +3283,6 @@ function mountSignalGridDashboard() {
     ),
   ];
   widgets.forEach((widget) => grid.appendChild(widget));
-  renderSignalToday();
   grid.appendChild(reset);
   observatory?.remove();
   grid.dataset.mounted = "1";
@@ -4395,24 +4301,18 @@ async function fetchUniverse(forceRefresh = false) {
 }
 
 async function fetchPrice(sym) {
-  if (!sb || !sym) return null;
-  try {
-    const { data: live } = await sb
-      .from("live_quotes")
-      .select("price")
-      .eq("symbol", sym)
-      .maybeSingle();
-    if (live && live.price != null) return Number(live.price);
-    const { data: tech } = await sb
-      .from("market_technicals")
-      .select("price")
-      .eq("symbol", sym)
-      .maybeSingle();
-    return tech && tech.price != null ? Number(tech.price) : null;
-  } catch (error) {
-    console.warn(`تعذر جلب سعر ${sym}:`, error);
-    return null;
-  }
+  const { data: live } = await sb
+    .from("live_quotes")
+    .select("price")
+    .eq("symbol", sym)
+    .maybeSingle();
+  if (live && live.price != null) return Number(live.price);
+  const { data: tech } = await sb
+    .from("market_technicals")
+    .select("price")
+    .eq("symbol", sym)
+    .maybeSingle();
+  return tech && tech.price != null ? Number(tech.price) : null;
 }
 // ===== LIVE STOCKS TAB (now: live_quotes for price, market_technicals for signal context) =====
 async function runScanner() {
@@ -5209,17 +5109,22 @@ function weeklyCompanyAssessment(row) {
   const plan = weeklyEntryPlan(row);
   if (plan.avoid) score -= 13;
   score = Math.max(0, Math.min(100, Math.round(score)));
-  const companyGrade = score >= 78 ? "A" : score >= 62 ? "B" : score >= 48 ? "C" : "D";
-  const label = companyGrade === "A" ? "قوة ونمو مرتفعان" : companyGrade === "B" ? "قوة ونمو جيدان" : companyGrade === "C" ? "قوة متوسطة" : "ضعف أو مخاطر أعلى";
-  return { score, grade: companyGrade, label, evidence, plan };
+  const label = score >= 78 ? "قوي" : score >= 62 ? "متوازن" : "للمتابعة";
+  return { score, label, evidence, plan };
 }
 function weeklyReason(row) {
   const assessment = row.companyAssessment || weeklyCompanyAssessment(row);
+  const presets = [...(row.presets || [])]
+    .map((p) => SIG_PRESET_LABEL[p] || p)
+    .filter(Boolean);
   const technical = [...(row.signalNames || [])].filter(Boolean);
-  const compact = technical.slice(0, 2).join(" + ");
-  if (compact) return compact;
-  if (assessment.evidence.includes("سيولة داعمة")) return "نمط فني + حجم";
-  return "إشارة فنية قيد المتابعة";
+  const parts = [
+    assessment.evidence[0],
+    presets[0] && `من قالب ${presets[0]}`,
+    technical[0],
+  ].filter(Boolean);
+  if (assessment.plan?.avoid) parts.push("بانتظار تأكيد منطقة الدخول");
+  return parts.slice(0, 3).join(" • ") || "توافق مؤشرات المنصة المتاحة";
 }
 function weeklyEntryPlan(row) {
   const price = Number(row?.price);
@@ -5426,11 +5331,16 @@ async function runWeeklyScan() {
             ? "إشارة مؤكدة"
             : "إشارة دخول";
       const stateClass = watchOnly || plan.avoid ? "text-gold" : "text-green";
-      const companyGrade = assessment.grade || (assessment.score >= 78 ? "A" : assessment.score >= 62 ? "B" : assessment.score >= 48 ? "C" : "D");
-      const ratingClass = `company-grade grade-${String(companyGrade).toLowerCase()}`;
+      const ratingClass =
+        assessment.score >= 78
+          ? "text-green"
+          : assessment.score >= 62
+            ? "text-cyan"
+            : "text-gold";
+      const company = sigEsc(s.company || s.symbol);
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym font-mono">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${(Number(assessment.score || 0) / 10).toFixed(1)}/10 · ${companyGrade}</strong><div class="sym-sub">قوة الشركة والنمو</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${company}</div><div class="sym-sub">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${assessment.score}/100</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5513,15 +5423,14 @@ let SIGNALS_CACHE = null,
 let signalChartInstance = null;
 
 const SIG_TIER_COLOR = {
-  صريح: "badge-entry",
-  مؤكد: "badge-entry",
-  دخول: "badge-entry",
-  مراقبة: "badge-watch",
+  صريح: "badge-strong-buy",
+  مؤكد: "badge-buy",
+  دخول: "badge-hold",
 };
 const SIG_TIER_COLOR_EXIT = {
-  صريح: "badge-exit",
-  مؤكد: "badge-exit",
-  خروج: "badge-exit",
+  صريح: "badge-strong-sell",
+  مؤكد: "badge-sell",
+  خروج: "badge-hold",
 };
 const SIG_LABEL = {
   fibonacci: "فيبوناتشي",
@@ -5662,21 +5571,15 @@ async function loadSignalsData(force = false) {
     if (!SIGNALS_CACHE.length && storedSignals.length) {
       meta.innerHTML = `تم تحميل ${storedSignals.length} إشارة، لكن لم تجتز حارس السهم/السعر — راجع مصدر السعر أو نوع الأداة`;
     }
-    // لا نعرض تنبيهات قديمة من تشغيل سابق؛ الاعتماد على آخر دورة ماسح يمنع خلط دخول قديم بخروج أحدث أو العكس.
-    const latestSignalAt = Math.max(...storedSignals.map((row) => new Date(row.updated_at || 0).getTime()).filter(Number.isFinite), 0);
-    const alertFloor = Math.max(Date.now() - 48 * 60 * 60 * 1000, latestSignalAt ? latestSignalAt - 15 * 60 * 1000 : 0);
-    // دخول غير آمن يتحول إلى متابعة، وتنبيه خروج ضعيف يبقى مجرد تنبيه ولا يعني صفقة محاكي.
+    // تنبيهات الخروج تبقى ظاهرة، أما دخول غير آمن/بعد ارتفاع حاد فيتحول إلى متابعة فقط.
     SIGNALS_ALERTS = (alerts || [])
       .map(withContext)
       .filter(validSignalRow)
-      .filter((a) => new Date(a.ts || a.updated_at || 0).getTime() >= alertFloor)
       .filter((a) => a.type !== "entry" || technicalEntryGuard(a).allow);
     playNewSignalAlertSound(SIGNALS_ALERTS);
     SIGNALS_PERF = perf || [];
     SIGNALS_CACHE_AT = Date.now();
     meta.innerHTML = `آخر تحديث: <span>${SIGNALS_CACHE[0] ? new Date(SIGNALS_CACHE[0].updated_at).toLocaleString("ar-SA") : "--"}</span> — تم تحميل ${SIGNALS_CACHE.length} إشارة من جميع القوالب النشطة`;
-    renderSignalToday();
-    renderSignalGridPicks();
     renderSignalAlerts();
     renderSignalPerformance("month");
     if (!window.__weeklyRefreshQueued) {
@@ -5861,19 +5764,6 @@ function renderSignalsTable(stocks) {
     .join("");
 }
 
-function signalSessionLabel(timestamp) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).formatToParts(date);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
-  const total = hour * 60 + minute;
-  if (total < 570) return "قبل الافتتاح — تنبيه فقط";
-  if (total >= 960) return "بعد الإغلاق — تنبيه فقط";
-  return "ضمن الجلسة النظامية";
-}
 function renderSignalAlerts() {
   const tb = document.getElementById("signalsAlertsBody");
   if (!SIGNALS_ALERTS || !SIGNALS_ALERTS.length) {
@@ -5891,16 +5781,14 @@ function renderSignalAlerts() {
     const entryPlan = isEntry
       ? weeklyEntryPlan({ ...context, price: a.price ?? context.price })
       : null;
-    const badge = isEntry ? "badge-entry" : "badge-exit";
-    const score = Math.max(0, Math.min(4, Number(a.score || 0)));
-    const tierText = isEntry ? (a.tier || "دخول") : (score >= 3 ? "خروج مؤكد" : "خروج يحتاج تأكيد");
-    const session = signalSessionLabel(a.ts);
-    const executionNote = !isEntry && score < 3 ? "تنبيه فقط — لا يغلق المحاكي الصفقة" : session;
+    const badge = isEntry
+      ? SIG_TIER_COLOR[a.tier]
+      : SIG_TIER_COLOR_EXIT[a.tier];
     return `<tr>
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString("ar-SA")}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} — ${tierText} (${score}/4)</span><div class="signal-session ${executionNote.includes("تنبيه فقط") ? "neutral" : "active"}">${executionNote}</div></td>
+            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} ${a.tier} (${a.score}/4)</span></td>
             <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan?.label || "")}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
         </tr>`;
   }).join("");
@@ -6243,17 +6131,18 @@ async function isTradableMarketSymbol(symbol) {
   );
 }
 const originalAddToWatchlist = addToWatchlist;
-addToWatchlist = async function (symbolInputId = "addSymbolInput", entryInputId = "addEntryPrice") {
+addToWatchlist = async function () {
   const sym = document
-    .getElementById(symbolInputId)
-    ?.value.trim()
+    .getElementById("addSymbolInput")
+    .value.trim()
     .toUpperCase();
   if (!(await isTradableMarketSymbol(sym))) {
     toast("هذا الرمز غير موجود كسهم عادي قابل للتداول في قاعدة السوق", "error");
     return;
   }
-    return originalAddToWatchlist(symbolInputId, entryInputId);
+  return originalAddToWatchlist();
 };
+
 // ===== VIRTUAL TRADER — EDUCATIONAL SIMULATION ONLY =====
 const VIRTUAL_STARTING_CASH = 10000;
 const VIRTUAL_MAX_POSITION_PCT = 0.2;
@@ -6266,15 +6155,15 @@ let virtualTrader = {
   runInfo: null,
 };
 let virtualTraderTimer = null;
+let virtualTraderLoaded = false;
 function virtualTraderKey() {
   return `az_virtual_trader_${currentUser?.id || "guest"}`;
 }
 function saveVirtualTrader() {
   localStorage.setItem(virtualTraderKey(), JSON.stringify(virtualTrader));
 }
-let virtualTraderLoaded = false;
-async function loadVirtualTrader() {
-  // المصدر الوحيد للمحاكي هو Supabase؛ لا نعيد تصفير العرض عند فتح التبويب.
+function loadVirtualTrader() {
+  // المصدر الوحيد للمحاكي هو Supabase؛ لا تعاد تهيئة الحالة عند تبديل التبويب.
   if (!virtualTraderLoaded) {
     virtualTrader = {
       cash: VIRTUAL_STARTING_CASH,
@@ -6284,74 +6173,60 @@ async function loadVirtualTrader() {
       lastRun: null,
       runInfo: null,
     };
-    renderVirtualTrader();
+    virtualTraderLoaded = true;
   }
-  await syncVirtualTraderFromServer();
-  virtualTraderLoaded = true;
+  renderVirtualTrader();
+  return syncVirtualTraderFromServer();
 }
 async function syncVirtualTraderFromServer() {
   if (!currentUser?.id || !sb) return;
-  const [portfolioRes, positionsRes, tradesRes, runRes] = await Promise.all([
-    sb
-      .from("shared_virtual_portfolios")
-      .select("*")
-      .eq("simulation_id", "global")
-      .maybeSingle(),
-    sb
-      .from("shared_virtual_positions")
-      .select("*")
-      .eq("simulation_id", "global")
-      .order("updated_at", { ascending: false }),
-    sb
-      .from("shared_virtual_trades")
-      .select("*")
-      .eq("simulation_id", "global")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    sb
-      .from("virtual_trader_runs")
-      .select(
-        "started_at,status,market_open,candidate_count,entry_candidates,near_entries,blocked_by_plan,blocked_by_price,run_note",
-      )
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+  const [sharedPortfolioRes, sharedPositionsRes, sharedTradesRes, userPortfolioRes, userPositionsRes, userTradesRes, runRes] = await Promise.all([
+    sb.from("shared_virtual_portfolios").select("*").eq("simulation_id", "global").maybeSingle(),
+    sb.from("shared_virtual_positions").select("*").eq("simulation_id", "global").order("updated_at", { ascending: false }),
+    sb.from("shared_virtual_trades").select("*").eq("simulation_id", "global").order("created_at", { ascending: false }).limit(100),
+    sb.from("virtual_portfolios").select("*").eq("user_id", currentUser.id).maybeSingle(),
+    sb.from("virtual_positions").select("*").eq("user_id", currentUser.id).order("updated_at", { ascending: false }),
+    sb.from("virtual_trades").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(100),
+    sb.from("virtual_trader_runs").select("started_at,status,market_open,candidate_count,entry_candidates,near_entries,blocked_by_plan,blocked_by_price,run_note").order("started_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  if (portfolioRes.error || positionsRes.error || tradesRes.error) {
-    console.warn(
-      "تعذر مزامنة المحاكي الخلفي:",
-      portfolioRes.error || positionsRes.error || tradesRes.error,
-    );
+  const sharedPositions = !sharedPositionsRes.error && Array.isArray(sharedPositionsRes.data) ? sharedPositionsRes.data : [];
+  const sharedTrades = !sharedTradesRes.error && Array.isArray(sharedTradesRes.data) ? sharedTradesRes.data : [];
+  const userPositions = !userPositionsRes.error && Array.isArray(userPositionsRes.data) ? userPositionsRes.data : [];
+  const userTrades = !userTradesRes.error && Array.isArray(userTradesRes.data) ? userTradesRes.data : [];
+  const positionsData = sharedPositions.length ? sharedPositions : userPositions;
+  const tradesData = sharedTrades.length ? sharedTrades : userTrades;
+  const portfolio = (sharedPortfolioRes.data && !sharedPortfolioRes.error && sharedPositionsRes.error !== null)
+    ? sharedPortfolioRes.data
+    : (userPortfolioRes.data || sharedPortfolioRes.data || { cash: VIRTUAL_STARTING_CASH });
+  if (sharedPortfolioRes.error && userPortfolioRes.error && sharedPositionsRes.error && userPositionsRes.error && sharedTradesRes.error && userTradesRes.error) {
+    console.warn("تعذر مزامنة جداول المحاكي:", sharedPortfolioRes.error || userPortfolioRes.error);
     return;
   }
-  const portfolio = portfolioRes.data || { cash: VIRTUAL_STARTING_CASH };
   const positions = Object.fromEntries(
-    (positionsRes.data || []).map((p) => [
-      String(p.symbol).toUpperCase(),
-      {
-        symbol: p.symbol,
-        qty: Number(p.qty),
-        entryPrice: Number(p.entry_price),
-        lastPrice: Number(p.last_price || p.entry_price),
-        tier: p.entry_tier,
-        reason: p.reason || "",
-        enteredAt: p.entered_at,
-      },
-    ]),
+    positionsData.map((p) => [String(p.symbol).toUpperCase(), {
+      symbol: p.symbol,
+      qty: Number(p.qty),
+      entryPrice: Number(p.entry_price),
+      lastPrice: Number(p.last_price || p.entry_price),
+      tier: p.entry_tier || p.tier || "Entry",
+      reason: p.reason || "",
+      enteredAt: p.entered_at,
+    }]),
   );
-  const trades = (tradesRes.data || []).map((t) => ({
+  const trades = tradesData.map((t) => ({
     id: t.id,
     symbol: t.symbol,
     action: t.action,
     qty: Number(t.qty),
     price: Number(t.price),
     entryPrice: t.entry_price == null ? null : Number(t.entry_price),
-    tier: t.tier,
+    tier: t.tier || t.entry_tier || "Entry",
     pnl: t.pnl == null ? null : Number(t.pnl),
     reason: t.reason || "",
     at: t.created_at,
   }));
   const runInfo = runRes.error ? null : runRes.data;
+  virtualTraderLoaded = true;
   virtualTrader = {
     cash: Number(portfolio.cash ?? VIRTUAL_STARTING_CASH),
     positions,
@@ -6361,9 +6236,8 @@ async function syncVirtualTraderFromServer() {
     runInfo,
   };
   renderVirtualTrader();
-  const updated = document.getElementById("lastUpdate");
-  if (updated) updated.textContent = new Date().toLocaleString("ar-SA");
 }
+
 async function refreshVirtualTraderFromServer() {
   return syncVirtualTraderFromServer();
 }
@@ -6789,6 +6663,7 @@ const _oldRenderPortfolio =
   typeof renderPortfolio === "function" ? renderPortfolio : null;
 renderPortfolio = function () {
   loadVirtualTrader();
+  renderVirtualTrader();
 };
 const _oldLoadWatchlist = loadWatchlist;
 loadWatchlist = async function () {
@@ -6798,57 +6673,9 @@ loadWatchlist = async function () {
 const _oldSwitchTab = switchTab;
 switchTab = function (id) {
   const result = _oldSwitchTab(id);
-  if (id === "portfolio") loadVirtualTrader();
+  if (id === "portfolio") {
+    loadVirtualTrader();
+    renderVirtualTrader();
+  }
   return result;
 };
-
-// ===== SHARE SIMULATOR INVITE =====
-function getSimulatorShareText() {
-  const shareUrl = `${location.origin}${location.pathname}`;
-  return `مو كل قرار استثماري يبدأ بشراء… بعضه يبدأ بفهم اللعبة.\n\nجرّب AZ Alpha Vision: منصة عربية تجمع فلترة الأسهم، الإشارات الفنية، متابعة الأخبار، تقويم الأرباح، ومساعدًا ذكيًا — داخل محاكي افتراضي تتعلم فيه وتتابع الفرص بدون مخاطرة مالية حقيقية.\n\nراقب السهم، افهم سبب الإشارة، وشاهد كيف يتعامل المحاكي مع الدخول والخروج قبل أن تتخذ قرارك.\n\nتعليم أوضح. متابعة أذكى. قرارات أهدأ.\n\nجرّب المنصة: ${shareUrl}\n\nالمحتوى والعمليات داخل المنصة افتراضية ولأغراض التعليم فقط، وليست توصية استثمارية.`;
-}
-function openShareSimulator() {
-  const modal = document.getElementById('shareSimulatorModal');
-  const text = document.getElementById('shareSimulatorText');
-  if (!modal || !text) return;
-  text.value = getSimulatorShareText();
-  modal.classList.add('active');
-  modal.setAttribute('aria-hidden', 'false');
-}
-function closeShareSimulator() {
-  const modal = document.getElementById('shareSimulatorModal');
-  if (!modal) return;
-  modal.classList.remove('active');
-  modal.setAttribute('aria-hidden', 'true');
-}
-async function copySimulatorShareText() {
-  const text = document.getElementById('shareSimulatorText');
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text.value);
-  } catch (_) {
-    text.focus();
-    text.select();
-    document.execCommand('copy');
-    window.getSelection?.().removeAllRanges();
-  }
-  toast('تم نسخ إعلان المحاكي', 'success');
-}
-async function shareSimulatorInvite() {
-  const text = getSimulatorShareText();
-  const url = `${location.origin}${location.pathname}`;
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: 'AZ Alpha Vision', text, url });
-      toast('تم فتح خيارات المشاركة', 'success');
-      return;
-    } catch (err) {
-      if (err?.name === 'AbortError') return;
-    }
-  }
-  await copySimulatorShareText();
-  toast('المشاركة غير مدعومة هنا؛ تم نسخ الإعلان', 'info');
-}
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeShareSimulator();
-});

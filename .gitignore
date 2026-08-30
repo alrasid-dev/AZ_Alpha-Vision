@@ -16,3 +16,10 @@ mobile/www/
 preview-dark.png
 preview-light.png
 _tmp*.png
+final_*.png
+aud_*.png
+aud_*.json
+current_*.png
+current_*.json
+_cdp_shot.js
+_static_server.js

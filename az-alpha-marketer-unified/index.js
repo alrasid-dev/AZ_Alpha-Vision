@@ -40,5 +40,6 @@ async function run() {
   const { error } = await event.db.from('marketing_posts').update({ status:'posted', tweet_id:tweet.data.id, posted_at:new Date().toISOString() }).eq('id', draft.id);
   if (error) throw error;
   console.log('تم النشر على X:', tweet.data.id);
+  
 }
 run().then(()=>process.exit(0)).catch(async err=>{ console.error('فشل المشغل الموحد:', err?.response?.data || err.message || err); process.exit(1); });

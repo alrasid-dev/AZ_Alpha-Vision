@@ -1,7 +1,7 @@
 const axios = require('axios');
 const MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-flash-lite';
 const URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-const SYSTEM = `أنت محرر حساب AZ Alpha Vision. اكتب منشور X عربيًا مختصرًا. إذا كان الحدث تعليميًا أو تسويقيًا، اشرح مفهومًا مثل مؤشر RSI أو المتوسطات أو إدارة المخاطر أو التنويع، أو عرّف بميزة في المنصة. إذا كان الحدث خبرًا أو صفقة محاكاة، التزم بالبيانات المعطاة فقط. اذكر أن المحاكي افتراضي وتعليمي، ولا تقدم توصية شراء أو بيع أو وعدًا بالربح. لا تخترع أرقامًا أو أخبارًا. اكتب نصًا قصيرًا لا يتجاوز 150 حرفًا قبل أن يضيف النظام رابط التسجيل والمصدر. لا تضع روابط أو هاشتاقات بنفسك. لا تستخدم لغة جازمة عن اتجاه السعر.`;
+const SYSTEM = `أنت محرر حساب AZ Alpha Vision. اكتب منشور X عربيًا مختصرًا. إذا كان الحدث تعليميًا أو تسويقيًا، اشرح مفهومًا مثل مؤشر RSI أو المتوسطات أو إدارة المخاطر أو التنويع، أو عرّف بميزة في المنصة. إذا كان الحدث خبرًا أو صفقة محاكاة، التزم بالبيانات المعطاة فقط. اذكر أن المحاكي افتراضي وتعليمي، ولا تقدم توصية شراء أو بيع أو وعدًا بالربح. لا تخترع أرقامًا أو أخبارًا. اكتب نصًا قصيرًا لا يتجاوز 140 حرفًا قبل أن يضيف النظام رابط التسجيل والمصدر والهاشتاقات. لا تضع روابط أو هاشتاقات بنفسك. لا تستخدم لغة جازمة عن اتجاه السعر.`;
 async function generateEventPost(event) {
   const p = event.payload;
   let prompt = '';
@@ -12,6 +12,6 @@ async function generateEventPost(event) {
   let text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
   if (!text) throw new Error('لم يعط Gemini نصًا');
   text = text.replace(/^['"«»]+|['"«»]+$/g,'').trim();
-  return text.length > 260 ? `${text.slice(0,257)}...` : text;
+  return text.length > 140 ? `${text.slice(0,137)}...` : text;
 }
 module.exports = { generateEventPost };

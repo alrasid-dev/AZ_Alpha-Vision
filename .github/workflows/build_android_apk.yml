@@ -29,11 +29,11 @@ jobs:
         with:
           node-version: "20"
 
-      - name: تثبيت Java 17
+      - name: تثبيت Java 21
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
-          java-version: "17"
+          java-version: "21"
 
       - name: تثبيت أدوات Android SDK وقبول الترخيص
         uses: android-actions/setup-android@v3

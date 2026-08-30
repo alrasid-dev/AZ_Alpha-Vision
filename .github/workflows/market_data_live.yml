@@ -1,0 +1,44 @@
+name: AZ Alpha Vision - Live Market Quotes
+
+on:
+  workflow_dispatch:
+  schedule:
+    # مراقبة منتظمة خلال جلسة السوق الأمريكية (UTC). قد تؤخر GitHub التنفيذ قليلًا.
+    - cron: '*/5 13-20 * * 1-5'
+
+permissions:
+  contents: read
+
+jobs:
+  live_quotes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check --no-cache-dir yfinance pandas numpy requests
+      - name: Refresh live quotes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MIN_PRICE: '1'
+          MAX_PRICE: '5000'
+          YF_BATCH_SIZE: '50'
+        run: python fetch_market_data.py --mode quick
+      - name: Send price-movement browser alerts
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+        run: |
+          if [ -z "${NOTIFY_RUN_KEY}" ]; then echo "NOTIFY_RUN_KEY is not configured; skipping price alerts."; exit 0; fi
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "${SUPABASE_URL}/functions/v1/send-price-alerts?threshold=2&cooldown_minutes=60" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}'

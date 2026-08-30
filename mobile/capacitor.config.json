@@ -1,0 +1,29 @@
+{
+  "appId": "com.azalphavision.app",
+  "appName": "AZ Alpha Vision",
+  "webDir": "..",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#071018",
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#071018",
+      "showSpinner": false
+    }
+  },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "limitsNavigationsToAppBoundDomains": true
+  }
+}

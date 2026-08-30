@@ -1,0 +1,77 @@
+{
+  "country": "USA",
+  "price": { "min": 5, "max": 30 },
+  "excluded_sectors": ["Healthcare"],
+  "excluded_industries": [
+    "Aerospace & Defense",
+    "Beverages - Brewers",
+    "Beverages - Wineries & Distilleries",
+    "Tobacco",
+    "Gambling",
+    "Resorts & Casinos"
+  ],
+  "allowed_industries_under_excluded_sector": {
+    "Healthcare": [
+      "Household & Personal Products",
+      "Packaged Foods",
+      "Beverages - Non-Alcoholic"
+    ]
+  },
+  "presets": {
+    "military": {
+      "label_ar": "الفلتر العسكري",
+      "price_override": { "min": 1, "max": 20 },
+      "finviz_filters": {
+        "Analyst Recom.": "Buy",
+        "20-Day Simple Moving Average": "Price above SMA20",
+        "50-Day Simple Moving Average": "SMA50 below SMA20",
+        "Change": "Up",
+        "Average Volume": "Over 300K",
+        "Relative Volume": "Over 2",
+        "Current Volume": "Over 1M",
+        "Float": "Under 100M",
+        "Performance 2": "Week Up"
+      },
+      "raw_filters": ["fa_epsrev_bp"]
+    },
+    "quality_value": {
+      "label_ar": "قيمة ونوعية",
+      "price_override": { "min": 1, "max": 20 },
+      "finviz_filters": {
+        "Current Ratio": "Over 1.5",
+        "Debt/Equity": "Under 1",
+        "P/B": "Low (<1)",
+        "P/E": "Under 10",
+        "Current Volume": "Over 500K",
+        "Float": "Under 100M"
+      },
+      "raw_filters": ["fa_epsrev_bp"]
+    },
+    "growth": {
+      "label_ar": "نمو (Float منخفض)",
+      "finviz_filters": {
+        "EPS growthpast 5 years": "Over 15%",
+        "EPS growthqtr over qtr": "Over 15%",
+        "LT Debt/Equity": "Under 0.6",
+        "P/B": "Over 5",
+        "Float": "Under 100M"
+      },
+      "raw_filters": ["fa_epsrev_bp"]
+    },
+    "growth_beta": {
+      "label_ar": "نمو (Beta)",
+      "finviz_filters": {
+        "EPS growthpast 5 years": "Over 15%",
+        "EPS growthnext 5 years": "Over 15%",
+        "LT Debt/Equity": "Under 0.6",
+        "P/E": "Over 5",
+        "Beta": "Over 1"
+      },
+      "raw_filters": ["fa_epsrev_bp"]
+    }
+  },
+  "notes": {
+    "earnings_revenue_surprise": "الحل: fa_epsrev_bp (Earnings & Revenue Surprise: Both Positive) غير موجود في filter_dict الخاص بمكتبة finvizfinance، لكن تحققتُ أنه يمكن حقنه مباشرة في request_params['f'] بعد set_filter() لأن المكتبة لا تتحقق من هذا الحقل بعد بنائه — مطبَّق في fetch_data.py عبر raw_filters.",
+    "investment_preset": "فلتر 'استثمار' (PE<15 + نمو EPS>30% لثلاث فترات) من الصورة الخامسة لم يصلني رابطه الفعلي فلم يُدرَج في هذا التحديث — أرسل رابطه إن أردت إضافته كفلتر خامس."
+  }
+}

@@ -1,0 +1,38 @@
+name: AZ Alpha Vision - Earnings Calendar
+on:
+  workflow_dispatch: {}
+  schedule:
+    # تحديث كل ساعتين في أيام التداول لربط التقويم بالترشيحات الحالية.
+    - cron: '20 */2 * * 1-5'
+permissions:
+  contents: read
+jobs:
+  earnings-calendar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check --no-cache-dir yfinance pandas requests
+      - name: Update earnings calendar
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python fetch_earnings_calendar.py
+      - name: Send earnings reminders
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "${NOTIFY_RUN_KEY}" ]; then echo "NOTIFY_RUN_KEY is not configured; skipping earnings reminders."; exit 0; fi
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "${SUPABASE_URL}/functions/v1/send-earnings-notifications" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}'

@@ -1,0 +1,84 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "app.js"
+      - "sw.js"
+      - "manifest.json"
+      - "icon*.png"
+      - "icon.svg"
+      - "mobile/**"
+      - ".github/workflows/build_android_apk.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: استنساخ المستودع
+        uses: actions/checkout@v4
+
+      - name: تثبيت Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: تثبيت Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: تثبيت أدوات Capacitor
+        working-directory: mobile
+        run: npm install
+
+      - name: إنشاء مشروع Android إن لم يكن موجوداً
+        working-directory: mobile
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
+      - name: مزامنة الواجهة مع مشروع Android
+        working-directory: mobile
+        run: npx cap sync android
+
+      - name: منح صلاحية تنفيذ لـ gradlew
+        working-directory: mobile/android
+        run: chmod +x gradlew
+
+      - name: بناء ملف APK (نسخة قابلة للتنزيل المباشر)
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: تحديد مسار الملف الناتج
+        id: apk
+        run: |
+          APK_PATH=$(find mobile/android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: رفع الملف كمخرج للتشغيل (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: az-alpha-vision-android
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+
+      - name: نشر رابط تنزيل دائم عبر GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: "AZ Alpha Vision — Android (آخر بناء)"
+          body: |
+            تنزيل مباشر ومجاني لملف تثبيت أندرويد (APK) لأحدث نسخة من المنصة.
+            هذا الملف تجريبي (Debug) للتثبيت اليدوي المباشر. لرفعه على Google Play يلزم بناء نسخة موقّعة (Release) بعد إنشاء حساب Play Console.
+          files: ${{ steps.apk.outputs.path }}
+          prerelease: true
+          make_latest: false

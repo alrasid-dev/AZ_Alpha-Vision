@@ -1,0 +1,51 @@
+name: نشر المنصة مجاناً (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "app.js"
+      - "sw.js"
+      - "manifest.json"
+      - "icon.svg"
+      - "icon-192.png"
+      - "icon-512.png"
+      - ".github/workflows/deploy_pages.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: استنساخ المستودع
+        uses: actions/checkout@v4
+
+      - name: تجميع ملفات الواجهة فقط (بدون كود المسوق الخلفي)
+        run: |
+          mkdir -p _site
+          cp index.html app.js sw.js manifest.json icon.svg icon-192.png icon-512.png _site/
+
+      - name: تهيئة GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: تحميل ملفات الموقع
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: النشر النهائي
+        id: deployment
+        uses: actions/deploy-pages@v4

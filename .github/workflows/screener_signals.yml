@@ -1,0 +1,49 @@
+name: AZ Alpha Vision - Ready Filter Templates
+
+on:
+  schedule:
+    # بعد تحديث الأسعار؛ GitHub قد يؤخر الجدولة قليلًا.
+    - cron: '30 * * * 1-5'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  screener_signals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check --no-cache-dir requests
+
+      - name: Build ready-template signals
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MIN_PRICE: '5'
+          MAX_PRICE: '70'
+        run: python fetch_screener_signals.py
+
+      - name: Send signal notifications
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+        run: |
+          if [ -z "${NOTIFY_RUN_KEY}" ]; then
+            echo "NOTIFY_RUN_KEY is not configured; skipping notifications."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "${SUPABASE_URL}/functions/v1/send-signal-notifications?minutes=120" \
+            --header "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            --header "x-notify-key: ${NOTIFY_RUN_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{}'

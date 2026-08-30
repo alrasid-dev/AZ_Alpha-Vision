@@ -1,0 +1,27 @@
+name: AZ Alpha Vision - Screener Signals (Confluence Engine)
+
+on:
+  schedule:
+    # 22:00 UTC كل يوم عمل — بعد إغلاق السوق الأمريكي، بعد تشغيل الفحص الكامل بقليل يفضّل
+    - cron: '30 22 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  screener_signals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install "finvizfinance>=1.3.0,<2.0.0" "yfinance>=1.6.0,<2.0.0" "pandas>=3.0.0,<4.0.0" "numpy>=2.5.0,<3.0.0" requests
+
+      - name: Run confluence engine
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/fetch_screener_signals.py

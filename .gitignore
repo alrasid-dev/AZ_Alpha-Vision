@@ -1,0 +1,17 @@
+node_modules/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# مشاريع الجوال المُولّدة تلقائياً عبر CI (Capacitor)
+mobile/android/
+mobile/ios/
+mobile/node_modules/
+
+# لقطات معاينة مؤقتة للثيمات (ليست جزءاً من التطبيق)
+preview-dark.png
+preview-light.png
+_tmp*.png

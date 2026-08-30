@@ -1,0 +1,18 @@
+{
+  "id": "az-alpha-vision-simulator",
+  "name": "AZ Alpha Vision — محاكي الأسواق التعليمية",
+  "short_name": "AZ Alpha",
+  "description": "منصة تعليمية لقياس الإشارات ومحاكاة الأسواق الافتراضية وذكاء الأداء.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#061321",
+  "theme_color": "#061321",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -32,6 +32,18 @@ async function quota(db) {
   const carry = Math.min(6, Math.max(0, 12 - postedYesterday));
   return { postedToday, limit: 12 + carry, remaining: Math.max(0, 12 + carry - postedToday) };
 }
+function hashtagForSymbol(symbol) {
+  const clean = String(symbol || '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  return clean && clean.length <= 15 ? `#${clean}` : null;
+}
+function contextualHashtags(event) {
+  const symbolTag = hashtagForSymbol(event.symbol);
+  const context = event.eventType === 'news' ? ['#أخبار_الأسواق', '#تحليل_فني']
+    : event.eventType === 'earnings' ? ['#نتائج_الشركات', '#أسواق_المال']
+    : event.eventType === 'trade' ? ['#محاكاة_تداول', '#تعلم_التداول']
+    : ['#تعلم_التداول', '#AZAlphaVision'];
+  return [...new Set([symbolTag, ...context].filter(Boolean))].slice(0, 3).join(' ');
+}
 async function run() {
   console.log(`[${new Date().toISOString()}] بدء المشغل الموحد`);
   const db = require('./lib/events').getDb ? require('./lib/events').getDb() : null;
@@ -49,7 +61,8 @@ async function run() {
   const text = await generateEventPost(event);
   const campaign = event.eventType === 'earnings' ? 'earnings' : event.eventType === 'news' ? 'news' : event.eventType === 'trade' ? 'simulator' : 'education';
   const registrationUrl = `${process.env.SITE_URL || 'https://azalphavision.com'}/?register=1&utm_source=x&utm_medium=organic&utm_campaign=${campaign}`;
-  const fullText = `${text}\n\nتفضل بزيارة المحاكي التعليمي والتسجيل: ${registrationUrl}${event.sourceUrl ? `\nالمصدر: ${event.sourceUrl}` : ''}`;
+  const hashtags = contextualHashtags(event);
+  const fullText = `${text}\n\n${hashtags}\nتفضل بزيارة المحاكي التعليمي والتسجيل: ${registrationUrl}${event.sourceUrl ? `\nالمصدر: ${event.sourceUrl}` : ''}`;
   const { data: existing } = await event.db.from('marketing_posts').select('id,status,tweet_text').eq('event_key', event.eventKey).maybeSingle();
   let draft = existing;
   if (!draft) {

@@ -1,8 +1,8 @@
-const CACHE_NAME = 'az-alpha-shell-v2';
+const CACHE_NAME = 'az-alpha-shell-v3';
 const APP_URL = './';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([APP_URL, './index.html'])));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([APP_URL, './index.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png'])));
   self.skipWaiting();
 });
 

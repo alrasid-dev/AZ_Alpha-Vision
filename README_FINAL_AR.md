@@ -58,3 +58,7 @@ supabase/functions/run-virtual-trader/index.ts
 بعد رفع الملفات، شغّل **Full Market Scan**، وانتظر نجاحه، ثم شغّل **Screener Signals (Confluence Engine)**. بعدها افتح الموقع بتحديث قوي. لتفعيل Push، سجّل الدخول واضغط زر تفعيل إشعار المتصفح، ثم اتبع `PUSH_NOTIFICATIONS_SETUP_AR.md` لتفعيل الإرسال الفعلي من الخادم.
 
 كل النظام تعليمي ومحاكاة فقط ولا ينفذ تداولًا حقيقيًا.
+
+## النشر على Vercel
+
+الموقع ملفات ثابتة بالكامل (HTML/JS بدون خطوة بناء)، لذلك `vercel.json` في الجذر لا يحدد `buildCommand` ولا `installCommand` عمداً — يعتمد بالكامل على السلوك الافتراضي لـ Vercel (`framework: null`, `outputDirectory: "."`). إذا ظهر أي خطأ نشر قديم عالق في لوحة Vercel، افتح تبويب **Deployments** وتأكد أن آخر عملية نشر مرتبطة برقم Commit الأحدث في هذا المستودع، أو اضغط **Redeploy** يدويًا على آخر Commit من هناك.

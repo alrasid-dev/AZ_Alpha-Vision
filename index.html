@@ -1338,11 +1338,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     </div>
 
                     <div class="section-title">🔔 قائمة التنبيهات <div class="line"></div></div>
-                    <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
-                        <table class="data-table">
-                            <thead><tr><th>الوقت</th><th>الرمز</th><th>الفلتر</th><th>التنبيه</th><th>السعر</th></tr></thead>
-                            <tbody id="signalsAlertsBody"><tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px;">جاري التحميل...</td></tr></tbody>
-                        </table>
+                    <div class="alerts-stack-wrap" style="border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
+                        <div id="signalsAlertsBody" class="alerts-stack"><div class="text-muted" style="text-align:center;padding:20px;">جاري التحميل...</div></div>
                     </div>
 
                     <div class="section-title">📈 أداء الماسح <div class="line"></div></div>
@@ -1683,7 +1680,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
       html,body,#authScreen{background:#080c12!important;color:#edf3f8!important}.app-container,.main{background:#080c12!important}.sidebar{background:rgba(9,14,20,.96)!important;border-left-color:rgba(180,202,222,.16)!important}.premium-brand,.premium-watch-header{border-color:rgba(180,202,222,.16)!important}.premium-brand strong,.sidebar-title{color:#edf3f8!important}.premium-brand span,.premium-nav-label{color:#8393a0!important}.sidebar .tab-btn{color:#a5b1bc!important;background:transparent!important}.sidebar .tab-btn:hover{background:rgba(255,255,255,.035)!important;color:#f5f9fb!important}.sidebar .tab-btn.active{background:rgba(53,202,130,.11)!important;color:#72e6aa!important;box-shadow:inset -3px 0 0 #35ca82!important}.sidebar .tab-btn.active:before{background:transparent!important}.topbar{background:rgba(8,12,18,.92)!important;border-bottom-color:rgba(180,202,222,.16)!important}.page-heading h1{color:#edf3f8!important}.page-heading .eyebrow{color:#35ca82!important}.global-search,.header-icon-button,.user-chip{background:#0d141d!important;border-color:rgba(180,202,222,.16)!important;color:#edf3f8!important}.global-search input{color:#edf3f8!important}.content-area{background:#080c12!important}.signal-widget .market-canvas,.signal-widget .market-stream{background:transparent!important;box-shadow:none!important}.signal-widget .chart-box{background:#0b1118!important;border:0!important;box-shadow:none!important}.signal-widget .data-table{background:#0d141d!important}.signal-widget .data-table th{background:#0e151d!important;color:#8393a0!important;border-color:rgba(180,202,222,.12)!important}.signal-widget .data-table td{background:transparent!important;color:#dce6ed!important;border-color:rgba(180,202,222,.08)!important}.signal-widget .data-table tr:hover td{background:rgba(255,255,255,.025)!important}.signal-widget .news-item,.signal-widget .earnings-item{background:transparent!important;color:#dce6ed!important}.signal-widget .news-item-title,.signal-widget .earnings-estimate{color:#dce6ed!important}.signal-widget .news-item-sub,.signal-widget .earnings-source{color:#8293a0!important}.signal-widget .chart-empty-state{background:radial-gradient(circle at 50% 45%,rgba(53,202,130,.055),transparent 55%)!important;color:#8fa0ad!important}.signal-widget .chart-empty-state strong{color:#eaf3f8!important}.signal-widget .chart-empty-icon{background:transparent!important;color:#35ca82!important}.signal-widget .time-lenses{background:#0d141d!important}.signal-widget .time-lenses .active{background:#1a2732!important;color:#a6ecc6!important;box-shadow:none!important}.signal-widget .time-lenses span{color:#7f909d!important}.az-ownership-notice{background:#080c12!important;color:#748592!important;border-color:rgba(180,202,222,.10)!important}.notification-center{background:#0d141d!important;border-left-color:rgba(180,202,222,.16)!important}.notification-center-head h2,.in-app-notification strong{color:#edf3f8!important}.notification-tabs button{color:#9cabb6!important}.notification-tabs button.active{background:rgba(53,202,130,.12)!important;color:#7fe5ad!important}.in-app-notification{border-color:rgba(180,202,222,.10)!important}.in-app-notification p,.notification-empty,.in-app-notification small{color:#8393a0!important}@media(max-width:860px){.sidebar .tabs-wrap{background:#0b1118!important;border-top-color:rgba(180,202,222,.16)!important;box-shadow:0 -10px 30px rgba(0,0,0,.32)!important}.sidebar .tab-btn.active{box-shadow:inset 0 -2px 0 #35ca82!important}}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260901a"></script>
 <style id="az-stable-release-2026">
 /* طبقة الاستقرار النهائية: ألوان هادئة، سطح مكتب متماسك، وجوال بعمود واحد. */
 :root{--app-bg:#080d13;--app-panel:#111a24;--app-panel-raised:#15212c;--app-panel-soft:#0d151e;--app-border:rgba(166,188,207,.16);--app-border-strong:rgba(166,188,207,.27);--app-text:#d8e1e8;--app-text-strong:#eaf0f5;--app-muted:#91a1af;--app-positive:#55cf8e;--app-negative:#e87880;--app-caution:#d9b56d;--app-info:#7bb3e8}
@@ -2208,6 +2205,31 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
   .preset-btns::-webkit-scrollbar,.scan-actions::-webkit-scrollbar{display:none!important}
   .preset-btns .preset-btn,.scan-actions>*{flex:0 0 auto!important}
   .screener-header{flex-wrap:wrap!important;gap:10px!important}
+
+  /* لا تكسّر الجداول بـ display:block — هذا هو سبب ظهور الرمز كـ NNN وتداخل الشارات */
+  .data-table{display:table!important;width:max-content!important;min-width:100%!important;overflow:visible!important;white-space:normal!important}
+  .data-table thead{display:table-header-group!important}
+  .data-table tbody{display:table-row-group!important}
+  .data-table tr{display:table-row!important}
+  .data-table th,.data-table td{display:table-cell!important;white-space:nowrap!important}
+  .weekly-table-wrap,.virtual-ledger,.market-table-wrap,
+  #tab-signals [style*="overflow-x"],#tab-screener [style*="overflow-x"]{
+    overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;max-width:100%!important
+  }
+  .page-heading .eyebrow{display:none!important}
+  .page-heading h1{-webkit-text-fill-color:inherit!important;background:none!important;letter-spacing:0!important}
+  .content-area,.tab-panel,.screener-header,.preset-btns{min-width:0!important;max-width:100%!important}
+  .preset-btns{width:100%!important}
+  .preset-btns .preset-btn{
+    white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;
+    max-width:none!important;flex:0 0 auto!important
+  }
+  .grid-entry,.grid-entry small{white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
+  .alerts-stack{display:flex;flex-direction:column;gap:8px;padding:10px}
+  .alert-card{display:grid;gap:6px;padding:12px;border:1px solid rgba(185,205,220,.12);border-radius:10px;background:rgba(255,255,255,.02)}
+  .alert-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .alert-card-top .sym{font:700 16px var(--font-mono)!important;letter-spacing:0!important;direction:ltr;text-align:left;overflow:visible!important;max-width:none!important}
+  .alert-card-meta,.alert-card-price{font-size:11px;color:var(--text-muted);line-height:1.6;white-space:normal}
 }
 @media (max-width:420px){
   .sidebar .tabs-wrap .tab-btn{min-width:58px!important;padding:5px 7px!important;font-size:9px!important}

@@ -161,8 +161,8 @@ async function run() {
   }
 
   if (!event) {
-    // خارج ساعات الذروة ولا يوجد خبر عاجل: نوفّر الحصة لأوقات التفاعل الأعلى.
-    if (!isPeakHour()) {
+    // أول منشور في اليوم يُسمح به حتى خارج الذروة حتى لا يبقى الحساب صامتاً بعد منتصف الليل.
+    if (!isPeakHour() && q.postedToday > 0) {
       console.log(`خارج نافذة الذروة الآن؛ الانتظار حتى الساعة ${nextPeakWindowLabel()} (بتوقيت ${process.env.POSTING_TIMEZONE || 'Asia/Riyadh'})`);
       return;
     }
@@ -173,7 +173,7 @@ async function run() {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (last && Date.now() - new Date(last.created_at).getTime() < 2 * 60 * 60 * 1000) {
+    if (last && q.postedToday > 0 && Date.now() - new Date(last.created_at).getTime() < 2 * 60 * 60 * 1000) {
       console.log('لم تمر ساعتان على آخر منشور؛ لا نشر عادي الآن');
       return;
     }

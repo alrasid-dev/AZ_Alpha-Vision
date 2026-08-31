@@ -6,9 +6,9 @@
   "trailingSlash": false,
   "headers": [
     {
-      "source": "/sw.js",
+      "source": "/(index.html|app.js|sw.js)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache" },
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
         { "key": "Service-Worker-Allowed", "value": "/" }
       ]
     },

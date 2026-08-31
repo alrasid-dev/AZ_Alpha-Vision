@@ -331,7 +331,43 @@ function urlBase64ToUint8Array(base64String) {
 async function registerPushWorker() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window))
     throw new Error("المتصفح لا يدعم Web Push");
-  return navigator.serviceWorker.register("./sw.js", { scope: "./" });
+  const registration = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+  // لا نُعيد الـ registration فوراً؛ ننتظر حتى يصبح الـ Service Worker "نشطاً" فعلياً
+  // وإلا فشل pushManager.subscribe() برسالة "no active Service Worker" في أول تشغيل/تحديث.
+  return waitForActiveServiceWorker(registration);
+}
+
+async function waitForActiveServiceWorker(registration, timeoutMs = 8000) {
+  if (registration?.active) return registration;
+  try {
+    const readyRegistration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("sw-ready-timeout")), timeoutMs)),
+    ]);
+    return readyRegistration || registration;
+  } catch {
+    // مهلة انتظار قصيرة إضافية قبل المتابعة بأفضل registration متاح (بدون إظهار خطأ للمستخدم)
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return registration?.active ? registration : await navigator.serviceWorker.getRegistration("./").catch(() => registration) || registration;
+  }
+}
+
+// اشتراك مع إعادة محاولة تلقائية صامتة عند خطأ "no active Service Worker" المؤقت
+async function subscribeToPushWithRetry(registration, options, attempt = 1) {
+  try {
+    return await registration.pushManager.subscribe(options);
+  } catch (error) {
+    const message = String(error?.message || "");
+    const isNoActiveWorker = /no active service worker/i.test(message);
+    if (isNoActiveWorker && attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+      const freshRegistration = await waitForActiveServiceWorker(
+        (await navigator.serviceWorker.getRegistration("./")) || registration,
+      );
+      return subscribeToPushWithRetry(freshRegistration, options, attempt + 1);
+    }
+    throw error;
+  }
 }
 async function savePushDevice(subscription) {
   if (!currentUser || !subscription?.endpoint) return;
@@ -406,7 +442,7 @@ async function syncExistingPushSubscription() {
     const registration = await registerPushWorker();
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription)
-      subscription = await registration.pushManager.subscribe({
+      subscription = await subscribeToPushWithRetry(registration, {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY),
       });
@@ -441,7 +477,7 @@ async function enableBrowserNotifications() {
       subscription = null;
     }
     if (!subscription)
-      subscription = await registration.pushManager.subscribe({
+      subscription = await subscribeToPushWithRetry(registration, {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(WEB_PUSH_PUBLIC_KEY),
       });
@@ -455,9 +491,13 @@ async function enableBrowserNotifications() {
     localStorage.setItem("az_push_enabled", "0");
     console.error(e);
     setBrowserNotificationControl(false, true);
+    const message = String(e?.message || "");
+    const isTransientWorkerIssue = /no active service worker/i.test(message);
     toast(
-      "تعذر تفعيل إشعارات المتصفح: " + (e?.message || "تحقق من إعدادات الموقع"),
-      "error",
+      isTransientWorkerIssue
+        ? "الإشعارات تحتاج لحظة إضافية للتفعيل — أعد المحاولة بعد ثوانٍ من فضلك"
+        : "تعذر تفعيل إشعارات المتصفح: " + (message || "تحقق من إعدادات الموقع"),
+      isTransientWorkerIssue ? "warn" : "error",
     );
   }
 }

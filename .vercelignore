@@ -1,0 +1,31 @@
+# AZ Alpha Vision — Vercel يخدم فقط الواجهة الثابتة (index.html/app.js/sw.js/manifest/icons/brand-assets)
+# كل ما يلي خاص بخدمات أخرى (Render لبوت المسوق، GitHub Actions لسكربتات بايثون، Supabase Edge Functions)
+# ولا علاقة له بموقع الواجهة — استبعاده يمنع أي التباس أو محاولة بناء خاطئة على Vercel.
+# ملاحظة: brand-assets/* و icon*.png تبقى مرفوعة لأنها تُخدَّم مباشرة من الموقع.
+
+az-alpha-marketer-unified/
+supabase/
+scripts/
+mobile/
+config/
+.github/
+
+*.py
+*.sql
+*.md
+
+package.json
+package-lock.json
+index.js
+render.yaml
+netlify.toml
+
+_cdp_shot.js
+_render_asset.js
+_static_server.js
+_debug_check.js
+generate_vapid_keys.js
+test_market_fallback.py
+
+final_*.png
+preview-*.png

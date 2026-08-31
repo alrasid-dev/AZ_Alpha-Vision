@@ -5,6 +5,7 @@ node_modules/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+.vercel/
 
 # مشاريع الجوال المُولّدة تلقائياً عبر CI (Capacitor)
 mobile/android/

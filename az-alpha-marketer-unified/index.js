@@ -182,6 +182,15 @@ async function run() {
         .select('id,status,tweet_text')
         .single());
     }
+    if (draftError && /event_type|check constraint/i.test(draftError.message || '') && basePayload.event_type === 'trend_news') {
+      // قيد event_type القديم لم يُحدَّث بعد (ترقية الـ SQL اختيارية) — نخزّنه كنوع "news" المتوافق
+      // مع القيد الحالي، مع الحفاظ على محتوى الخبر ورابط المصدر كما هو.
+      ({ data: created, error: draftError } = await event.db
+        .from('marketing_posts')
+        .insert({ ...basePayload, event_type: 'news' })
+        .select('id,status,tweet_text')
+        .single());
+    }
     if (draftError) throw draftError;
     draft = created;
     console.log(`تم إنشاء مسودة ${draft.id} (${final.kind === 'thread' ? `ثريد من ${final.parts.length} تغريدات` : 'منشور واحد'}):\n${final.recordText}`);

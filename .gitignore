@@ -23,3 +23,5 @@ current_*.png
 current_*.json
 _cdp_shot.js
 _static_server.js
+_render_asset.js
+_debug_*.js

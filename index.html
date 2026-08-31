@@ -1573,6 +1573,39 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
             <a class="az-footer-support" href="mailto:azalphavision2026@gmail.com">azalphavision2026@gmail.com</a>
         </nav>
     </footer>
+
+    <div id="iosInstallModal" class="modal-overlay ios-install-overlay" aria-hidden="true">
+        <div class="modal-box ios-install-modal" role="dialog" aria-modal="true" aria-labelledby="iosInstallTitle">
+            <div class="ios-install-head">
+                <span class="ios-install-badge">📲 تثبيت مجاني</span>
+                <button class="btn-modal btn-modal-cancel" type="button" onclick="closeIosInstallGuide()">إغلاق</button>
+            </div>
+            <h2 id="iosInstallTitle">ثبّت AZ Alpha Vision على شاشتك الرئيسية</h2>
+            <p class="ios-install-sub">لا حاجة لأي متجر تطبيقات — ثبّت المنصة كتطبيق مستقل وبأيقونة رسمية على آيفون خلال ثوانٍ ومجاناً 100%.</p>
+            <ol class="ios-install-steps">
+                <li>
+                    <span class="ios-step-num">1</span>
+                    <span class="ios-step-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></span>
+                    <span class="ios-step-text">افتح المنصة من متصفح <b>Safari</b>، ثم اضغط زر <b>المشاركة (Share)</b> الظاهر أسفل الشاشة أو بجانب شريط العنوان.</span>
+                </li>
+                <li>
+                    <span class="ios-step-num">2</span>
+                    <span class="ios-step-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+                    <span class="ios-step-text">مرّر القائمة لأسفل واختر <b>"إضافة إلى الشاشة الرئيسية"</b> (Add to Home Screen).</span>
+                </li>
+                <li>
+                    <span class="ios-step-num">3</span>
+                    <span class="ios-step-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    <span class="ios-step-text">اضغط <b>"إضافة"</b> في الأعلى — ستظهر أيقونة AZ Alpha Vision الرسمية على شاشتك الرئيسية كتطبيق مستقل فوراً.</span>
+                </li>
+            </ol>
+            <label class="ios-install-dismiss"><input type="checkbox" id="iosInstallDontShow"> لا تُظهر هذه النافذة مرة أخرى</label>
+        </div>
+    </div>
+    <button id="iosInstallReopenBtn" class="ios-install-reopen" type="button" onclick="openIosInstallGuide()" title="طريقة التثبيت على آيفون" aria-label="طريقة التثبيت على آيفون" hidden>
+        <svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+    </button>
+
     <style id="az-premium-financial-redesign">
       :root{--bg:#f7f9fc;--surface:#fff;--surface-soft:#f9fafb;--ink:#172033;--muted:#667085;--line:#e4e7ec;--navy:#173b70;--navy-ink:#102a55;--positive:#12b76a;--negative:#f04438;--warning:#f79009;--info:#2e90fa;--shadow:0 8px 24px rgba(16,42,85,.06);--font-body:'IBM Plex Sans Arabic',Arial,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,monospace}
       html,body{background:var(--bg)!important;color:var(--ink)!important}#authScreen{background:var(--bg)!important}#authScreen .auth-card{border:1px solid var(--line)!important;border-radius:14px!important;background:#fff!important;box-shadow:0 14px 36px rgba(16,42,85,.08)!important;color:var(--ink)!important}#authScreen .logo-mark{background:var(--navy)!important;color:#fff!important;border:0!important;box-shadow:none!important}#authScreen .logo-title,#authScreen h2{color:var(--ink)!important}#authScreen h2 span{color:var(--navy)!important}#authScreen .logo-tag,#authScreen .auth-link{color:var(--muted)!important}#authScreen .input-wrap{border:1px solid var(--line)!important;border-radius:8px!important;background:#fff!important}#authScreen .input-wrap input{color:var(--ink)!important}#authScreen .btn-primary{min-height:42px!important;border-radius:8px!important;background:var(--navy)!important;color:#fff!important;box-shadow:none!important}#authScreen .btn-primary[style*="linear-gradient"]{background:var(--navy)!important}#authScreen .auth-link span{color:var(--navy)!important}.app-container{display:grid!important;grid-template-columns:256px minmax(0,1fr)!important;min-height:100vh!important;background:var(--bg)!important;direction:rtl}.main{min-width:0!important;background:var(--bg)!important}.sidebar{position:sticky!important;top:0!important;align-self:start!important;width:auto!important;height:100vh!important;overflow-y:auto!important;box-sizing:border-box!important;padding:22px 14px!important;background:var(--surface)!important;border:0!important;border-left:1px solid var(--line)!important;box-shadow:none!important}.premium-brand{display:flex;align-items:center;gap:10px;padding:0 8px 24px}.premium-brand .logo-mark{width:38px!important;height:38px!important;display:grid!important;place-items:center!important;border-radius:11px!important;background:var(--navy)!important;color:#fff!important;font:700 15px/1 var(--font-mono)!important;letter-spacing:-1px}.premium-brand strong{display:block;color:var(--ink);font-size:15px;font-weight:700}.premium-brand span{display:block;margin-top:2px;color:var(--muted);font-size:10px}.premium-nav-label{padding:0 10px 8px;color:#98a2b3;font-size:10px;font-weight:700;letter-spacing:.08em}.sidebar .tabs-wrap{display:flex!important;flex-direction:column!important;gap:3px!important;padding:0!important;background:transparent!important;border:0!important;overflow:visible!important}.sidebar .tab-btn{display:flex!important;align-items:center!important;justify-content:flex-start!important;width:100%!important;min-height:42px!important;padding:10px 11px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:#667085!important;font-size:13px!important;font-weight:600!important;text-align:right!important}.sidebar .tab-btn:before{content:'';width:3px;height:18px;border-radius:3px;background:transparent;transition:.18s ease-out}.sidebar .tab-btn .tab-icon{width:20px!important;height:20px!important;color:currentColor!important}.sidebar .tab-btn .tab-icon svg{width:20px!important;height:20px!important;stroke-width:1.8!important}.sidebar .tab-btn:hover{background:#f2f4f7!important;color:var(--navy)!important;transform:none!important}.sidebar .tab-btn.active{border:0!important;border-radius:9px!important;background:#eaf1fb!important;color:var(--navy)!important;box-shadow:none!important}.sidebar .tab-btn.active:before{background:var(--navy)}.sidebar .tab-btn.admin{margin-top:8px!important;color:#b54708!important;border-top:1px solid var(--line)!important;border-radius:0!important;padding-top:16px!important}.premium-watch-header{display:flex!important;justify-content:space-between!important;align-items:center!important;margin:22px 4px 6px!important;padding:14px 4px 7px!important;border-top:1px solid var(--line)!important}.sidebar-title{font-size:12px!important;font-weight:700!important;letter-spacing:0!important;color:var(--ink)!important}.trial-pill{background:#fff7ed!important;border:1px solid #fed7aa!important;color:#b54708!important;border-radius:999px!important;font-size:10px!important}.add-stock-form{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;padding:0 4px 12px!important;border:0!important}.add-stock-form input{min-height:38px!important;border:1px solid var(--line)!important;background:#fff!important;border-radius:8px!important;color:var(--ink)!important;font-size:11px!important}.add-stock-form .btn-add{grid-column:span 2!important;min-height:38px!important;border-radius:8px!important;background:var(--navy)!important;color:#fff!important;font-size:12px!important}.add-stock-form .btn-add:before{display:none!important}.watchlist-scroll{padding:0 4px!important;max-height:250px!important}.watch-item{background:transparent!important;border:0!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;padding:10px 3px!important}.watch-item:before{display:none!important}.sidebar-global-stats{display:none!important}
@@ -1821,6 +1854,27 @@ html[data-theme="light"] .switch-control input:checked+span{background:#2f7a6d!i
 html[data-theme="light"] .switch-control span:before{background:#fff!important}
 html[data-theme="light"] .icon-btn{background:#f7f4ee!important;border-color:#e4ddd0!important;color:#5c6b78!important}
 html[data-theme="light"] .icon-btn:hover{background:rgba(47,122,109,.08)!important;color:#2f7a6d!important;border-color:#2f7a6d!important}
+</style>
+<style id="az-ios-install-guide">
+.ios-install-modal{max-width:420px;width:min(420px,calc(100vw - 28px));padding:26px}
+.ios-install-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.ios-install-badge{padding:5px 11px;border-radius:999px;background:rgba(107,216,208,.12);color:var(--accent-cyan);font:700 11px var(--font-mono);letter-spacing:.02em}
+.ios-install-modal h2{margin:0 0 8px;font-size:18px;line-height:1.4}
+.ios-install-sub{margin:0 0 18px;color:var(--text-muted);font-size:12.5px;line-height:1.8}
+.ios-install-steps{display:flex;flex-direction:column;gap:14px;margin:0 0 16px;padding:0;list-style:none}
+.ios-install-steps li{display:flex;align-items:flex-start;gap:12px}
+.ios-step-num{flex:0 0 26px;width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:var(--accent-cyan);color:#07121f;font:700 12px var(--font-mono)}
+.ios-step-icon{flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:rgba(107,216,208,.1);color:var(--accent-cyan)}
+.ios-step-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ios-step-text{flex:1;padding-top:4px;font-size:12.5px;line-height:1.85;color:var(--text)}
+.ios-install-dismiss{display:flex;align-items:center;gap:8px;padding-top:12px;border-top:1px solid var(--border);color:var(--text-muted);font-size:11.5px;cursor:pointer}
+.ios-install-reopen{position:fixed;left:22px;bottom:82px;z-index:39;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--surface,#101820);border:1px solid rgba(107,216,208,.5);color:var(--accent-cyan);box-shadow:0 10px 26px rgba(0,0,0,.32);cursor:pointer}
+.ios-install-reopen svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:760px){.ios-install-reopen{left:14px;bottom:78px;width:40px;height:40px}}
+html[data-theme="light"] .ios-step-num{background:#2f7a6d!important;color:#fff!important}
+html[data-theme="light"] .ios-step-icon{background:rgba(47,122,109,.1)!important;color:#2f7a6d!important}
+html[data-theme="light"] .ios-install-badge{background:rgba(47,122,109,.1)!important;color:#2f7a6d!important}
+html[data-theme="light"] .ios-install-reopen{background:#fff!important;border-color:#2f7a6d!important;color:#2f7a6d!important}
 </style>
 <style id="az-core-vars-light-theme-fix">
 html[data-theme="light"]{

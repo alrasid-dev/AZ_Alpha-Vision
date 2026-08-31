@@ -1,8 +1,10 @@
 require('dotenv').config();
-const { getNextEvent, getDb } = require('./lib/events');
+const { getNextEvent, getTrendNewsEvent, getDb } = require('./lib/events');
 const { generateEventPost } = require('./lib/generateEventPost');
-const { postTweet } = require('./lib/postToX');
+const { postTweet, postThread } = require('./lib/postToX');
 const { generateImage } = require('./lib/generateImage');
+const { pickStyle, smartHashtags } = require('./lib/contentStyles');
+const { isPeakHour, nextPeakWindowLabel } = require('./lib/scheduler');
 const themes = require('./themes');
 
 function dayKey(date = new Date()) {
@@ -49,35 +51,16 @@ async function quota(db) {
   const yesterday = dayKey(new Date(Date.now() - 86400000));
   const { data: rows, error } = await db
     .from('marketing_posts')
-    .select('created_at,status')
+    .select('created_at,status,content_style')
     .eq('status', 'posted')
     .gte('created_at', new Date(Date.now() - 3 * 86400000).toISOString());
   if (error) throw error;
   const postedToday = (rows || []).filter((r) => dayKey(new Date(r.created_at)) === today).length;
   const postedYesterday = (rows || []).filter((r) => dayKey(new Date(r.created_at)) === yesterday).length;
   const carry = Math.min(6, Math.max(0, 12 - postedYesterday));
-  return { postedToday, limit: 12 + carry, remaining: Math.max(0, 12 + carry - postedToday) };
-}
-
-function hashtagForSymbol(symbol) {
-  const clean = String(symbol || '')
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]/g, '');
-  return clean && clean.length <= 15 ? `#${clean}` : null;
-}
-
-function contextualHashtags(event) {
-  const symbolTag = hashtagForSymbol(event.symbol);
-  const context =
-    event.eventType === 'news'
-      ? ['#أخبار_الأسواق', '#تحليل_فني']
-      : event.eventType === 'earnings'
-        ? ['#نتائج_الشركات', '#أسواق_المال']
-        : event.eventType === 'trade'
-          ? ['#محاكاة_تداول', '#تعلم_التداول']
-          : ['#تعلم_التداول', '#AZAlphaVision'];
-  return [...new Set([symbolTag, ...context].filter(Boolean))].slice(0, 3).join(' ');
+  const sortedRecent = (rows || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const lastStyle = sortedRecent[0]?.content_style || null;
+  return { postedToday, limit: 12 + carry, remaining: Math.max(0, 12 + carry - postedToday), lastStyle };
 }
 
 function registrationUrl(event) {
@@ -86,9 +69,11 @@ function registrationUrl(event) {
       ? 'earnings'
       : event.eventType === 'news'
         ? 'news'
-        : event.eventType === 'trade'
-          ? 'simulator'
-          : 'education';
+        : event.eventType === 'trend_news'
+          ? 'trend'
+          : event.eventType === 'trade'
+            ? 'simulator'
+            : 'education';
   const base = (process.env.SITE_URL || 'https://azalphavision.com').replace(/\/$/, '');
   return `${base}/?register=1&utm_source=x&utm_medium=organic&utm_campaign=${campaign}`;
 }
@@ -107,6 +92,18 @@ async function maybeImage(event) {
   }
 }
 
+/** يبني النص/الأجزاء النهائية جاهزة للنشر بحسب نوع المحتوى (نص واحد أو ثريد). */
+function buildFinalContent({ generated, event, hashtags, url }) {
+  const subscribeLine = `جرّب المحاكي التعليمي مجاناً وسجّل من هنا: ${url}${event.sourceUrl ? `\nالمصدر: ${event.sourceUrl}` : ''}`;
+  if (generated.kind === 'thread') {
+    const parts = [...generated.parts];
+    parts[parts.length - 1] = `${parts[parts.length - 1]}\n\n${hashtags}\n${subscribeLine}`;
+    return { kind: 'thread', parts, recordText: parts.join('\n---\n') };
+  }
+  const fullText = `${generated.text}\n\n${hashtags}\n${subscribeLine}`;
+  return { kind: 'single', text: fullText, recordText: fullText };
+}
+
 async function run() {
   console.log(`[${new Date().toISOString()}] بدء المشغل الموحد المرتبط ببيانات المنصة`);
   const db = getDb();
@@ -115,9 +112,16 @@ async function run() {
     console.log(`اكتملت الحصة اليومية: ${q.postedToday}/${q.limit}`);
     return;
   }
+
   const priority = await getNextEvent({ priorityOnly: true });
   let event = priority;
+
   if (!event) {
+    // خارج ساعات الذروة ولا يوجد خبر عاجل: نوفّر الحصة لأوقات التفاعل الأعلى.
+    if (!isPeakHour()) {
+      console.log(`خارج نافذة الذروة الآن؛ الانتظار حتى الساعة ${nextPeakWindowLabel()} (بتوقيت ${process.env.POSTING_TIMEZONE || 'Asia/Riyadh'})`);
+      return;
+    }
     const { data: last } = await db
       .from('marketing_posts')
       .select('created_at')
@@ -132,13 +136,22 @@ async function run() {
     event = await getNextEvent();
   }
   if (!event) {
+    event = await getTrendNewsEvent();
+    if (event) console.log(`لا يوجد حدث داخلي جديد؛ استخدام خبر ترند خارجي: ${event.payload.title}`);
+  }
+  if (!event) {
     event = fallbackEvent(db);
     console.log(`لا يوجد حدث سوقي جديد؛ محتوى تعليمي احتياطي ${event.eventKey}`);
   }
-  const text = await generateEventPost(event);
-  const hashtags = contextualHashtags(event);
+
+  const style = pickStyle({ event, postedToday: q.postedToday, lastStyle: q.lastStyle });
+  console.log(`الأسلوب المختار لهذا المنشور: ${style}`);
+
+  const generated = await generateEventPost(event, style);
+  const hashtags = smartHashtags({ event, style, dayIndex: q.postedToday });
   const url = registrationUrl(event);
-  const fullText = `${text}\n\n${hashtags}\nجرّب المحاكي التعليمي مجاناً وسجّل من هنا: ${url}${event.sourceUrl ? `\nالمصدر: ${event.sourceUrl}` : ''}`;
+  const final = buildFinalContent({ generated, event, hashtags, url });
+
   const { data: existing } = await event.db
     .from('marketing_posts')
     .select('id,status,tweet_text')
@@ -146,38 +159,54 @@ async function run() {
     .maybeSingle();
   let draft = existing;
   if (!draft) {
-    const { data: created, error: draftError } = await event.db
+    const basePayload = {
+      event_key: event.eventKey,
+      event_type: event.eventType,
+      symbol: event.symbol,
+      source_id: event.sourceId,
+      tweet_text: final.recordText,
+      source_url: event.sourceUrl || null,
+      status: 'draft',
+    };
+    let created, draftError;
+    ({ data: created, error: draftError } = await event.db
       .from('marketing_posts')
-      .insert({
-        event_key: event.eventKey,
-        event_type: event.eventType,
-        symbol: event.symbol,
-        source_id: event.sourceId,
-        tweet_text: fullText,
-        source_url: event.sourceUrl || null,
-        status: 'draft',
-      })
+      .insert({ ...basePayload, content_style: style })
       .select('id,status,tweet_text')
-      .single();
+      .single());
+    if (draftError && /content_style/i.test(draftError.message || '')) {
+      // العمود الاختياري غير موجود بعد (لم تُشغَّل ترقية الـ SQL) — نعيد المحاولة بدونه.
+      ({ data: created, error: draftError } = await event.db
+        .from('marketing_posts')
+        .insert(basePayload)
+        .select('id,status,tweet_text')
+        .single());
+    }
     if (draftError) throw draftError;
     draft = created;
-    console.log(`تم إنشاء مسودة ${draft.id}: ${fullText}`);
+    console.log(`تم إنشاء مسودة ${draft.id} (${final.kind === 'thread' ? `ثريد من ${final.parts.length} تغريدات` : 'منشور واحد'}):\n${final.recordText}`);
   } else {
     console.log(`المحتوى موجود مسبقاً ${draft.id} بحالة ${draft.status}؛ لن يُكرر`);
   }
+
   if (String(process.env.PUBLISH_MODE || 'draft').toLowerCase() !== 'publish') {
     console.log('وضع المعاينة مفعّل؛ لم يتم النشر على X');
     return;
   }
   if (draft.status === 'posted') return;
+
   const imageBuffer = await maybeImage(event);
-  const tweet = await postTweet({ text: fullText, imageBuffer });
+  const tweet =
+    final.kind === 'thread'
+      ? await postThread({ parts: final.parts, imageBuffer })
+      : await postTweet({ text: final.text, imageBuffer });
+
   const { error } = await event.db
     .from('marketing_posts')
     .update({ status: 'posted', tweet_id: tweet.data.id, posted_at: new Date().toISOString() })
     .eq('id', draft.id);
   if (error) throw error;
-  console.log('تم النشر على X:', tweet.data.id);
+  console.log('تم النشر على X:', tweet.data.id, tweet.threadIds ? `(ثريد: ${tweet.threadIds.join(', ')})` : '');
 }
 
 run()

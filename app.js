@@ -6207,6 +6207,52 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closePlatformGuide();
 });
 
+// دليل تثبيت PWA على iOS/iPadOS (بديل مجاني 100% عن Apple App Store)
+function isIosDevice() {
+  const ua = navigator.userAgent || "";
+  const isIphoneIpad = /iPad|iPhone|iPod/.test(ua);
+  const isIpadOsDesktopUa =
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  return isIphoneIpad || isIpadOsDesktopUa;
+}
+function isRunningStandalone() {
+  return (
+    window.navigator.standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+}
+function openIosInstallGuide() {
+  const modal = document.getElementById("iosInstallModal");
+  if (!modal) return;
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+}
+function closeIosInstallGuide() {
+  const modal = document.getElementById("iosInstallModal");
+  if (modal) {
+    modal.classList.remove("active");
+    modal.setAttribute("aria-hidden", "true");
+  }
+  try {
+    if (document.getElementById("iosInstallDontShow")?.checked) {
+      localStorage.setItem("az_ios_install_dismissed", "1");
+    }
+  } catch (e) {}
+}
+function initIosInstallGuide() {
+  if (!isIosDevice() || isRunningStandalone()) return;
+  const reopenBtn = document.getElementById("iosInstallReopenBtn");
+  if (reopenBtn) reopenBtn.hidden = false;
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem("az_ios_install_dismissed") === "1";
+  } catch (e) {}
+  if (!dismissed) {
+    setTimeout(openIosInstallGuide, 2200);
+  }
+}
+document.addEventListener("DOMContentLoaded", initIosInstallGuide);
+
 // ضابط أولي للرموز: لا يُقبل الرمز إلا إذا وُجد في بيانات السوق الموثوقة وله سعر موجب.
 async function isTradableMarketSymbol(symbol) {
   const s = String(symbol || "")

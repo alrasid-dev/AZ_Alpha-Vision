@@ -1,4 +1,6 @@
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { fetchTrendingHeadlines } = require('./rssFeeds');
 
 function getDb() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -88,4 +90,35 @@ async function getNextEvent({ priorityOnly = false } = {}) {
   return null;
 }
 
-module.exports = { getNextEvent, getDb };
+/**
+ * تغذية إخبارية تلقائية من خلاصات RSS مجانية (إدارة/أعمال/أسواق) عند عدم توفر
+ * حدث داخلي جديد — تجعل الحساب مصدراً موثوقاً للأخبار حتى في هدوء بيانات المنصة.
+ */
+async function getTrendNewsEvent() {
+  const db = getDb();
+  let headlines = [];
+  try {
+    headlines = await fetchTrendingHeadlines({ maxAgeHours: 12, limit: 8 });
+  } catch (err) {
+    console.warn('تعذر جلب خلاصات RSS:', err.message);
+    return null;
+  }
+  for (const headline of headlines) {
+    const hash = crypto.createHash('sha1').update(headline.link).digest('hex').slice(0, 16);
+    const eventKey = `trend:${hash}`;
+    if (await unused(db, eventKey)) {
+      return {
+        eventKey,
+        eventType: 'trend_news',
+        symbol: null,
+        sourceId: hash,
+        sourceUrl: headline.link,
+        payload: { title: headline.title, link: headline.link, tag: headline.tag },
+        db,
+      };
+    }
+  }
+  return null;
+}
+
+module.exports = { getNextEvent, getTrendNewsEvent, getDb };

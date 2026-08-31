@@ -92,15 +92,41 @@ async function maybeImage(event) {
   }
 }
 
-/** يبني النص/الأجزاء النهائية جاهزة للنشر بحسب نوع المحتوى (نص واحد أو ثريد). */
+// X تحسب أي رابط كـ 23 حرفاً بعد تقصيره عبر t.co بصرف النظر عن طوله الفعلي.
+const TWEET_CHAR_LIMIT = 280;
+const TWEET_URL_WEIGHT = 23;
+function weightedTweetLength(text) {
+  const str = String(text || '');
+  const urlPattern = /https?:\/\/\S+/g;
+  const urls = str.match(urlPattern) || [];
+  const withoutUrls = str.replace(urlPattern, '').length;
+  return withoutUrls + urls.length * TWEET_URL_WEIGHT;
+}
+/** يقلّم النص تدريجياً حتى يدخل ضمن حد تغريدة واحدة، مع الحفاظ على أي رابط كاملاً. */
+function fitToTweetLimit(text, limit = TWEET_CHAR_LIMIT) {
+  let str = String(text || '');
+  if (weightedTweetLength(str) <= limit) return str;
+  while (str.length > 1 && weightedTweetLength(str) > limit) {
+    str = str.slice(0, -1);
+  }
+  return `${str.replace(/[\s.,،؛:-]+$/, '')}…`;
+}
+
+/** يبني النص/الأجزاء النهائية جاهزة للنشر بحسب نوع المحتوى (نص واحد أو ثريد)، مع ضمان عدم تجاوز حد X. */
 function buildFinalContent({ generated, event, hashtags, url }) {
   const subscribeLine = `جرّب المحاكي التعليمي مجاناً وسجّل من هنا: ${url}${event.sourceUrl ? `\nالمصدر: ${event.sourceUrl}` : ''}`;
+  const footer = `\n\n${hashtags}\n${subscribeLine}`;
+  const footerWeight = weightedTweetLength(footer);
   if (generated.kind === 'thread') {
-    const parts = [...generated.parts];
-    parts[parts.length - 1] = `${parts[parts.length - 1]}\n\n${hashtags}\n${subscribeLine}`;
+    const parts = [...generated.parts].map((p) => fitToTweetLimit(p, TWEET_CHAR_LIMIT));
+    const lastIdx = parts.length - 1;
+    const bodyBudget = Math.max(60, TWEET_CHAR_LIMIT - footerWeight);
+    parts[lastIdx] = `${fitToTweetLimit(generated.parts[lastIdx], bodyBudget)}${footer}`;
     return { kind: 'thread', parts, recordText: parts.join('\n---\n') };
   }
-  const fullText = `${generated.text}\n\n${hashtags}\n${subscribeLine}`;
+  const bodyBudget = Math.max(60, TWEET_CHAR_LIMIT - footerWeight);
+  const body = fitToTweetLimit(generated.text, bodyBudget);
+  const fullText = `${body}${footer}`;
   return { kind: 'single', text: fullText, recordText: fullText };
 }
 

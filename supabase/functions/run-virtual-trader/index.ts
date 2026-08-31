@@ -27,7 +27,11 @@ const MAX_POSITION_PCT = 0.2; // نفس VIRTUAL_MAX_POSITION_PCT في app.js
 const MAX_NEW_BUYS_PER_RUN = 3;
 const MIN_CASH_RESERVE = 200;
 const STOP_LOSS_PCT = -8;
-const TAKE_PROFIT_PCT = 20;
+// بعد تحقيق ربح 20% من سعر الدخول يتحول المركز تلقائياً إلى وقف خسارة متحرك (Trailing Stop)
+// بنسبة 7% من أعلى سعر تم بلوغه، بدل بيع فوري عند +20% فقط — لإتاحة الاستمرار في الربح
+// مع حماية جزء كبير منه إن انعكس السعر.
+const TRAILING_ACTIVATION_PCT = 20;
+const TRAILING_STOP_PCT = 7;
 
 interface PortfolioRow {
   simulation_id: string;
@@ -39,6 +43,7 @@ interface PositionRow {
   qty: number;
   entry_price: number;
   last_price: number | null;
+  peak_price: number | null;
   entry_tier: string | null;
   reason: string | null;
   entered_at: string;
@@ -171,7 +176,7 @@ Deno.serve(async (req: Request) => {
 
     // ===== 1) منطق الخروج الحقيقي على المراكز المفتوحة =====
     const soldSymbols = new Set<string>();
-    const positionsToUpdate: { symbol: string; last_price: number }[] = [];
+    const positionsToUpdate: { symbol: string; last_price: number; peak_price: number }[] = [];
     const trades: Record<string, unknown>[] = [];
     let realizedPnl = 0;
 
@@ -183,11 +188,23 @@ Deno.serve(async (req: Request) => {
       const pctChange = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
       const tech = techMap.get(sym);
 
+      // تتبّع أعلى سعر بلغه المركز منذ الدخول لحساب وقف الخسارة المتحرك.
+      const priorPeak = Number(pos.peak_price) > 0 ? Number(pos.peak_price) : entryPrice;
+      const peakPrice = Math.max(priorPeak, currentPrice, entryPrice);
+      const peakPct = entryPrice > 0 ? ((peakPrice - entryPrice) / entryPrice) * 100 : 0;
+      const trailingArmed = peakPct >= TRAILING_ACTIVATION_PCT;
+      const trailingStopPrice = peakPrice * (1 - TRAILING_STOP_PCT / 100);
+
       let exitReason = "";
-      if (pctChange <= STOP_LOSS_PCT) exitReason = `وقف خسارة تلقائي عند ${pctChange.toFixed(1)}%`;
-      else if (pctChange >= TAKE_PROFIT_PCT) exitReason = `جني أرباح تلقائي عند +${pctChange.toFixed(1)}%`;
-      else if (tech?.rsi14 != null && tech.rsi14 >= 75) exitReason = "تشبع شرائي حاد (RSI ≥ 75) — إشارة خروج فنية";
-      else if (tech?.sma50 != null && currentPrice < tech.sma50 * 0.97) exitReason = "كسر المتوسط المتحرك 50 يوم — إشارة خروج فنية";
+      if (pctChange <= STOP_LOSS_PCT) {
+        exitReason = `وقف خسارة تلقائي عند ${pctChange.toFixed(1)}%`;
+      } else if (trailingArmed && currentPrice <= trailingStopPrice) {
+        exitReason = `وقف خسارة متحرك (Trailing Stop) — تحقق ربح ${peakPct.toFixed(1)}% ثم تراجع ${TRAILING_STOP_PCT}% من القمة عند $${peakPrice.toFixed(2)}`;
+      } else if (!trailingArmed && tech?.rsi14 != null && tech.rsi14 >= 75) {
+        exitReason = "تشبع شرائي حاد (RSI ≥ 75) — إشارة خروج فنية";
+      } else if (!trailingArmed && tech?.sma50 != null && currentPrice < tech.sma50 * 0.97) {
+        exitReason = "كسر المتوسط المتحرك 50 يوم — إشارة خروج فنية";
+      }
 
       if (exitReason) {
         const pnl = (currentPrice - entryPrice) * qty;
@@ -206,7 +223,7 @@ Deno.serve(async (req: Request) => {
           reason: exitReason,
         });
       } else {
-        positionsToUpdate.push({ symbol: sym, last_price: currentPrice });
+        positionsToUpdate.push({ symbol: sym, last_price: currentPrice, peak_price: peakPrice });
       }
     }
 
@@ -223,7 +240,7 @@ Deno.serve(async (req: Request) => {
         SUPABASE_URL,
         SERVICE_ROLE_KEY,
         `shared_virtual_positions?simulation_id=eq.${SIMULATION_ID}&symbol=eq.${encodeURIComponent(upd.symbol)}`,
-        { last_price: upd.last_price, updated_at: new Date().toISOString() },
+        { last_price: upd.last_price, peak_price: upd.peak_price, updated_at: new Date().toISOString() },
       );
     }
 
@@ -262,6 +279,7 @@ Deno.serve(async (req: Request) => {
         qty,
         entry_price: price,
         last_price: price,
+        peak_price: price,
         entry_tier: candidate.entry_tier,
         reason: `دخول تلقائي (${candidate.preset}) — ${candidate.entry_tier} بقوة ${candidate.entry_score}/4`,
         entered_at: new Date().toISOString(),

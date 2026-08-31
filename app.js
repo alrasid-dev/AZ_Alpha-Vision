@@ -4890,7 +4890,7 @@ function renderScreener() {
           : d.ltDebt < 0.5
             ? "text-gold"
             : "text-red";
-    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${d.symbol}',${d.price},'')">🐦</button></div></td></tr>`;
+    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button></div></td></tr>`;
   });
 }
 
@@ -5545,7 +5545,7 @@ async function runWeeklyScan() {
           : "اكتمل الفحص — لا توجد إشارة دخول من القوالب",
       );
       tb.innerHTML =
-        '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
     }
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
@@ -5597,8 +5597,7 @@ async function runWeeklyScan() {
       const gradeBadgeClass = `badge-${String(assessment.dataGrade || "D").toLowerCase()}`;
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason} · قوة البيانات: ${assessment.dataGrade}`;
-      const shareLabel = watchOnly ? "للمتابعة" : "ترشيح";
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td><div class="rating-cell"><strong class="${ratingClass}">${assessment.score.toFixed(1)}/10</strong><span class="badge ${gradeBadgeClass} rating-grade-badge" title="قوة الفرضية بحسب توفر البيانات">${assessment.dataGrade}</span></div><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${s.symbol}',${Number(s.price) || 0},'${shareLabel}')">🐦</button></div></td></tr>`;
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td><div class="rating-cell"><strong class="${ratingClass}">${assessment.score.toFixed(1)}/10</strong><span class="badge ${gradeBadgeClass} rating-grade-badge" title="قوة الفرضية بحسب توفر البيانات">${assessment.dataGrade}</span></div><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5606,7 +5605,7 @@ async function runWeeklyScan() {
     if (watchTb) {
       if (!watch.length)
         watchTb.innerHTML =
-          '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
+          '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
       else
         watch.forEach((s, i) => {
           watchTb.innerHTML += renderRow(s, i, true);
@@ -5618,11 +5617,11 @@ async function runWeeklyScan() {
     updateWeeklyScanMeta(
       "تعذر التحديث الآن — سيتم استخدام آخر نتائج موثوقة عند المحاولة التالية",
     );
-    tb.innerHTML =
-      '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
+      tb.innerHTML =
+        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
     if (watchTb)
       watchTb.innerHTML =
-        '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
+        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
   }
 }
 
@@ -6005,11 +6004,11 @@ function renderSignalsTable(stocks) {
       const entryPlan = weeklyEntryPlan(s);
       const entryBadge =
         s.entry_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0
-          ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">إشارة دخول تعليمية عند $${Number(s.price).toFixed(2)} — ${s.entry_tier} (${s.entry_score}/4)</span><div class="text-muted" style="margin-top:4px;font-size:11px;">المقترح: $${entryPlan.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan.label)}<br>${sigEsc(entryPlan.reason)}</div>`
+          ? `<span class="badge ${SIG_TIER_COLOR[s.entry_tier]}">${sigEsc(s.entry_tier)} (${Number(s.entry_score)}/4)</span><div class="text-muted signal-entry-hint">$${Number(s.price).toFixed(2)} → $${entryPlan.price?.toFixed(2) || "—"}</div>`
           : '<span class="text-muted">—</span>';
       const exitBadge =
         s.exit_tier && Number.isFinite(Number(s.price)) && Number(s.price) > 0
-          ? `<span class="badge ${SIG_TIER_COLOR_EXIT[s.exit_tier]}">إشارة خروج تعليمية عند $${Number(s.price).toFixed(2)} — ${s.exit_tier} (${s.exit_score}/4)</span>`
+          ? `<span class="badge ${SIG_TIER_COLOR_EXIT[s.exit_tier]}">${sigEsc(s.exit_tier)} (${Number(s.exit_score)}/4)</span>`
           : '<span class="text-muted">—</span>';
       return `<tr>
             <td class="sym">${sigEsc(s.symbol)}</td>
@@ -6017,7 +6016,7 @@ function renderSignalsTable(stocks) {
             <td class="font-mono">${s.pe != null ? Number(s.pe).toFixed(1) : "—"}</td>
             <td>${entryBadge}<div style="margin-top:4px;">${sigDots(s.entry_signals, true)}</div></td>
             <td>${exitBadge}<div style="margin-top:4px;">${sigDots(s.exit_signals, false)}</div></td>
-            <td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="عرض الرسم البياني" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${sigEsc(s.symbol)}',${Number(s.price) || 0},'إشارة')">🐦</button></div></td>
+            <td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="عرض الرسم البياني" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button></div></td>
         </tr>`;
     })
     .join("");
@@ -6047,7 +6046,7 @@ function renderSignalAlerts() {
             <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString("ar-SA")}</td>
             <td class="sym">${sigEsc(a.symbol)}</td>
             <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? "إشارة دخول تعليمية" : "إشارة خروج تعليمية"} ${a.tier} (${a.score}/4)</span></td>
+            <td><span class="badge ${badge}">${isEntry ? "دخول" : "خروج"} ${sigEsc(a.tier)} (${a.score}/4)</span></td>
             <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan?.label || "")}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
         </tr>`;
   }).join("");

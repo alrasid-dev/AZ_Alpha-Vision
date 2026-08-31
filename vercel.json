@@ -21,7 +21,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!index\\.html|app\\.js|sw\\.js|manifest\\.json|icon\\.svg|icon-192\\.png|icon-512\\.png|brand-assets/(.*)).*)",
+      "source": "/:path*",
       "destination": "/index.html"
     }
   ]

@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { getNextEvent, getTrendNewsEvent, getDb } = require('./lib/events');
 const { generateEventPost } = require('./lib/generateEventPost');
-const { postTweet, postThread } = require('./lib/postToX');
+const { postTweet, postThread, hasXCredentials } = require('./lib/postToX');
 const { generateImage } = require('./lib/generateImage');
 const { pickStyle, smartHashtags } = require('./lib/contentStyles');
 const { isPeakHour, nextPeakWindowLabel } = require('./lib/scheduler');
@@ -49,12 +49,26 @@ function fallbackEvent(db) {
 async function quota(db) {
   const today = dayKey();
   const yesterday = dayKey(new Date(Date.now() - 86400000));
-  const { data: rows, error } = await db
+  let rows, error;
+  ({ data: rows, error } = await db
     .from('marketing_posts')
     .select('created_at,status,content_style')
     .eq('status', 'posted')
-    .gte('created_at', new Date(Date.now() - 3 * 86400000).toISOString());
-  if (error) throw error;
+    .gte('created_at', new Date(Date.now() - 3 * 86400000).toISOString()));
+  if (error && /content_style/i.test(error.message || '')) {
+    // العمود الاختياري غير موجود بعد (لم تُشغَّل ترقية الـ SQL) — نعيد المحاولة بدونه
+    // بدل فشل كل تشغيلة Cron بالكامل بسبب عمود اختياري واحد.
+    console.warn('عمود content_style غير موجود بعد؛ إعادة المحاولة بدونه (شغّل marketing_style_migration.sql لاحقاً).');
+    ({ data: rows, error } = await db
+      .from('marketing_posts')
+      .select('created_at,status')
+      .eq('status', 'posted')
+      .gte('created_at', new Date(Date.now() - 3 * 86400000).toISOString()));
+  }
+  if (error) {
+    console.warn('تعذر قراءة حصة المنشورات (يتابع التشغيل بحد افتراضي):', error.message);
+    return { postedToday: 0, limit: 12, remaining: 12, lastStyle: null };
+  }
   const postedToday = (rows || []).filter((r) => dayKey(new Date(r.created_at)) === today).length;
   const postedYesterday = (rows || []).filter((r) => dayKey(new Date(r.created_at)) === yesterday).length;
   const carry = Math.min(6, Math.max(0, 12 - postedYesterday));
@@ -73,7 +87,9 @@ function registrationUrl(event) {
           ? 'trend'
           : event.eventType === 'trade'
             ? 'simulator'
-            : 'education';
+            : event.eventType === 'milestone'
+              ? 'simulator_win'
+              : 'education';
   const base = (process.env.SITE_URL || 'https://azalphavision.com').replace(/\/$/, '');
   return `${base}/?register=1&utm_source=x&utm_medium=organic&utm_campaign=${campaign}`;
 }
@@ -134,13 +150,15 @@ async function run() {
   console.log(`[${new Date().toISOString()}] بدء المشغل الموحد المرتبط ببيانات المنصة`);
   const db = getDb();
   const q = await quota(db);
-  if (q.remaining <= 0) {
-    console.log(`اكتملت الحصة اليومية: ${q.postedToday}/${q.limit}`);
-    return;
-  }
 
   const priority = await getNextEvent({ priorityOnly: true });
   let event = priority;
+  const isMilestone = event?.eventType === 'milestone';
+
+  if (!isMilestone && q.remaining <= 0) {
+    console.log(`اكتملت الحصة اليومية: ${q.postedToday}/${q.limit}`);
+    return;
+  }
 
   if (!event) {
     // خارج ساعات الذروة ولا يوجد خبر عاجل: نوفّر الحصة لأوقات التفاعل الأعلى.
@@ -169,6 +187,7 @@ async function run() {
     event = fallbackEvent(db);
     console.log(`لا يوجد حدث سوقي جديد؛ محتوى تعليمي احتياطي ${event.eventKey}`);
   }
+  if (isMilestone) console.log(`أولوية فورية: ربح موثّق عبر الوقف المتحرك على ${event.symbol}`);
 
   const style = pickStyle({ event, postedToday: q.postedToday, lastStyle: q.lastStyle });
   console.log(`الأسلوب المختار لهذا المنشور: ${style}`);
@@ -217,6 +236,15 @@ async function run() {
         .select('id,status,tweet_text')
         .single());
     }
+    if (draftError && /event_type|check constraint/i.test(draftError.message || '') && basePayload.event_type === 'milestone') {
+      // نفس الاحتياط أعلاه لكن لأحداث "الربح الموثّق عبر الوقف المتحرك" — نخزّنها كـ"trade"
+      // المتوافقة مع أي قيد قديم لم تُشغَّل ترقيته بعد، دون فقدان المنشور نفسه.
+      ({ data: created, error: draftError } = await event.db
+        .from('marketing_posts')
+        .insert({ ...basePayload, event_type: 'trade' })
+        .select('id,status,tweet_text')
+        .single());
+    }
     if (draftError) throw draftError;
     draft = created;
     console.log(`تم إنشاء مسودة ${draft.id} (${final.kind === 'thread' ? `ثريد من ${final.parts.length} تغريدات` : 'منشور واحد'}):\n${final.recordText}`);
@@ -230,23 +258,40 @@ async function run() {
   }
   if (draft.status === 'posted') return;
 
-  const imageBuffer = await maybeImage(event);
-  const tweet =
-    final.kind === 'thread'
-      ? await postThread({ parts: final.parts, imageBuffer })
-      : await postTweet({ text: final.text, imageBuffer });
+  if (!hasXCredentials()) {
+    console.warn('مفاتيح X غير مكتملة في Render؛ أُبقيت المسودة دون نشر حتى تُضاف المفاتيح (الـ Cron يبقى أخضر).');
+    return;
+  }
+
+  let tweet;
+  try {
+    const imageBuffer = await maybeImage(event);
+    tweet =
+      final.kind === 'thread'
+        ? await postThread({ parts: final.parts, imageBuffer })
+        : await postTweet({ text: final.text, imageBuffer });
+  } catch (err) {
+    console.error('تعذر النشر على X (المسودة محفوظة ويُعاد المحاولة في التشغيل التالي):', err?.data || err?.message || err);
+    return;
+  }
 
   const { error } = await event.db
     .from('marketing_posts')
     .update({ status: 'posted', tweet_id: tweet.data.id, posted_at: new Date().toISOString() })
     .eq('id', draft.id);
-  if (error) throw error;
+  if (error) {
+    console.error('نُشرت التغريدة لكن تعذر تحديث حالة المسودة:', error.message);
+    return;
+  }
   console.log('تم النشر على X:', tweet.data.id, tweet.threadIds ? `(ثريد: ${tweet.threadIds.join(', ')})` : '');
 }
 
 run()
   .then(() => process.exit(0))
-  .catch(async (err) => {
+  .catch((err) => {
     console.error('فشل المشغل الموحد:', err?.response?.data || err.message || err);
-    process.exit(1);
+    const msg = String(err?.message || err || '');
+    // فقط غياب قاعدة البيانات يمنع أي عمل مفيد — بقية الأخطاء تُسجَّل ويخرج التشغيل بنجاح
+    // حتى لا يبقى Cron أحمر بسبب عمود اختياري أو مفتاح Gemini/X.
+    process.exit(/SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/.test(msg) ? 1 : 0);
   });

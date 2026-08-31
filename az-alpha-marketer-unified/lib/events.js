@@ -28,12 +28,43 @@ async function getNextEvent({ priorityOnly = false } = {}) {
     db.from('platform_tasks').select('id,title,due_at,symbol,notes').gte('due_at', now.toISOString()).lte('due_at', new Date(now.getTime() + 14 * 86400000).toISOString()).order('due_at', { ascending: true }).limit(20),
   ]);
 
-  for (const result of [newsRes, tradesRes, earningsRes]) {
-    if (result.error && !/does not exist/i.test(result.error.message)) throw result.error;
+  for (const result of [newsRes, tradesRes, earningsRes, tasksRes]) {
+    if (result.error) {
+      const msg = String(result.error.message || '');
+      if (/does not exist|schema cache|could not find/i.test(msg)) {
+        console.warn('جدول اختياري غير متاح بعد؛ تخطيه:', msg);
+      } else {
+        console.warn('تعذر قراءة مصدر أحداث (لا يوقف التشغيل):', msg);
+      }
+    }
   }
 
   const candidates = [];
   const recentCutoff = Date.now() - 15 * 60 * 1000;
+
+  // ربح موثّق عبر الوقف المتحرك يُعالَج أولاً وبلا حد زمني — حتى لو كان الـ Cron متوقفاً
+  // ساعة كاملة، المنشور يُلتقط في أول تشغيل ناجح ولا يضيع في طابور الأخبار.
+  for (const t of tradesRes.data || []) {
+    const isTrailingWin =
+      t.action === 'sell' && Number(t.pnl) > 0 && /trailing stop|متحرك/i.test(String(t.reason || ''));
+    if (isTrailingWin) {
+      candidates.push({
+        eventKey: `trade:${t.id}`,
+        eventType: 'milestone',
+        symbol: t.symbol,
+        sourceId: String(t.id),
+        payload: t,
+      });
+    } else if (!priorityOnly) {
+      candidates.push({
+        eventKey: `trade:${t.id}`,
+        eventType: 'trade',
+        symbol: t.symbol,
+        sourceId: String(t.id),
+        payload: t,
+      });
+    }
+  }
 
   for (const n of newsRes.data || []) {
     const isRecent = new Date(n.published_at).getTime() >= recentCutoff;
@@ -50,15 +81,6 @@ async function getNextEvent({ priorityOnly = false } = {}) {
   }
 
   if (!priorityOnly) {
-    for (const t of tradesRes.data || []) {
-      candidates.push({
-        eventKey: `trade:${t.id}`,
-        eventType: 'trade',
-        symbol: t.symbol,
-        sourceId: String(t.id),
-        payload: t,
-      });
-    }
     for (const e of earningsRes.data || []) {
       candidates.push({
         eventKey: `earnings:${e.id}`,

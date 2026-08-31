@@ -40,6 +40,11 @@ function buildPrompt(event) {
     const days = Math.ceil((new Date(p.event_date) - Date.now()) / 86400000);
     return `موعد أرباح متوقع للسهم ${event.symbol} بعد نحو ${days} يوماً. اذكر التقويم كمعلومة تعليمية للمتابعة داخل المنصة دون توقع النتيجة.`;
   }
+  if (event.eventType === 'milestone') {
+    const gainMatch = /ربح\s+([\d.]+)%/.exec(String(p.reason || ''));
+    const gainPct = gainMatch ? gainMatch[1] : '20';
+    return `حدث محاكاة تعليمي مميز: صفقة افتراضية على السهم ${event.symbol} حققت ربحاً موثقاً بنسبة ${gainPct}% تقريباً، ثم أُغلقت تلقائياً عبر أمر وقف الخسارة المتحرك (Trailing Stop 7%) لحماية جزء كبير من المكسب بدل بيعه دفعة واحدة أو فقدانه بالكامل عند الانعكاس. اكتب منشوراً تحفيزياً قصيراً يبرز قيمة الانضباط في إدارة الصفقة (تحديد هدف ربح + حماية المكاسب تلقائياً)، دون وعد بنتيجة مستقبلية، مع تذكير أنها محاكاة تعليمية افتراضية بالكامل ولا تمثل تنفيذاً حقيقياً.`;
+  }
   return `حدث محاكاة افتراضي: ${p.action === 'buy' ? 'دخول تعليمي' : 'خروج تعليمي'} للسهم ${event.symbol}، الكمية ${p.qty}، السعر ${p.price}، السبب ${p.reason || 'إشارة مؤهلة'}. أكّد أنه محاكٍ وليس توصية.`;
 }
 
@@ -63,15 +68,43 @@ function cleanText(text, maxLen) {
   return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen - 3)}...` : cleaned;
 }
 
+function localFallbackPost(event) {
+  const p = event.payload || {};
+  const symbol = event.symbol ? `$${String(event.symbol).toUpperCase()}` : '';
+  if (event.eventType === 'milestone') {
+    return {
+      kind: 'single',
+      text: `المحاكي التعليمي أغلق ${symbol} بعد ربح موثّق ثم حماية المكسب بوقف متحرك 7٪. محاكاة فقط وليست توصية.`.trim(),
+    };
+  }
+  if (event.eventType === 'trade') {
+    const action = p.action === 'buy' ? 'دخول تعليمي' : 'خروج تعليمي';
+    return { kind: 'single', text: `${action} افتراضي على ${symbol} داخل محاكي AZ Alpha Vision — للتعلم وليس للتنفيذ الحقيقي.` };
+  }
+  if (event.eventType === 'news' || event.eventType === 'trend_news') {
+    const title = String(p.title || 'مستجد في الأسواق').slice(0, 80);
+    return { kind: 'single', text: `${title} — نقرأ الخبر داخل المنصة التعليمية دون أي توصية مالية.` };
+  }
+  if (event.eventType === 'earnings') {
+    return { kind: 'single', text: `تقويم أرباح ${symbol} قريب. تابع الموعد داخل المحاكي التعليمي دون توقع النتيجة.` };
+  }
+  return { kind: 'single', text: 'الماسح والمحاكي التعليمي يعملان في الخلفية: إشارة، خطة، ثم مراجعة. بلا توصية وبلا تنفيذ حقيقي.' };
+}
+
 /**
  * يولّد منشوراً بأسلوب واحد من ثلاثة: soft_sell (نص واحد)، meme_trend (نص واحد بنبرة تفاعلية)،
  * أو thread (مصفوفة من 3 تغريدات متتابعة). يعيد { kind: 'single'|'thread', text|parts }.
  */
 async function generateEventPost(event, style = 'soft_sell') {
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn('GEMINI_API_KEY غير معرّف؛ استخدام صياغة احتياطية محلية حتى لا يتوقف الـ Cron.');
+    return localFallbackPost(event);
+  }
   const basePrompt = buildPrompt(event);
   const recent = await getRecentTweets(event.db, 6);
   const recentBlock = recent.length ? `\nتجنب تكرار هذه الصياغات:\n${recent.slice(0, 6).join('\n')}` : '';
 
+  try {
   if (style === 'thread') {
     const raw = await callGemini({
       system: THREAD_SYSTEM,
@@ -104,6 +137,10 @@ async function generateEventPost(event, style = 'soft_sell') {
   const maxLen = style === 'meme_trend' ? 180 : 160;
   const text = await callGemini({ system, prompt: `${basePrompt}${recentBlock}`, temperature: 0.5, maxOutputTokens: 240 });
   return { kind: 'single', text: cleanText(text, maxLen) };
+  } catch (err) {
+    console.warn('تعذر توليد النص عبر Gemini؛ استخدام صياغة احتياطية:', err?.message || err);
+    return localFallbackPost(event);
+  }
 }
 
 module.exports = { generateEventPost };

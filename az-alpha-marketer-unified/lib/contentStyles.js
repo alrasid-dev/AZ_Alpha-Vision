@@ -9,8 +9,9 @@ const STYLES = ['soft_sell', 'thread', 'meme_trend'];
 function pickStyle({ event, postedToday = 0, lastStyle = null }) {
   // ثريد تعليمي مناسب فقط للمحتوى التعليمي/الإخباري العميق، وليس لصفقات المحاكي القصيرة.
   const threadEligible = ['education', 'news', 'trend_news', 'earnings'].includes(event.eventType);
-  // ميم/تريند مناسب فقط عند وجود خبر عاجل أو ترند فعلي (وليس لصفقة أو حدث محاكي).
-  const memeEligible = ['news', 'trend_news'].includes(event.eventType);
+  // ميم/تريند مناسب لخبر عاجل أو ترند فعلي، وأيضاً لإنجاز ربح موثّق (milestone) لأنه خبر
+  // إيجابي فوري يستحق نبرة أكثر حيوية بدل الأسلوب الإداري الهادئ المعتاد.
+  const memeEligible = ['news', 'trend_news', 'milestone'].includes(event.eventType);
 
   const eligible = STYLES.filter((s) => {
     if (s === 'thread' && !threadEligible) return false;
@@ -51,7 +52,10 @@ function hashtagForSymbol(symbol) {
 function smartHashtags({ event, style, dayIndex = 0 }) {
   const symbolTag = hashtagForSymbol(event.symbol);
   let pool;
-  if (event.eventType === 'trend_news' || style === 'meme_trend') {
+  if (event.eventType === 'milestone') {
+    // ربح موثّق من المحاكي — نمزج وسوماً عربية وإنجليزية معاً لأوسع انتشار ممكن لهذا الخبر الإيجابي.
+    pool = TRENDING_HASHTAG_POOL.finance_ar.concat(TRENDING_HASHTAG_POOL.finance_en);
+  } else if (event.eventType === 'trend_news' || style === 'meme_trend') {
     pool = TRENDING_HASHTAG_POOL.finance_en.concat(TRENDING_HASHTAG_POOL.management);
   } else if (event.eventType === 'news' || event.eventType === 'earnings') {
     pool = TRENDING_HASHTAG_POOL.finance_ar;
@@ -60,8 +64,12 @@ function smartHashtags({ event, style, dayIndex = 0 }) {
   }
   const rotated = pool[dayIndex % pool.length];
   const secondary = pool[(dayIndex + 1) % pool.length];
-  const tags = [symbolTag, rotated, secondary, TRENDING_HASHTAG_POOL.brand[0]].filter(Boolean);
-  return [...new Set(tags)].slice(0, 3).join(' ');
+  // وسم الهوية #AZAlphaVision يبقى مضموناً دائماً في الناتج؛ سابقاً كان القص عند 3 وسوم
+  // يُسقطه بصمت كلما وُجد وسم رمز سهم (لأن الترتيب [رمز، موضوع1، موضوع2، هوية] يقصّه القص).
+  const topicTags = [...new Set([rotated, secondary])].filter(Boolean);
+  const tags = [symbolTag, ...topicTags].filter(Boolean).slice(0, 3);
+  if (!tags.includes(TRENDING_HASHTAG_POOL.brand[0])) tags.push(TRENDING_HASHTAG_POOL.brand[0]);
+  return [...new Set(tags)].join(' ');
 }
 
 module.exports = { STYLES, pickStyle, smartHashtags, hashtagForSymbol };

@@ -8,6 +8,8 @@ services:
     buildCommand: npm ci
     startCommand: node index.js
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: PUBLISH_MODE
         value: publish
       - key: SUPABASE_URL

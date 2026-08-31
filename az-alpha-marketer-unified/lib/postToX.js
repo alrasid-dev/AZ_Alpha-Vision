@@ -1,6 +1,18 @@
 const { TwitterApi } = require('twitter-api-v2');
 
+function hasXCredentials() {
+  return Boolean(
+    process.env.X_API_KEY &&
+      process.env.X_API_SECRET &&
+      process.env.X_ACCESS_TOKEN &&
+      process.env.X_ACCESS_TOKEN_SECRET,
+  );
+}
+
 function getClient() {
+  if (!hasXCredentials()) {
+    throw new Error('مفاتيح X/Twitter غير مكتملة في بيئة Render (X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET)');
+  }
   return new TwitterApi({
     appKey: process.env.X_API_KEY,
     appSecret: process.env.X_API_SECRET,
@@ -55,4 +67,4 @@ async function postThread({ parts, imageBuffer }) {
   return { data: { id: ids[0] }, threadIds: ids };
 }
 
-module.exports = { postTweet, postThread };
+module.exports = { postTweet, postThread, hasXCredentials };

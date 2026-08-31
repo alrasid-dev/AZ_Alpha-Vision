@@ -714,6 +714,25 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
   }
 }
 </style>
+<style id="az-stock-card-mobile-fix">
+/* Ticker-only stock rows: consistent, non-overlapping icons on mobile */
+.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap}
+.icon-btn.row-action-btn{width:30px;height:30px;border-radius:8px;font-size:14px;flex:0 0 auto}
+.icon-btn.share-x-btn{color:var(--accent-cyan,#6bd8d0);border-color:rgba(107,216,208,.3)}
+.icon-btn.share-x-btn:hover{background:rgba(107,216,208,.14);border-color:var(--accent-cyan,#6bd8d0)}
+.data-table .sym{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+@media (hover: none){.watch-item .del{opacity:.55}}
+@media (max-width: 860px){
+  .row-actions{gap:8px}
+  .icon-btn.row-action-btn{width:32px;height:32px}
+  .data-table td .badge{white-space:nowrap}
+  .weekly-table td,.data-table td{vertical-align:middle}
+}
+@media (max-width: 420px){
+  .row-actions{gap:6px}
+  .icon-btn.row-action-btn{width:28px;height:28px;font-size:13px}
+}
+</style>
 </head>
 <body>
     <div class="bg-mesh"></div>
@@ -1293,8 +1312,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     </div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
                         <table class="data-table">
-                            <thead><tr><th>الرمز</th><th>الشركة</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
-                            <tbody id="signalsTableBody"><tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
+                            <thead><tr><th>الرمز</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
+                            <tbody id="signalsTableBody"><tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
                         </table>
                     </div>
 
@@ -1328,14 +1347,14 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <div class="section-title compact-ledger-title">أفضل 7 ترشيحات <div class="line"></div></div>
                     <div class="weekly-table-wrap">
                         <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الشركة</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب الترشيح</th><th>الإشارة</th></tr></thead>
+                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب الترشيح</th><th>الإشارة</th><th></th></tr></thead>
                             <tbody id="picksTableBody"></tbody>
                         </table>
                     </div>
                     <div class="section-title compact-ledger-title">7 أسهم للمتابعة <div class="line"></div></div>
                     <div class="weekly-table-wrap">
                         <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الشركة</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب المتابعة</th><th>الحالة</th></tr></thead>
+                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب المتابعة</th><th>الحالة</th><th></th></tr></thead>
                             <tbody id="watchPicksTableBody"></tbody>
                         </table>
                     </div>

@@ -4566,6 +4566,31 @@ function quickAdd(sym, price) {
   toast(`تم تحديد ${sym} — اضغط إضافة`);
 }
 
+// ===== SHARE TO X (auto-hashtags for marketer reach) =====
+function shareStockToX(symbol, price, label) {
+  const sym = String(symbol || "")
+    .toUpperCase()
+    .trim();
+  if (!sym) return;
+  const priceNum = Number(price);
+  const priceText =
+    Number.isFinite(priceNum) && priceNum > 0
+      ? ` عند $${priceNum.toFixed(2)}`
+      : "";
+  const prefix = label ? `${label} ` : "";
+  const hashtags = [
+    `#${sym.replace(/[^A-Z0-9]/g, "")}`,
+    "#الأسهم_الأمريكية",
+    "#تحليل_فني",
+    "#StockMarket",
+    "#AZAlphaVision",
+  ].join(" ");
+  const text = `${prefix}$${sym}${priceText} — رصدها ماسح AZ Alpha Vision 📊🔍\n\n${hashtags}`;
+  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank", "noopener,noreferrer,width=600,height=520");
+  if (typeof toast === "function") toast("🐦 جاري فتح نافذة المشاركة على X");
+}
+
 // ===== SCREENER (826 stock universe — one bulk query instead of per-ticker batches) =====
 async function runScreener() {
   if (isScanning) return;
@@ -4802,7 +4827,7 @@ function renderScreener() {
           : d.ltDebt < 0.5
             ? "text-gold"
             : "text-red";
-    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div><div class="sym-sub">${escapeHtml(d.company || "")}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><span style="color:var(--accent-cyan);cursor:pointer;font-size:16px;" onclick="quickAdd('${d.symbol}',${d.price})">+</span></td></tr>`;
+    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${d.symbol}',${d.price},'')">🐦</button></div></td></tr>`;
   });
 }
 
@@ -5419,7 +5444,7 @@ async function runWeeklyScan() {
           : "اكتمل الفحص — لا توجد إشارة دخول من القوالب",
       );
       tb.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
     }
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
@@ -5468,10 +5493,10 @@ async function runWeeklyScan() {
           : assessment.score >= 62
             ? "text-cyan"
             : "text-gold";
-      const company = sigEsc(s.company || s.symbol);
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${company}</div><div class="sym-sub">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${assessment.score}/100</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      const shareLabel = watchOnly ? "للمتابعة" : "ترشيح";
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${assessment.score}/100</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${s.symbol}',${Number(s.price) || 0},'${shareLabel}')">🐦</button></div></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5479,7 +5504,7 @@ async function runWeeklyScan() {
     if (watchTb) {
       if (!watch.length)
         watchTb.innerHTML =
-          '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
+          '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
       else
         watch.forEach((s, i) => {
           watchTb.innerHTML += renderRow(s, i, true);
@@ -5492,10 +5517,10 @@ async function runWeeklyScan() {
       "تعذر التحديث الآن — سيتم استخدام آخر نتائج موثوقة عند المحاولة التالية",
     );
     tb.innerHTML =
-      '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
+      '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
     if (watchTb)
       watchTb.innerHTML =
-        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
+        '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
   }
 }
 
@@ -5870,7 +5895,7 @@ function renderSignalsTable(stocks) {
   const tb = document.getElementById("signalsTableBody");
   if (!stocks.length) {
     tb.innerHTML =
-      '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
+      '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
     return;
   }
   tb.innerHTML = stocks
@@ -5886,12 +5911,11 @@ function renderSignalsTable(stocks) {
           : '<span class="text-muted">—</span>';
       return `<tr>
             <td class="sym">${sigEsc(s.symbol)}</td>
-            <td>${sigEsc(s.company)}</td>
             <td class="font-mono">$${Number(s.price).toFixed(2)}</td>
             <td class="font-mono">${s.pe != null ? Number(s.pe).toFixed(1) : "—"}</td>
             <td>${entryBadge}<div style="margin-top:4px;">${sigDots(s.entry_signals, true)}</div></td>
             <td>${exitBadge}<div style="margin-top:4px;">${sigDots(s.exit_signals, false)}</div></td>
-            <td><button class="btn-ind" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button></td>
+            <td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="عرض الرسم البياني" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${sigEsc(s.symbol)}',${Number(s.price) || 0},'إشارة')">🐦</button></div></td>
         </tr>`;
     })
     .join("");

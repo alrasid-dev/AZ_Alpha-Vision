@@ -3346,7 +3346,11 @@ function renderSignalGridPicks() {
     .map((pick, index) => {
       const price = Number(pick?.price);
       const entry = Number(pick?.entryPrice);
-      const label = escapeHtml(String(pick?.entryStatus || "للمتابعة"));
+      const label = escapeHtml(
+        String(pick?.entryStatus || "متابعة")
+          .replace(/^دخول عند\s*/u, "")
+          .slice(0, 18),
+      );
       return `<tr><td><span class="grid-rank">${index + 1}</span><strong>${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td><span class="grid-entry ${String(pick?.entryStatus || "").includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"} <small>${label}</small></span></td></tr>`;
     })
     .join("");
@@ -3772,7 +3776,12 @@ function switchTab(id) {
       '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">اضغط "بدء الفلترة" للبحث في 800+ سهم</td></tr>';
   }
   if (id === "signals") {
-    loadSignalsData();
+    loadSignalsData()
+      .then(() => {
+        const tb = document.getElementById("signalsTableBody");
+        if (tb && /اختر فلتر/.test(tb.textContent || "")) runSignalScan("all");
+      })
+      .catch(() => {});
   }
   if (id === "admin" && currentProfile && currentProfile.role === "admin")
     refreshAdminData();
@@ -6024,17 +6033,20 @@ function renderSignalsTable(stocks) {
 
 function renderSignalAlerts() {
   const tb = document.getElementById("signalsAlertsBody");
+  if (!tb) return;
   if (!SIGNALS_ALERTS || !SIGNALS_ALERTS.length) {
     tb.innerHTML =
-      '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px;">لا تنبيهات مسجّلة بعد</td></tr>';
+      '<div class="text-muted" style="text-align:center;padding:20px;">لا تنبيهات مسجّلة بعد</div>';
     return;
   }
   tb.innerHTML = SIGNALS_ALERTS.map((a) => {
     const isEntry = a.type === "entry";
+    const symbol = String(a.symbol || "")
+      .trim()
+      .toUpperCase();
     const context =
       SIGNALS_CACHE?.find(
-        (s) =>
-          String(s.symbol).toUpperCase() === String(a.symbol).toUpperCase(),
+        (s) => String(s.symbol).toUpperCase() === symbol,
       ) || a;
     const entryPlan = isEntry
       ? weeklyEntryPlan({ ...context, price: a.price ?? context.price })
@@ -6042,13 +6054,18 @@ function renderSignalAlerts() {
     const badge = isEntry
       ? SIG_TIER_COLOR[a.tier]
       : SIG_TIER_COLOR_EXIT[a.tier];
-    return `<tr>
-            <td class="text-muted" style="font-size:11px;">${new Date(a.ts).toLocaleString("ar-SA")}</td>
-            <td class="sym">${sigEsc(a.symbol)}</td>
-            <td style="font-size:11px;">${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset)}</td>
-            <td><span class="badge ${badge}">${isEntry ? "دخول" : "خروج"} ${sigEsc(a.tier)} (${a.score}/4)</span></td>
-            <td class="font-mono" title="السعر الحقيقي المحفوظ وقت إنشاء الإشارة">${isEntry ? `دخول عند $${Number(a.price).toFixed(2)}<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">مقترح: $${entryPlan?.price?.toFixed(2) || "—"} — ${sigEsc(entryPlan?.label || "")}</div>` : `خروج عند $${Number(a.price).toFixed(2)}`}</td>
-        </tr>`;
+    const priceNum = Number(a.price);
+    const priceText = Number.isFinite(priceNum)
+      ? `$${priceNum.toFixed(2)}`
+      : "—";
+    const hint = isEntry
+      ? `مقترح: $${entryPlan?.price?.toFixed(2) || "—"}`
+      : "خروج تعليمي";
+    return `<article class="alert-card">
+      <div class="alert-card-top"><strong class="sym">${sigEsc(symbol || "—")}</strong><span class="badge ${badge}">${isEntry ? "دخول" : "خروج"} ${sigEsc(a.tier || "")} (${a.score}/4)</span></div>
+      <div class="alert-card-meta">${new Date(a.ts).toLocaleString("ar-SA")} · ${SIG_PRESET_LABEL[a.preset] || sigEsc(a.preset || "")}</div>
+      <div class="alert-card-price">${priceText} — ${sigEsc(hint)}</div>
+    </article>`;
   }).join("");
 }
 

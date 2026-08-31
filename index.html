@@ -1086,7 +1086,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
 
         <div class="main">
             <div class="topbar">
-                <div class="page-heading"><span class="eyebrow">AZ ALPHA VISION</span><h1 id="currentPageTitle">الرئيسية</h1></div>
+                <div class="page-heading"><h1 id="currentPageTitle">الرئيسية</h1></div>
                 <div class="topbar-tools">
                     <label class="global-search" aria-label="البحث عن سهم"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg><input id="globalStockSearch" type="search" placeholder="ابحث عن سهم أو رمز…" onkeydown="quickStockSearch(event)"></label>
                     <div class="market-status"><span class="dot"></span><span id="liveTime">--:--:--</span></div>
@@ -1141,14 +1141,30 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <section class="decision-observatory" aria-label="مرصد القرار">
                         <div class="observatory-surface">
                             <div class="observatory-copy">
-                                <span class="observatory-kicker"><i></i> حالة المنصة التعليمية</span>
+                                <span class="observatory-kicker"><i></i> متابعة لحظية · السهم الذهبي</span>
                                 <h2>مرصد <em>القرار</em></h2>
-                                <p>حوّل الإشارة إلى قراءة مفهومة قبل أي قرار افتراضي. لا تنفيذ حقيقي، ولا وعود بنتيجة.</p>
+                                <p>دائرة المحاكاة تعرض السهم الذهبي لحظياً مع مؤشرات حيّة وتنبيهات خاصة. تعليمية فقط — بلا تنفيذ حقيقي.</p>
                                 <div class="observatory-actions"><button class="orbital-button primary" onclick="switchTab('picks')"><span>استكشف الترشيحات</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button><button class="orbital-button" onclick="openAzAi()"><span>اسأل AZ ai</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button></div>
                             </div>
-                            <div class="signal-orbit" aria-label="بوصلة المحاكي التعليمية"><div class="orbit-ring ring-a"></div><div class="orbit-ring ring-b"></div><div class="orbit-dot dot-a"></div><div class="orbit-dot dot-b"></div><div class="orbit-core"><small>قيمة المحاكاة</small><strong id="overviewEquity">$10,000.00</strong><span>تعليمية مشتركة</span></div></div>
+                            <div class="signal-orbit" aria-label="بوصلة المحاكي التعليمية">
+                                <div class="orbit-ring ring-a"></div>
+                                <div class="orbit-ring ring-b"></div>
+                                <div class="orbit-dot dot-a"></div>
+                                <div class="orbit-dot dot-b"></div>
+                                <div class="orbit-core">
+                                    <div class="orbit-gold-mark" title="السهم الذهبي">↑</div>
+                                    <small>قيمة المحاكاة</small>
+                                    <strong id="overviewEquity">$10,000.00</strong>
+                                    <span id="orbitGoldTicker">بانتظار السهم الذهبي</span>
+                                    <div class="orbit-live-row" aria-live="polite">
+                                        <b id="orbitMarketPulse" class="orbit-pulse">●</b>
+                                        <em id="orbitAlertCount">0 تنبيه</em>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="observatory-meta"><span>آخر مزامنة</span><strong id="lastUpdate" class="font-mono">--</strong><span aria-label="التحديث يعمل في الخلفية">تحديث خلفي</span></div>
                         </div>
+                        <div id="goldWatchStrip" class="gold-watch-strip" hidden></div>
                         <div class="decision-metrics"><article><span>الربح / الخسارة</span><strong id="overviewPnl">$0.00</strong><small>من بداية المحاكاة</small></article><article><span>العائد الكلي</span><strong id="overviewReturn">0.00%</strong><small>أداء تراكمي</small></article><article><span>المراكز المفتوحة</span><strong id="overviewPositions">0</strong><small>داخل المحاكي</small></article><article class="education-tile"><span>وضع التعليم</span><strong>محاكاة فقط</strong><small>بدون أموال حقيقية</small></article></div>
                         <div class="decision-thread" aria-label="مسار الإشارة"><div class="thread-label">مسار الإشارة</div><article><span class="thread-step">01</span><div><small>الإشارة</small><strong id="overviewSignal">لا توجد إشارة دخول جديدة</strong></div></article><i></i><article><span class="thread-step">02</span><div><small>المنطقة المرجعية</small><strong id="overviewEntry">السعر المقترح</strong></div></article><i></i><article><span class="thread-step">03</span><div><small>حالة المركز</small><strong id="overviewPosition">مركز افتراضي</strong></div></article><i></i><article><span class="thread-step">04</span><div><small>المتابعة</small><strong id="overviewResult">متابعة الأداء</strong></div></article><details><summary>كيف يقرأ المحاكي الإشارة؟</summary><p>يعرض المحاكي إشارات النظام ونتائجها التعليمية، ولا يشكل توصية أو أمر تداول.</p></details></div>
                     </section>
@@ -1220,7 +1236,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         </div>
                         <div class="filter-box">
                             <label>🏭 القطاع</label>
-                            <select id="fSector"><option value="any">أي قطاع</option><option value="tech">تكنولوجيا</option><option value="consumer">استهلاكي</option><option value="industrial">صناعي</option></select>
+                            <select id="fSector"><option value="any">أي قطاع</option><option value="tech">تكنولوجيا</option><option value="consumer">استهلاكي</option><option value="industrial">صناعي</option><option value="communication">اتصالات</option><option value="materials">مواد أساسية</option></select>
                         </div>
                         <div class="filter-box">
                             <label>⚡ RSI (14)</label>
@@ -1332,8 +1348,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     </div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
                         <table class="data-table">
-                            <thead><tr><th>الرمز</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
-                            <tbody id="signalsTableBody"><tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
+                            <thead><tr><th>الرمز</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th></tr></thead>
+                            <tbody id="signalsTableBody"><tr><td colspan="5" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
                         </table>
                     </div>
 
@@ -1361,20 +1377,10 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <div id="weeklyScanStatus">آخر فحص: لم يُشغّل بعد</div>
                         <small>تفاصيل المنهجية موجودة في دليل المنصة وAZ ai.</small>
                     </div>
-                    <div class="section-title compact-ledger-title">أفضل 7 ترشيحات <div class="line"></div></div>
-                    <div class="weekly-table-wrap">
-                        <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب الترشيح</th><th>الإشارة</th></tr></thead>
-                            <tbody id="picksTableBody"></tbody>
-                        </table>
-                    </div>
+                    <div class="section-title compact-ledger-title">أفضل 7 ترشيحات <span class="ai-priority-pill">أولوية متابعة AZ</span><div class="line"></div></div>
+                    <div id="picksCards" class="picks-card-grid"></div>
                     <div class="section-title compact-ledger-title">7 أسهم للمتابعة <div class="line"></div></div>
-                    <div class="weekly-table-wrap">
-                        <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب المتابعة</th><th>الحالة</th></tr></thead>
-                            <tbody id="watchPicksTableBody"></tbody>
-                        </table>
-                    </div>
+                    <div id="watchPicksCards" class="picks-card-grid"></div>
                 </div>
 
                 <div id="tab-indicators" class="tab-panel hidden">
@@ -1680,7 +1686,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
       html,body,#authScreen{background:#080c12!important;color:#edf3f8!important}.app-container,.main{background:#080c12!important}.sidebar{background:rgba(9,14,20,.96)!important;border-left-color:rgba(180,202,222,.16)!important}.premium-brand,.premium-watch-header{border-color:rgba(180,202,222,.16)!important}.premium-brand strong,.sidebar-title{color:#edf3f8!important}.premium-brand span,.premium-nav-label{color:#8393a0!important}.sidebar .tab-btn{color:#a5b1bc!important;background:transparent!important}.sidebar .tab-btn:hover{background:rgba(255,255,255,.035)!important;color:#f5f9fb!important}.sidebar .tab-btn.active{background:rgba(53,202,130,.11)!important;color:#72e6aa!important;box-shadow:inset -3px 0 0 #35ca82!important}.sidebar .tab-btn.active:before{background:transparent!important}.topbar{background:rgba(8,12,18,.92)!important;border-bottom-color:rgba(180,202,222,.16)!important}.page-heading h1{color:#edf3f8!important}.page-heading .eyebrow{color:#35ca82!important}.global-search,.header-icon-button,.user-chip{background:#0d141d!important;border-color:rgba(180,202,222,.16)!important;color:#edf3f8!important}.global-search input{color:#edf3f8!important}.content-area{background:#080c12!important}.signal-widget .market-canvas,.signal-widget .market-stream{background:transparent!important;box-shadow:none!important}.signal-widget .chart-box{background:#0b1118!important;border:0!important;box-shadow:none!important}.signal-widget .data-table{background:#0d141d!important}.signal-widget .data-table th{background:#0e151d!important;color:#8393a0!important;border-color:rgba(180,202,222,.12)!important}.signal-widget .data-table td{background:transparent!important;color:#dce6ed!important;border-color:rgba(180,202,222,.08)!important}.signal-widget .data-table tr:hover td{background:rgba(255,255,255,.025)!important}.signal-widget .news-item,.signal-widget .earnings-item{background:transparent!important;color:#dce6ed!important}.signal-widget .news-item-title,.signal-widget .earnings-estimate{color:#dce6ed!important}.signal-widget .news-item-sub,.signal-widget .earnings-source{color:#8293a0!important}.signal-widget .chart-empty-state{background:radial-gradient(circle at 50% 45%,rgba(53,202,130,.055),transparent 55%)!important;color:#8fa0ad!important}.signal-widget .chart-empty-state strong{color:#eaf3f8!important}.signal-widget .chart-empty-icon{background:transparent!important;color:#35ca82!important}.signal-widget .time-lenses{background:#0d141d!important}.signal-widget .time-lenses .active{background:#1a2732!important;color:#a6ecc6!important;box-shadow:none!important}.signal-widget .time-lenses span{color:#7f909d!important}.az-ownership-notice{background:#080c12!important;color:#748592!important;border-color:rgba(180,202,222,.10)!important}.notification-center{background:#0d141d!important;border-left-color:rgba(180,202,222,.16)!important}.notification-center-head h2,.in-app-notification strong{color:#edf3f8!important}.notification-tabs button{color:#9cabb6!important}.notification-tabs button.active{background:rgba(53,202,130,.12)!important;color:#7fe5ad!important}.in-app-notification{border-color:rgba(180,202,222,.10)!important}.in-app-notification p,.notification-empty,.in-app-notification small{color:#8393a0!important}@media(max-width:860px){.sidebar .tabs-wrap{background:#0b1118!important;border-top-color:rgba(180,202,222,.16)!important;box-shadow:0 -10px 30px rgba(0,0,0,.32)!important}.sidebar .tab-btn.active{box-shadow:inset 0 -2px 0 #35ca82!important}}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=20260901a"></script>
+    <script src="app.js?v=20260901c"></script>
 <style id="az-stable-release-2026">
 /* طبقة الاستقرار النهائية: ألوان هادئة، سطح مكتب متماسك، وجوال بعمود واحد. */
 :root{--app-bg:#080d13;--app-panel:#111a24;--app-panel-raised:#15212c;--app-panel-soft:#0d151e;--app-border:rgba(166,188,207,.16);--app-border-strong:rgba(166,188,207,.27);--app-text:#d8e1e8;--app-text-strong:#eaf0f5;--app-muted:#91a1af;--app-positive:#55cf8e;--app-negative:#e87880;--app-caution:#d9b56d;--app-info:#7bb3e8}
@@ -2234,6 +2240,54 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
 @media (max-width:420px){
   .sidebar .tabs-wrap .tab-btn{min-width:58px!important;padding:5px 7px!important;font-size:9px!important}
   .az-ai-launcher,.platform-guide-launcher#userGuide{width:46px!important;height:46px!important}
+}
+</style>
+<style id="az-batch-20260901">
+.page-heading .eyebrow,.topbar .eyebrow{display:none!important;font-size:0!important;height:0!important;overflow:hidden!important;letter-spacing:0!important}
+.ai-priority-pill{display:inline-flex;align-items:center;margin-right:8px;padding:3px 9px;border-radius:999px;background:rgba(212,175,55,.14);color:#e7c56a;font:700 10px var(--font-body);letter-spacing:.02em}
+.picks-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin:0 0 22px}
+.picks-card-empty{grid-column:1/-1;padding:28px 16px;text-align:center;color:var(--app-muted,#91a1af);border:1px dashed rgba(166,188,207,.22);border-radius:14px}
+.pick-card{display:flex;flex-direction:column;gap:10px;min-width:0;padding:16px;border:1px solid rgba(166,188,207,.16);border-radius:16px;background:linear-gradient(165deg,rgba(18,28,38,.98),rgba(10,16,23,.98));box-shadow:0 12px 28px rgba(0,0,0,.18)}
+.pick-card header{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.pick-rank{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(123,179,232,.12);color:#9fc7e5;font:700 12px var(--font-mono)}
+.pick-sym{font:800 18px/1 var(--font-mono);letter-spacing:.04em;color:#eaf0f5}
+.gold-flag,.ai-follow{padding:3px 8px;border-radius:999px;font:700 9px var(--font-body)}
+.gold-flag{background:rgba(212,175,55,.18);color:#f0d48a}
+.ai-follow{background:rgba(85,207,142,.12);color:#85e6ad}
+.pick-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pick-metrics small{display:block;color:#8fa3b3;font-size:10px;margin-bottom:3px}
+.pick-metrics b{display:block;color:#eaf0f5;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.pick-reason{margin:0;color:#b5c2cd;font-size:12px;line-height:1.8}
+.pick-card footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pick-badge{color:#85e6ad;font-weight:700;font-size:12px}
+.pick-card-gold{border-color:rgba(212,175,55,.45);box-shadow:0 0 0 1px rgba(212,175,55,.2),0 16px 36px rgba(0,0,0,.28)}
+.pick-card-gold .pick-rank{background:linear-gradient(135deg,#f0d48a,#b8860b);color:#1a1408}
+.pick-card-watch{opacity:.96}
+.orbit-gold-mark{display:grid;place-items:center;width:28px;height:28px;margin-bottom:4px;border-radius:50%;background:linear-gradient(145deg,#f3d48a,#c9a227);color:#1a1408;font:800 16px/1 Georgia,serif;box-shadow:0 0 18px rgba(240,212,138,.45)}
+.orbit-core span{max-width:88%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f0d48a!important;font-size:10px!important}
+.orbit-live-row{display:flex;align-items:center;gap:6px;margin-top:6px;color:#9fc7e5;font-size:9px}
+.orbit-pulse{color:#667085;font-size:9px}
+.orbit-pulse.is-live{color:#f0d48a;animation:softPulse 1.6s ease-in-out infinite}
+.gold-watch-strip{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:10px 0 0;padding:12px 14px;border:1px solid rgba(212,175,55,.35);border-radius:14px;background:linear-gradient(90deg,rgba(212,175,55,.1),rgba(7,13,20,.4));color:#f0d48a}
+.gold-watch-strip strong{font:800 15px var(--font-mono);color:#fff}
+.gold-watch-strip button{margin-right:auto;padding:6px 10px;border:1px solid rgba(212,175,55,.4);border-radius:999px;background:transparent;color:#f0d48a;cursor:pointer;font:700 11px var(--font-body)}
+.gold-chip{padding:3px 8px;border-radius:999px;background:rgba(212,175,55,.2);font:700 10px var(--font-body)}
+.az-ai-launcher{position:fixed!important;left:16px!important;right:auto!important;bottom:18px!important;width:50px!important;height:50px!important;z-index:420!important}
+.platform-guide-launcher#userGuide{position:fixed!important;left:auto!important;right:16px!important;bottom:18px!important;display:flex!important;width:50px!important;height:50px!important;z-index:420!important}
+.ios-install-reopen{position:fixed!important;left:auto!important;right:16px!important;bottom:80px!important;z-index:410!important}
+@media(max-width:860px){
+  .canvas-head .eyebrow,.stream-head .eyebrow,.signal-widget-head small{display:none!important}
+  .az-ai-launcher{left:14px!important;right:auto!important;bottom:calc(var(--az-bottom-nav-h,64px) + 14px)!important}
+  .platform-guide-launcher#userGuide{display:none!important}
+  .ios-install-reopen{left:auto!important;right:14px!important;bottom:calc(var(--az-bottom-nav-h,64px) + 14px)!important}
+  .picks-card-grid{grid-template-columns:1fr}
+  .pick-metrics{grid-template-columns:1fr 1fr;gap:10px}
+  .orbit-core{inset:48px!important}
+  .gold-watch-strip{font-size:12px}
+}
+@media(min-width:861px){
+  .ios-install-reopen{right:16px!important;bottom:80px!important}
+  .platform-guide-launcher#userGuide{right:78px!important;bottom:18px!important}
 }
 </style>
 </body>

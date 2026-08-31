@@ -3045,6 +3045,122 @@ const STOCK_UNIVERSE = [
 const UNIQUE_STOCKS = [...new Set(STOCK_UNIVERSE)];
 
 const SECTOR_MAP = {}; // لم يعد يُستخدَم لتصنيف الفحص (ذلك يأتي الآن من Finviz عبر market_fundamentals.sector) — أُبقي فارغًا عمدًا؛ محفوظ فقط لتفادي كسر أي مرجع قديم متبقٍّ.
+const SECTOR_LABELS = {
+  tech: "تكنولوجيا",
+  consumer: "استهلاكي",
+  industrial: "صناعي",
+  healthcare: "صحية",
+  energy: "طاقة",
+  finance: "مالي",
+  communication: "اتصالات",
+  materials: "مواد أساسية",
+  utilities: "مرافق",
+  reits: "عقارات",
+  other: "أخرى",
+};
+const KNOWN_SECTOR_TICKERS = {
+  AAPL: "tech",
+  MSFT: "tech",
+  GOOGL: "tech",
+  GOOG: "tech",
+  AMZN: "consumer",
+  NVDA: "tech",
+  TSLA: "consumer",
+  META: "communication",
+  AMD: "tech",
+  NFLX: "communication",
+  CRM: "tech",
+  SHOP: "tech",
+  UBER: "industrial",
+  ABNB: "consumer",
+  COIN: "finance",
+  ROKU: "communication",
+  SNAP: "communication",
+  PINS: "communication",
+  CRWD: "tech",
+  PLTR: "tech",
+  SNOW: "tech",
+  DDOG: "tech",
+  NET: "tech",
+  OKTA: "tech",
+  ZS: "tech",
+  FSLR: "energy",
+  ENPH: "energy",
+  SOFI: "finance",
+  HOOD: "finance",
+  AI: "tech",
+  MU: "tech",
+  AVGO: "tech",
+  INTC: "tech",
+  QCOM: "tech",
+  AMAT: "tech",
+  COST: "consumer",
+  WMT: "consumer",
+  HD: "consumer",
+  NKE: "consumer",
+  SBUX: "consumer",
+  DIS: "communication",
+  V: "finance",
+  MA: "finance",
+  JPM: "finance",
+  BAC: "finance",
+  XOM: "energy",
+  CVX: "energy",
+  CAT: "industrial",
+  BA: "industrial",
+  GE: "industrial",
+  JNJ: "healthcare",
+  PFE: "healthcare",
+  UNH: "healthcare",
+  LLY: "healthcare",
+};
+function classifySector(row) {
+  const sym = String(row?.symbol || "").toUpperCase();
+  if (KNOWN_SECTOR_TICKERS[sym]) return KNOWN_SECTOR_TICKERS[sym];
+  const raw = String(row?.sector || row?.finviz_sector || "")
+    .trim()
+    .toLowerCase();
+  if (SECTOR_LABELS[raw] && raw !== "other") return raw;
+  if (/technolog|software|semiconductor|internet|electronic|computer|cloud|chip/.test(raw))
+    return "tech";
+  if (/consumer|retail|staples|discretionary/.test(raw)) return "consumer";
+  if (/industrial|manufactur|aerospace/.test(raw)) return "industrial";
+  if (/health|biotech|pharma/.test(raw)) return "healthcare";
+  if (/energy|oil|gas|solar/.test(raw)) return "energy";
+  if (/financ|bank|insurance/.test(raw)) return "finance";
+  if (/communicat|media|telecom/.test(raw)) return "communication";
+  if (/material|mining|metal|chemical/.test(raw)) return "materials";
+  if (/utilit/.test(raw)) return "utilities";
+  if (/real estate|reit/.test(raw)) return "reits";
+  const text = [row?.industry, row?.company, row?.finviz_sector]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/software|semiconductor|chip|cloud|internet|cyber|computer|electronic|technology|network|data|saas/.test(text))
+    return "tech";
+  if (/retail|consumer|apparel|restaurant|food|beverage|cosmetic/.test(text))
+    return "consumer";
+  if (/industrial|manufactur|machinery|aerospace|defense|construction|transport|logistics|airline/.test(text))
+    return "industrial";
+  if (/healthcare|health care|biotech|pharma|therapeutic|medical|hospital/.test(text))
+    return "healthcare";
+  if (/energy|oil|gas|petroleum|solar|utilities|electric/.test(text)) return "energy";
+  if (/bank|banc|financial|insurance|capital/.test(text)) return "finance";
+  if (/telecom|communication|media|broadcast/.test(text)) return "communication";
+  if (/mining|metal|steel|chemical|materials/.test(text)) return "materials";
+  if (/real estate|property|reit/.test(text)) return "reits";
+  return raw && raw !== "other" ? raw : "other";
+}
+function sectorLabel(key) {
+  return SECTOR_LABELS[key] || key || "—";
+}
+function formatShareVolume(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return "—";
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(Math.round(v));
+}
 
 const EXCLUDED_SYMBOLS = new Set([
   "DDV",
@@ -4420,7 +4536,13 @@ function mapMarketRow(fund, tech) {
     sma50CrossUp,
     rsi,
     atr: tech?.atr14 ?? null,
-    sector: fund.sector,
+    sector: classifySector({
+      symbol: fund.symbol,
+      sector: fund.sector,
+      finviz_sector: fund.finviz_sector,
+      industry: fund.industry,
+      company: fund.company,
+    }),
     pe: fund.pe,
     pb: fund.pb,
     growth,
@@ -4546,17 +4668,17 @@ async function runScanner() {
     )
       return null;
     const change = live?.change_pct ?? base?.change ?? null;
-    const volume = live?.volume ?? base?.volume ?? null;
+    const volume = Number(live?.volume || 0) || Number(base?.volume || 0) || Number(base?.avgVolume || 0) || 0;
     if (price == null) return null;
     return {
       symbol: sym,
       price,
       change: change ?? 0,
-      volume: volume ?? 0,
+      volume,
       rsi: base?.rsi ?? null,
       sma50: base?.sma50 ?? null,
       sma200: base?.sma200 ?? null,
-      sector: base?.sector ?? "other",
+      sector: classifySector(base),
     };
   }).filter(Boolean);
 
@@ -4589,10 +4711,7 @@ async function runScanner() {
       sig = "خروج";
       cls = "badge-sell";
     }
-    const vf =
-      d.volume >= 1000000
-        ? (d.volume / 1000000).toFixed(2) + "M"
-        : (d.volume / 1000).toFixed(1) + "K";
+    const vf = formatShareVolume(d.volume);
     const rsiTxt = d.rsi != null ? d.rsi.toFixed(1) : "—";
     html += `<tr><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${d.change >= 0 ? "text-green" : "text-red"}">${d.change >= 0 ? "+" : ""}${d.change.toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td class="font-mono">${rsiTxt}</td><td><span class="badge ${cls}">${sig}</span></td><td><span style="color:var(--accent-cyan);cursor:pointer;font-size:16px;" onclick="quickAdd('${d.symbol}',${d.price})">+</span></td></tr>`;
   });
@@ -4837,16 +4956,6 @@ function renderScreener() {
       '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد نتائج</td></tr>';
     return;
   }
-  const sn = {
-    tech: "تكنولوجيا",
-    finance: "مالي",
-    healthcare: "صحية",
-    consumer: "استهلاكي",
-    industrial: "صناعي",
-    energy: "طاقة",
-    reits: "عقارات",
-    other: "أخرى",
-  };
   screenerResults.forEach((d, i) => {
     let sig = "متابعة",
       cls = "badge-hold";
@@ -4877,10 +4986,7 @@ function renderScreener() {
       sig = "خروج";
       cls = "badge-sell";
     }
-    const vf =
-      (d.volume ?? 0) >= 1000000
-        ? (d.volume / 1000000).toFixed(2) + "M"
-        : ((d.volume ?? 0) / 1000).toFixed(1) + "K";
+    const vf = formatShareVolume(d.volume || d.avgVolume);
     const gc =
       d.grade === "A"
         ? "badge-a"
@@ -4899,7 +5005,7 @@ function renderScreener() {
           : d.ltDebt < 0.5
             ? "text-gold"
             : "text-red";
-    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button></div></td></tr>`;
+    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sectorLabel(d.sector)}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button></div></td></tr>`;
   });
 }
 
@@ -5439,12 +5545,12 @@ function weeklyEntryPlan(row) {
 }
 
 async function runWeeklyScan() {
-  const tb = document.getElementById("picksTableBody");
-  const watchTb = document.getElementById("watchPicksTableBody");
+  const tb = document.getElementById("picksCards");
+  const watchTb = document.getElementById("watchPicksCards");
   if (!tb) return;
   updateWeeklyScanMeta("جارٍ تحديث الترشيحات من بيانات الماسح");
-  tb.innerHTML = tableSkeleton(7, 3);
-  if (watchTb) watchTb.innerHTML = tableSkeleton(7, 3);
+  tb.innerHTML = '<div class="picks-card-empty">جارٍ تجهيز الترشيحات…</div>';
+  if (watchTb) watchTb.innerHTML = '<div class="picks-card-empty">جارٍ تجهيز المتابعة…</div>';
 
   try {
     // المصدر المشترك هو كل صفوف screener_signals التي ينتجها محرك القوالب الخلفي، لا آخر فلتر فتَحه مستخدم.
@@ -5554,7 +5660,7 @@ async function runWeeklyScan() {
           : "اكتمل الفحص — لا توجد إشارة دخول من القوالب",
       );
       tb.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
+        '<div class="picks-card-empty">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</div>';
     }
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
@@ -5596,7 +5702,6 @@ async function runWeeklyScan() {
           : s.bestTier === "مؤكد"
             ? "إشارة مؤكدة"
             : "إشارة دخول";
-      const stateClass = watchOnly || plan.avoid ? "text-gold" : "text-green";
       const ratingClass =
         assessment.rawScore >= 78
           ? "text-green"
@@ -5605,8 +5710,22 @@ async function runWeeklyScan() {
             : "text-gold";
       const gradeBadgeClass = `badge-${String(assessment.dataGrade || "D").toLowerCase()}`;
       const reason = sigEsc(s.aiReason || weeklyReason(s));
-      const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason} · قوة البيانات: ${assessment.dataGrade}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td><div class="rating-cell"><strong class="${ratingClass}">${assessment.score.toFixed(1)}/10</strong><span class="badge ${gradeBadgeClass} rating-grade-badge" title="قوة الفرضية بحسب توفر البيانات">${assessment.dataGrade}</span></div><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      const gold = !watchOnly && i === 0;
+      return `<article class="pick-card${gold ? " pick-card-gold" : ""}${watchOnly ? " pick-card-watch" : ""}" title="${sigEsc(`${watchOnly ? "متابعة" : "ترشيح"}: ${reason}`)}">
+        <header>
+          <span class="pick-rank">${gold ? "↑" : i + 1}</span>
+          <strong class="pick-sym">${sigEsc(s.symbol)}</strong>
+          ${gold ? '<span class="gold-flag">السهم الذهبي</span>' : ""}
+          ${watchOnly ? "" : '<span class="ai-follow">متابعة AZ أولاً</span>'}
+        </header>
+        <div class="pick-metrics">
+          <div><small>التقييم</small><b class="${ratingClass}">${assessment.score.toFixed(1)}/10</b> <span class="badge ${gradeBadgeClass} rating-grade-badge">${assessment.dataGrade}</span></div>
+          <div><small>السعر</small><b class="font-mono">$${Number(s.price).toFixed(2)}</b></div>
+          <div><small>المنطقة</small><b>${sigEsc(entryText)}</b></div>
+        </div>
+        <p class="pick-reason">${reason}</p>
+        <footer><span class="pick-badge">${badge}</span><small>${assessment.label}</small></footer>
+      </article>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5614,12 +5733,13 @@ async function runWeeklyScan() {
     if (watchTb) {
       if (!watch.length)
         watchTb.innerHTML =
-          '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
+          '<div class="picks-card-empty">لا توجد أسهم إضافية للمتابعة حاليًا</div>';
       else
         watch.forEach((s, i) => {
           watchTb.innerHTML += renderRow(s, i, true);
         });
     }
+    syncGoldenOrbit();
     toast(`تم اختيار ${top.length} ترشيحات و${watch.length} للمتابعة`);
   } catch (error) {
     console.error("تعذر تحديث ترشيحات الأسبوع:", error);
@@ -5627,10 +5747,10 @@ async function runWeeklyScan() {
       "تعذر التحديث الآن — سيتم استخدام آخر نتائج موثوقة عند المحاولة التالية",
     );
       tb.innerHTML =
-        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
+        '<div class="picks-card-empty">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</div>';
     if (watchTb)
       watchTb.innerHTML =
-        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
+        '<div class="picks-card-empty">لا تتوفر قائمة متابعة حاليًا.</div>';
   }
 }
 
@@ -6005,7 +6125,7 @@ function renderSignalsTable(stocks) {
   const tb = document.getElementById("signalsTableBody");
   if (!stocks.length) {
     tb.innerHTML =
-      '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
+      '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
     return;
   }
   tb.innerHTML = stocks
@@ -6025,7 +6145,6 @@ function renderSignalsTable(stocks) {
             <td class="font-mono">${s.pe != null ? Number(s.pe).toFixed(1) : "—"}</td>
             <td>${entryBadge}<div style="margin-top:4px;">${sigDots(s.entry_signals, true)}</div></td>
             <td>${exitBadge}<div style="margin-top:4px;">${sigDots(s.exit_signals, false)}</div></td>
-            <td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="عرض الرسم البياني" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button></div></td>
         </tr>`;
     })
     .join("");
@@ -7003,6 +7122,40 @@ function syncOverviewMetrics() {
   if (result)
     result.textContent =
       latest?.action === "sell" ? "آخر نتيجة: بيع محاكى" : "قياس الأداء مستمر";
+  syncGoldenOrbit();
+}
+function syncGoldenOrbit() {
+  const ticker = document.getElementById("orbitGoldTicker");
+  const pulse = document.getElementById("orbitMarketPulse");
+  const alerts = document.getElementById("orbitAlertCount");
+  const strip = document.getElementById("goldWatchStrip");
+  const picks = Array.isArray(LocalCache.getPicks()) ? LocalCache.getPicks() : [];
+  const gold = picks[0];
+  const positionSymbols = Object.keys(virtualTrader?.positions || {});
+  const signalCount = Array.isArray(SIGNALS_ALERTS) ? SIGNALS_ALERTS.length : 0;
+  if (ticker) {
+    ticker.textContent = gold?.symbol
+      ? `السهم الذهبي ${gold.symbol}`
+      : positionSymbols[0]
+        ? `متابعة ${positionSymbols[0]}`
+        : "بانتظار السهم الذهبي";
+  }
+  if (pulse) {
+    pulse.classList.toggle("is-live", Boolean(gold || positionSymbols.length));
+    pulse.title = gold ? "متابعة لحظية للسهم الذهبي" : "المؤشر في وضع الانتظار";
+  }
+  if (alerts) alerts.textContent = `${signalCount} تنبيه`;
+  if (strip) {
+    if (!gold) {
+      strip.hidden = true;
+      strip.innerHTML = "";
+      return;
+    }
+    const price = Number(gold.price);
+    const entry = Number(gold.entryPrice);
+    strip.hidden = false;
+    strip.innerHTML = `<span class="gold-chip">↑ السهم الذهبي</span><strong>${escapeHtml(gold.symbol)}</strong><span>${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</span><span>${Number.isFinite(entry) ? `منطقة $${entry.toFixed(2)}` : (gold.entryStatus || "متابعة")}</span><button type="button" onclick="switchTab('picks')">عرض الترشيح</button>`;
+  }
 }
 const _renderVirtualTraderForOverview = renderVirtualTrader;
 renderVirtualTrader = function () {

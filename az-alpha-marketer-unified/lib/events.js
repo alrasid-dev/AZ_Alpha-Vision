@@ -1,11 +1,13 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { fetchTrendingHeadlines } = require('./rssFeeds');
+const { ensureWebSocket } = require('./ensureWebSocket');
 
 function getDb() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('SUPABASE_URL وSUPABASE_SERVICE_ROLE_KEY مطلوبان');
   }
+  ensureWebSocket();
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 

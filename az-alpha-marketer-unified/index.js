@@ -1,5 +1,8 @@
 require('dotenv').config();
+const { ensureWebSocket } = require('./lib/ensureWebSocket');
+ensureWebSocket();
 const { getNextEvent, getTrendNewsEvent, getDb } = require('./lib/events');
+const { runVirtualTraderEngine } = require('./lib/runVirtualTrader');
 const { generateEventPost } = require('./lib/generateEventPost');
 const { postTweet, postThread, hasXCredentials } = require('./lib/postToX');
 const { generateImage } = require('./lib/generateImage');
@@ -90,7 +93,7 @@ function registrationUrl(event) {
             : event.eventType === 'milestone'
               ? 'simulator_win'
               : 'education';
-  const base = (process.env.SITE_URL || 'https://azalphavision.com').replace(/\/$/, '');
+  const base = (process.env.SITE_URL || 'https://azalphavision.vercel.app').replace(/\/$/, '');
   return `${base}/?register=1&utm_source=x&utm_medium=organic&utm_campaign=${campaign}`;
 }
 
@@ -149,6 +152,12 @@ function buildFinalContent({ generated, event, hashtags, url }) {
 async function run() {
   console.log(`[${new Date().toISOString()}] بدء المشغل الموحد المرتبط ببيانات المنصة`);
   const db = getDb();
+  try {
+    const trader = await runVirtualTraderEngine(db);
+    console.log('نتيجة المحاكي:', trader?.run_note || trader?.message || JSON.stringify(trader));
+  } catch (err) {
+    console.warn('تعذر تشغيل المحاكي في هذه الجولة (المسوّق يتابع):', err.message || err);
+  }
   const q = await quota(db);
 
   const priority = await getNextEvent({ priorityOnly: true });
@@ -293,5 +302,5 @@ run()
     const msg = String(err?.message || err || '');
     // فقط غياب قاعدة البيانات يمنع أي عمل مفيد — بقية الأخطاء تُسجَّل ويخرج التشغيل بنجاح
     // حتى لا يبقى Cron أحمر بسبب عمود اختياري أو مفتاح Gemini/X.
-    process.exit(/SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/.test(msg) ? 1 : 0);
+    process.exit(/SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|WebSocket/.test(msg) ? 1 : 0);
   });

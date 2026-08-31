@@ -67,23 +67,12 @@ interface TechnicalRow {
   sma50: number | null;
 }
 
-function isMarketOpen(): boolean {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-US", {
+function isUsWeekday(): boolean {
+  const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
-    hour12: false,
     weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).formatToParts(now);
-  const map: Record<string, string> = {};
-  for (const p of parts) map[p.type] = p.value;
-  const weekday = map.weekday || "";
-  const minutesSinceMidnight = Number(map.hour) * 60 + Number(map.minute);
-  const isWeekday = !["Sat", "Sun"].includes(weekday);
-  const afterOpen = minutesSinceMidnight >= 9 * 60 + 30;
-  const beforeClose = minutesSinceMidnight < 16 * 60;
-  return isWeekday && afterOpen && beforeClose;
+  }).format(new Date());
+  return !["Sat", "Sun"].includes(weekday);
 }
 
 async function insertRunLog(stats: Record<string, unknown>): Promise<void> {
@@ -96,7 +85,7 @@ Deno.serve(async (req: Request) => {
   if (authFail) return authFail;
 
   try {
-    const marketOpen = isMarketOpen();
+    const marketOpen = isUsWeekday();
 
     const portfolios = await restSelect<PortfolioRow>(
       SUPABASE_URL,
@@ -140,7 +129,7 @@ Deno.serve(async (req: Request) => {
     const entryCandidatesRaw = await restSelect<SignalRow>(
       SUPABASE_URL,
       SERVICE_ROLE_KEY,
-      `screener_signals?select=preset,symbol,company,price,entry_score,entry_tier&entry_tier=in.(${encodeURIComponent("صريح")},${encodeURIComponent("مؤكد")})&order=entry_score.desc&limit=80`,
+      `screener_signals?select=preset,symbol,company,price,entry_score,entry_tier&entry_score=gte.3&order=entry_score.desc&limit=120`,
     );
     const nearEntryRows = await restSelect<{ symbol: string }>(
       SUPABASE_URL,

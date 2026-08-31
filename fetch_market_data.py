@@ -131,17 +131,28 @@ def load_primary_exchange_symbols() -> dict[str, dict[str, str]]:
     return result
 
 
-def sector_from_name(company: str) -> tuple[str, str]:
+def sector_from_name(company: str, symbol: str = "") -> tuple[str, str]:
     name = str(company or "")
-    if FINANCE_RE.search(name):
+    blob = f"{symbol} {name}".lower()
+    if FINANCE_RE.search(name) or re.search(r"\b(bank|bancorp|insurance|capital)\b", blob):
         return "finance", "Financial"
     if re.search(r"real estate|property|properties|reit", name, re.I):
         return "reits", "Real Estate"
-    if re.search(r"healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical", name, re.I):
+    if re.search(r"healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|hospital", name, re.I):
         return "healthcare", "Healthcare"
-    if re.search(r"energy|oil|gas|petroleum|coal|solar|utilities", name, re.I):
+    if re.search(r"energy|oil|gas|petroleum|coal|solar|utilities|electric", name, re.I):
         return "energy", "Energy"
-    return "other", "Other"
+    if re.search(r"software|semiconductor|chip|cloud|internet|cyber|computer|electronic|technology|semiconductor|ai |robotic|network|data|saas", blob):
+        return "tech", "Technology"
+    if re.search(r"retail|consumer|apparel|restaurant|food|beverage|e-commerce|ecommerce|cosmetic", blob):
+        return "consumer", "Consumer"
+    if re.search(r"industrial|manufactur|machinery|aerospace|defense|construction|transport|logistics|airline", blob):
+        return "industrial", "Industrial"
+    if re.search(r"telecom|communication|media|broadcast|wireless", blob):
+        return "communication", "Communication"
+    if re.search(r"mining|metal|steel|chemical|materials|gold|silver|copper", blob):
+        return "materials", "Basic Materials"
+    return "other", name or "Other"
 
 
 def compute_technical(df: pd.DataFrame) -> dict[str, Any]:
@@ -302,7 +313,7 @@ def build_fundamentals(symbols: dict[str, dict[str, str]], technicals: dict[str,
     for symbol, meta in symbols.items():
         if symbol not in technicals:
             continue
-        sector, finviz_sector = sector_from_name(meta.get("company", ""))
+        sector, finviz_sector = sector_from_name(meta.get("company", ""), symbol)
         if sector in {"finance", "reits", "healthcare", "energy"}:
             continue
         records[symbol] = {

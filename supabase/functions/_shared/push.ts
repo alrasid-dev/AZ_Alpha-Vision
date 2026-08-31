@@ -34,7 +34,11 @@ export function jsonResponse(body: unknown, status = 200): Response {
 export function checkRunKey(req: Request, envVar: string, header: string): Response | null {
   const expected = Deno.env.get(envVar) || "";
   const provided = req.headers.get(header) || "";
-  if (!expected || provided !== expected) {
+  const auth = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const headerOk = Boolean(expected) && provided === expected;
+  const serviceOk = Boolean(serviceRole) && auth === serviceRole;
+  if (!headerOk && !serviceOk) {
     return jsonResponse({ error: "unauthorized — مفتاح التشغيل السحابي غير صحيح أو غير معرّف" }, 401);
   }
   return null;

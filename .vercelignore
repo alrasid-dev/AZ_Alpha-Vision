@@ -1,7 +1,6 @@
 # AZ Alpha Vision — Vercel يخدم فقط الواجهة الثابتة (index.html/app.js/sw.js/manifest/icons/brand-assets)
-# كل ما يلي خاص بخدمات أخرى (Render لبوت المسوق، GitHub Actions لسكربتات بايثون، Supabase Edge Functions)
-# ولا علاقة له بموقع الواجهة — استبعاده يمنع أي التباس أو محاولة بناء خاطئة على Vercel.
-# ملاحظة: brand-assets/* و icon*.png تبقى مرفوعة لأنها تُخدَّم مباشرة من الموقع.
+# نستبعد فقط المجلدات التي تحتوي مشاريع Node منفصلة (لتفادي أي التباس Monorepo لدى Vercel)
+# وملفات الخدمات الأخرى غير المرتبطة بالموقع (Render لبوت المسوق، GitHub Actions، Supabase Edge Functions).
 
 az-alpha-marketer-unified/
 supabase/
@@ -9,16 +8,6 @@ scripts/
 mobile/
 config/
 .github/
-
-*.py
-*.sql
-*.md
-
-package.json
-package-lock.json
-index.js
-render.yaml
-netlify.toml
 
 _cdp_shot.js
 _render_asset.js

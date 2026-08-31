@@ -1,4 +1,4 @@
-const CACHE_NAME = 'az-alpha-shell-v6';
+const CACHE_NAME = 'az-alpha-shell-v7';
 const APP_URL = './';
 
 self.addEventListener('install', (event) => {

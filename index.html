@@ -1079,6 +1079,28 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
 
             <div class="content-area">
                 <div id="tab-stocks" class="tab-panel">
+                    <section id="androidDownloadCard" class="android-download-card" aria-label="تحميل تطبيق الأندرويد">
+                        <button class="android-card-close" type="button" onclick="dismissAndroidDownloadCard()" aria-label="إغلاق">×</button>
+                        <div class="android-card-main">
+                            <span class="android-card-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"><path d="M6 18c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2v-8H6v8Z"/><path d="M4 10h16"/><path d="m8 5-1.5-2M16 5l1.5-2"/><circle cx="9" cy="7.5" r=".6" fill="currentColor"/><circle cx="15" cy="7.5" r=".6" fill="currentColor"/></svg>
+                            </span>
+                            <div class="android-card-copy">
+                                <span class="android-card-kicker">إصدار أندرويد جاهز · بناء مستقر تلقائي</span>
+                                <h3>تحميل تطبيق الأندرويد <small>(ملف APK مجاني)</small></h3>
+                                <p>ثبّت AZ Alpha Vision كتطبيق مستقل على جوالك — مجاناً 100% ودون الحاجة لمتجر Google Play.</p>
+                            </div>
+                            <a class="android-download-btn" id="androidDownloadBtn" href="https://github.com/alrasid-dev/AZ_Alpha-Vision/releases/download/android-latest/app-debug.apk" download="AZ-Alpha-Vision.apk" rel="noopener noreferrer">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                                <span>تحميل الآن (APK)</span>
+                            </a>
+                        </div>
+                        <ol class="android-install-steps">
+                            <li><span class="step-emoji">1️⃣</span> اضغط <b>تحميل الآن</b> ليبدأ تنزيل الملف مباشرة على جهازك.</li>
+                            <li><span class="step-emoji">2️⃣</span> إن طلب جهازك ذلك، وافق على تثبيت التطبيقات من <b>"مصادر غير معروفة"</b> (Unknown Sources) لمرة واحدة فقط.</li>
+                            <li><span class="step-emoji">3️⃣</span> افتح الملف بعد التنزيل واستمتع بالمنصة كاملة كأيقونة مستقلة على شاشتك — مجاناً ودون أي رسوم.</li>
+                        </ol>
+                    </section>
                     <div id="signalGridDashboard" class="signal-grid-dashboard" aria-label="لوحة Signal Grid"></div>
                     <section class="decision-observatory" aria-label="مرصد القرار">
                         <div class="observatory-surface">
@@ -1875,6 +1897,32 @@ html[data-theme="light"] .ios-step-num{background:#2f7a6d!important;color:#fff!i
 html[data-theme="light"] .ios-step-icon{background:rgba(47,122,109,.1)!important;color:#2f7a6d!important}
 html[data-theme="light"] .ios-install-badge{background:rgba(47,122,109,.1)!important;color:#2f7a6d!important}
 html[data-theme="light"] .ios-install-reopen{background:#fff!important;border-color:#2f7a6d!important;color:#2f7a6d!important}
+</style>
+<style id="az-android-download-card">
+.android-download-card{position:relative;margin-bottom:22px;padding:22px 24px;border-radius:18px;overflow:hidden;background:linear-gradient(135deg,rgba(11,184,238,.14),rgba(242,190,82,.06)),#0d1a26;border:1px solid rgba(107,216,208,.28);box-shadow:0 18px 44px rgba(0,0,0,.28)}
+.android-download-card:before{content:'';position:absolute;inset:0;opacity:.5;background-image:radial-gradient(circle at 90% 0%,rgba(107,216,208,.16),transparent 55%);pointer-events:none}
+.android-card-close{position:absolute;top:12px;left:14px;width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.08);color:var(--text-muted);font-size:16px;line-height:1;cursor:pointer;z-index:2}
+.android-card-close:hover{background:rgba(255,255,255,.16);color:var(--text)}
+.android-card-main{position:relative;z-index:1;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.android-card-icon{flex:0 0 52px;width:52px;height:52px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(135deg,#3ddc97,#0bb8ee);color:#06120d;box-shadow:0 10px 22px rgba(61,220,151,.28)}
+.android-card-icon svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.android-card-copy{flex:1;min-width:220px}
+.android-card-kicker{display:block;color:var(--accent-cyan);font:700 10.5px var(--font-mono);letter-spacing:.06em;margin-bottom:6px}
+.android-card-copy h3{margin:0 0 6px;font-size:19px;color:var(--text)}
+.android-card-copy h3 small{font-size:13px;font-weight:600;color:var(--text-muted)}
+.android-card-copy p{margin:0;font-size:12.5px;color:var(--text-muted);line-height:1.8;max-width:480px}
+.android-download-btn{display:inline-flex;align-items:center;gap:9px;flex:0 0 auto;padding:0 22px;height:48px;border-radius:12px;background:linear-gradient(135deg,#3ddc97,#0bb8ee);color:#06120d;font:700 13.5px var(--font-body);white-space:nowrap;box-shadow:0 14px 28px rgba(11,184,238,.28);transition:transform .18s ease,box-shadow .18s ease}
+.android-download-btn:hover{transform:translateY(-2px);box-shadow:0 18px 34px rgba(11,184,238,.36)}
+.android-download-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.android-install-steps{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px 22px;margin:16px 0 0;padding:14px 0 0;border-top:1px solid rgba(255,255,255,.08);list-style:none}
+.android-install-steps li{flex:1 1 220px;min-width:200px;font-size:11.5px;color:var(--text-muted);line-height:1.8}
+.android-install-steps b{color:var(--text)}
+.step-emoji{margin-left:4px}
+@media(max-width:760px){.android-download-card{padding:18px 16px}.android-card-main{gap:12px}.android-card-icon{width:44px;height:44px}.android-download-btn{width:100%;justify-content:center;height:46px}.android-install-steps{flex-direction:column;gap:8px}}
+html[data-theme="light"] .android-download-card{background:linear-gradient(135deg,rgba(47,122,109,.1),rgba(233,178,74,.06)),#fff!important;border-color:#d9ecE6!important;box-shadow:0 14px 32px rgba(16,42,85,.08)!important}
+html[data-theme="light"] .android-card-close{background:rgba(16,42,85,.06)!important;color:#5c6b78!important}
+html[data-theme="light"] .android-card-close:hover{background:rgba(16,42,85,.12)!important;color:#1a2a3a!important}
+html[data-theme="light"] .android-install-steps{border-top-color:#eee7d8!important}
 </style>
 <style id="az-core-vars-light-theme-fix">
 html[data-theme="light"]{

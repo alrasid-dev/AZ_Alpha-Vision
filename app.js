@@ -6253,6 +6253,33 @@ function initIosInstallGuide() {
 }
 document.addEventListener("DOMContentLoaded", initIosInstallGuide);
 
+// بطاقة تحميل تطبيق الأندرويد (APK) في الصفحة الرئيسية — رابط مباشر من GitHub Releases مجاناً 100%.
+function dismissAndroidDownloadCard() {
+  const card = document.getElementById("androidDownloadCard");
+  if (card) card.style.display = "none";
+  try {
+    localStorage.setItem("az_android_card_dismissed", "1");
+  } catch (e) {}
+}
+function initAndroidDownloadCard() {
+  const card = document.getElementById("androidDownloadCard");
+  if (!card) return;
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem("az_android_card_dismissed") === "1";
+  } catch (e) {}
+  if (dismissed) {
+    card.style.display = "none";
+    return;
+  }
+  const ua = navigator.userAgent || "";
+  if (/Android/i.test(ua)) {
+    const btn = document.getElementById("androidDownloadBtn");
+    if (btn) btn.querySelector("span").textContent = "تحميل الآن على جهازك (APK)";
+  }
+}
+document.addEventListener("DOMContentLoaded", initAndroidDownloadCard);
+
 // ضابط أولي للرموز: لا يُقبل الرمز إلا إذا وُجد في بيانات السوق الموثوقة وله سعر موجب.
 async function isTradableMarketSymbol(symbol) {
   const s = String(symbol || "")

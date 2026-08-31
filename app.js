@@ -3450,24 +3450,28 @@ let signalGridObserver = null;
 function renderSignalGridPicks() {
   const body = document.getElementById("dashboardPicksBody");
   if (!body) return;
-  const picks = Array.isArray(LocalCache.getPicks())
-    ? LocalCache.getPicks().slice(0, 5)
+  const trades = Array.isArray(virtualTrader?.trades)
+    ? virtualTrader.trades.slice(0, 8)
     : [];
-  if (!picks.length) {
+  if (!trades.length) {
     body.innerHTML =
-      '<tr><td colspan="3" class="grid-empty-cell">لا توجد ترشيحات فعّالة بعد</td></tr>';
+      '<tr><td colspan="3" class="grid-empty-cell">لا توجد صفقات محاكية بعد</td></tr>';
     return;
   }
-  body.innerHTML = picks
-    .map((pick, index) => {
-      const price = Number(pick?.price);
-      const entry = Number(pick?.entryPrice);
-      const label = escapeHtml(
-        String(pick?.entryStatus || "متابعة")
-          .replace(/^دخول عند\s*/u, "")
-          .slice(0, 18),
-      );
-      return `<tr><td><span class="grid-rank">${index + 1}</span><strong>${escapeHtml(pick?.symbol || "—")}</strong></td><td class="font-mono">${Number.isFinite(price) ? `$${price.toFixed(2)}` : "—"}</td><td><span class="grid-entry ${String(pick?.entryStatus || "").includes("انتظار") ? "caution" : ""}">${Number.isFinite(entry) ? `$${entry.toFixed(2)}` : "—"} <small>${label}</small></span></td></tr>`;
+  body.innerHTML = trades
+    .map((t) => {
+      const sym = String(t.symbol || "—").toUpperCase();
+      const qty = Number(t.qty) || 0;
+      const pos = virtualTrader.positions?.[sym];
+      const pct =
+        t.action === "sell" && Number(t.entryPrice)
+          ? (Number(t.price) / Number(t.entryPrice) - 1) * 100
+          : t.action === "buy" && pos && Number(pos.entryPrice)
+            ? (Number(pos.lastPrice || pos.entryPrice) / Number(pos.entryPrice) - 1) *
+              100
+            : 0;
+      const cls = movementClass(pct);
+      return `<tr><td><strong class="font-mono">${escapeHtml(sym)}</strong><small class="sym-sub">${t.action === "buy" ? "شراء" : "بيع"}</small></td><td class="font-mono">${qty}</td><td class="${cls} font-mono">${movementSign(pct)}${pct.toFixed(2)}%</td></tr>`;
     })
     .join("");
 }
@@ -3516,7 +3520,7 @@ function mountSignalGridDashboard() {
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
   const picksPanel = document.createElement("div");
   picksPanel.className = "signal-grid-table";
-  picksPanel.innerHTML = `<table><thead><tr><th>الترتيب</th><th>السعر</th><th>المنطقة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة الترشيحات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('picks')">عرض كل الترشيحات <span>←</span></button>`;
+  picksPanel.innerHTML = `<table><thead><tr><th>الرمز</th><th>العدد</th><th>النسبة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة سجل الصفقات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('portfolio')">عرض سجل المحاكي <span>←</span></button>`;
   const newsPanel = document.createElement("div");
   newsPanel.className = "signal-grid-feed";
   newsPanel.id = "dashboardNewsList";
@@ -3556,8 +3560,8 @@ function mountSignalGridDashboard() {
     ),
     createSignalWidget(
       "picks",
-      "أفضل ترشيحات الأسبوع",
-      "WEEKLY PICKS",
+      "سجل صفقات المحاكي",
+      "TRADE LEDGER",
       [picksPanel],
       "widget-picks",
     ),
@@ -6536,8 +6540,16 @@ function closeIosInstallGuide() {
 }
 function initIosInstallGuide() {
   if (!isIosDevice() || isRunningStandalone()) return;
-  const reopenBtn = document.getElementById("iosInstallReopenBtn");
-  if (reopenBtn) reopenBtn.hidden = false;
+  const fab = document.getElementById("androidInstallFab");
+  if (fab) {
+    fab.removeAttribute("download");
+    fab.setAttribute("href", "#");
+    fab.setAttribute("aria-label", "تثبيت التطبيق على الشاشة الرئيسية");
+    fab.addEventListener("click", (e) => {
+      e.preventDefault();
+      openIosInstallGuide();
+    });
+  }
   let dismissed = false;
   try {
     dismissed = localStorage.getItem("az_ios_install_dismissed") === "1";
@@ -6698,15 +6710,56 @@ async function syncVirtualTraderFromServer() {
   }));
   const runInfo = runRes.error ? null : runRes.data;
   virtualTraderLoaded = true;
+  const hydrated = Object.keys(positions).length
+    ? positions
+    : openPositionsFromTrades(trades);
   virtualTrader = {
     cash: Number(portfolio.cash ?? VIRTUAL_STARTING_CASH),
-    positions,
+    positions: hydrated,
     trades,
     startedAt: portfolio.created_at || null,
     lastRun: trades[0]?.at || runInfo?.started_at || null,
     runInfo,
   };
   renderVirtualTrader();
+}
+function openPositionsFromTrades(trades) {
+  const book = new Map();
+  const chronological = [...(trades || [])].sort(
+    (a, b) => new Date(a.at || 0) - new Date(b.at || 0),
+  );
+  for (const t of chronological) {
+    const sym = String(t.symbol || "").toUpperCase();
+    if (!sym) continue;
+    const qty = Number(t.qty) || 0;
+    const price = Number(t.price) || 0;
+    if (t.action === "buy" && qty > 0 && price > 0) {
+      const prev = book.get(sym);
+      if (prev) {
+        const newQty = prev.qty + qty;
+        const entry = (prev.entryPrice * prev.qty + price * qty) / newQty;
+        book.set(sym, {
+          ...prev,
+          qty: newQty,
+          entryPrice: entry,
+          lastPrice: price,
+        });
+      } else {
+        book.set(sym, {
+          symbol: sym,
+          qty,
+          entryPrice: price,
+          lastPrice: price,
+          tier: t.tier || "Entry",
+          reason: t.reason || "",
+          enteredAt: t.at,
+        });
+      }
+    } else if (t.action === "sell") {
+      book.delete(sym);
+    }
+  }
+  return Object.fromEntries(book);
 }
 
 async function refreshVirtualTraderFromServer() {
@@ -6788,14 +6841,24 @@ function virtualTierLabel(row, action) {
   if (n === 2) return action === "buy" ? "دخول مؤكد" : "خروج مؤكد";
   return action === "buy" ? "دخول" : "خروج";
 }
+function virtualRealizedPnl() {
+  return (virtualTrader.trades || [])
+    .filter((t) => t.action === "sell")
+    .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+}
+function virtualUnrealizedPnl() {
+  return Object.values(virtualTrader.positions || {}).reduce((sum, p) => {
+    const last = Number(p.lastPrice || p.entryPrice);
+    const entry = Number(p.entryPrice);
+    return sum + (last - entry) * Number(p.qty);
+  }, 0);
+}
+function virtualMarkToMarketPnl() {
+  // الربح/الخسارة من حركة السعر فقط — شراء الأسهم تحويل نقد↔أصل وليس خسارة.
+  return virtualRealizedPnl() + virtualUnrealizedPnl();
+}
 function virtualEquity() {
-  return (
-    virtualTrader.cash +
-    Object.values(virtualTrader.positions).reduce(
-      (sum, p) => sum + Number(p.qty) * Number(p.lastPrice || p.entryPrice),
-      0,
-    )
-  );
+  return VIRTUAL_STARTING_CASH + virtualMarkToMarketPnl();
 }
 function virtualExecuteBuy(row) {
   const symbol = String(row?.symbol || "").toUpperCase();
@@ -6987,21 +7050,15 @@ function movementSign(value) {
   return n > 0 ? "+" : "";
 }
 function renderVirtualTrader() {
-  const equity = virtualEquity();
   const invested = Object.values(virtualTrader.positions).reduce(
     (sum, p) => sum + Number(p.qty) * Number(p.entryPrice),
     0,
   );
-  const unrealized = Object.values(virtualTrader.positions).reduce(
-    (sum, p) =>
-      sum +
-      (Number(p.lastPrice || p.entryPrice) - Number(p.entryPrice)) *
-        Number(p.qty),
-    0,
-  );
+  const unrealized = virtualUnrealizedPnl();
   const sells = virtualTrader.trades.filter((t) => t.action === "sell");
-  const realized = sells.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-  const pnl = equity - VIRTUAL_STARTING_CASH;
+  const realized = virtualRealizedPnl();
+  const pnl = realized + unrealized;
+  const equity = VIRTUAL_STARTING_CASH + pnl;
   const returnPct = (pnl / VIRTUAL_STARTING_CASH) * 100;
   const winRate = sells.length
     ? (sells.filter((t) => Number(t.pnl) > 0).length / sells.length) * 100
@@ -7010,8 +7067,9 @@ function renderVirtualTrader() {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
   };
-  set("vtCash", `$${virtualTrader.cash.toFixed(2)}`);
-  set("vtEquity", `$${equity.toFixed(2)}`);
+  set("vtCash", `$${Number(virtualTrader.cash || 0).toFixed(2)}`);
+  set("vtEquity", `$${VIRTUAL_STARTING_CASH.toFixed(2)}`);
+  set("vtMarkValue", `$${equity.toFixed(2)}`);
   set("vtInvested", `$${invested.toFixed(2)}`);
   set("vtPnl", `${movementSign(pnl)}$${pnl.toFixed(2)}`);
   set("vtReturnPct", `${movementSign(returnPct)}${returnPct.toFixed(2)}%`);
@@ -7044,11 +7102,22 @@ function renderVirtualTrader() {
       ? virtualTrader.trades
           .slice(0, 20)
           .map((t) => {
-            const pnlValue = t.pnl == null ? null : Number(t.pnl);
+            const pos = virtualTrader.positions[String(t.symbol || "").toUpperCase()];
+            const pnlValue =
+              t.action === "buy"
+                ? pos
+                  ? (Number(pos.lastPrice || pos.entryPrice) - Number(pos.entryPrice)) *
+                    Number(t.qty)
+                  : 0
+                : t.pnl == null
+                  ? null
+                  : Number(t.pnl);
             const pct =
               t.action === "sell" && t.entryPrice
                 ? (Number(t.price) / Number(t.entryPrice) - 1) * 100
-                : null;
+                : t.action === "buy" && pos && Number(pos.entryPrice)
+                  ? (Number(pos.lastPrice || pos.entryPrice) / Number(pos.entryPrice) - 1) * 100
+                  : 0;
             const pnlClass =
               pnlValue == null ? "text-neutral" : movementClass(pnlValue);
             const pctClass = pct == null ? "text-neutral" : movementClass(pct);
@@ -7071,6 +7140,7 @@ function renderVirtualTrader() {
     if (el)
       el.className = `val ${movementClass(Number(String(el.textContent || "").replace(/[$,%+ ]/g, "")))}`;
   });
+  renderSignalGridPicks();
 }
 
 // ===== SIGNAL-FIRST OVERVIEW MIRROR =====

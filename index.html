@@ -1153,9 +1153,9 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                                 <div class="orbit-dot dot-b"></div>
                                 <div class="orbit-core">
                                     <div class="orbit-gold-mark" title="السهم الذهبي">↑</div>
-                                    <small>قيمة المحاكاة</small>
+                                    <small>رأس المال</small>
                                     <strong id="overviewEquity">$10,000.00</strong>
-                                    <span id="orbitGoldTicker">بانتظار السهم الذهبي</span>
+                                    <span id="orbitGoldTicker">ثابت $10,000</span>
                                     <div class="orbit-live-row" aria-live="polite">
                                         <b id="orbitMarketPulse" class="orbit-pulse">●</b>
                                         <em id="orbitAlertCount">0 تنبيه</em>
@@ -1580,12 +1580,18 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <p id="ownerAnnouncementBody" style="white-space:pre-wrap;line-height:1.9;color:var(--text-muted);"></p>
                     </div>
                 </div>
+                <div id="azFabDock" class="az-fab-dock" aria-label="اختصارات المنصة">
                 <button id="azAiLauncher" class="glass platform-guide-launcher az-ai-launcher az-bee-launcher" type="button" onclick="openAzAi()" aria-label="فتح النحلة النشطة">
                     <span class="az-bee-core" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="12" cy="13" rx="5.2" ry="6"/><path d="M12 7v12M8.2 11h7.6M8.4 14.2h7.2"/><path d="M7 9c-2-2-3-4-1.2-5.2C7.6 2.6 10 5 12 7c2-2 4.4-4.4 6.2-3.2C20 5 19 7 17 9"/><path d="M9 19.5c.8.8 1.8 1.2 3 1.2s2.2-.4 3-1.2"/></svg>
                     </span>
                     <span class="sr-only">النحلة النشطة</span>
                 </button>
+                <a id="androidInstallFab" class="android-install-fab" href="https://github.com/alrasid-dev/AZ_Alpha-Vision/releases/download/android-latest/app-debug.apk" download="AZ-Alpha-Vision.apk" rel="noopener noreferrer" aria-label="تحميل تطبيق أندرويد مباشرة">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2v-8H6v8Z"/><path d="M4 10h16"/><path d="m8 5-1.5-2M16 5l1.5-2"/><circle cx="9" cy="7.5" r=".6" fill="currentColor"/><circle cx="15" cy="7.5" r=".6" fill="currentColor"/></svg>
+                    <span class="sr-only">تحميل أندرويد</span>
+                </a>
+                </div>
                 <div id="azAiModal" class="modal-overlay" aria-hidden="true">
                     <div class="modal-box az-ai-modal" role="dialog" aria-modal="true" aria-labelledby="azAiTitle">
                         <div class="platform-guide-head"><div><div class="az-kicker">AZ BEE / ACTIVE ASSISTANT</div><h2 id="azAiTitle">النحلة النشطة</h2><p class="sub">إجابات فورية داخل المنصة للموظفين والمتعلمين — سريعة، عملية، وتعليمية فقط.</p></div><button class="btn-modal btn-modal-cancel" type="button" onclick="closeAzAi()">إغلاق</button></div>
@@ -1666,7 +1672,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
             <label class="ios-install-dismiss"><input type="checkbox" id="iosInstallDontShow"> لا تُظهر هذه النافذة مرة أخرى</label>
         </div>
     </div>
-    <button id="iosInstallReopenBtn" class="ios-install-reopen" type="button" onclick="openIosInstallGuide()" title="طريقة التثبيت على آيفون" aria-label="طريقة التثبيت على آيفون" hidden>
+    <button id="iosInstallReopenBtn" class="ios-install-reopen" type="button" onclick="openIosInstallGuide()" title="طريقة التثبيت على آيفون" aria-label="طريقة التثبيت على آيفون" hidden style="display:none!important">
         <svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
     </button>
 
@@ -1686,7 +1692,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
       html,body,#authScreen{background:#080c12!important;color:#edf3f8!important}.app-container,.main{background:#080c12!important}.sidebar{background:rgba(9,14,20,.96)!important;border-left-color:rgba(180,202,222,.16)!important}.premium-brand,.premium-watch-header{border-color:rgba(180,202,222,.16)!important}.premium-brand strong,.sidebar-title{color:#edf3f8!important}.premium-brand span,.premium-nav-label{color:#8393a0!important}.sidebar .tab-btn{color:#a5b1bc!important;background:transparent!important}.sidebar .tab-btn:hover{background:rgba(255,255,255,.035)!important;color:#f5f9fb!important}.sidebar .tab-btn.active{background:rgba(53,202,130,.11)!important;color:#72e6aa!important;box-shadow:inset -3px 0 0 #35ca82!important}.sidebar .tab-btn.active:before{background:transparent!important}.topbar{background:rgba(8,12,18,.92)!important;border-bottom-color:rgba(180,202,222,.16)!important}.page-heading h1{color:#edf3f8!important}.page-heading .eyebrow{color:#35ca82!important}.global-search,.header-icon-button,.user-chip{background:#0d141d!important;border-color:rgba(180,202,222,.16)!important;color:#edf3f8!important}.global-search input{color:#edf3f8!important}.content-area{background:#080c12!important}.signal-widget .market-canvas,.signal-widget .market-stream{background:transparent!important;box-shadow:none!important}.signal-widget .chart-box{background:#0b1118!important;border:0!important;box-shadow:none!important}.signal-widget .data-table{background:#0d141d!important}.signal-widget .data-table th{background:#0e151d!important;color:#8393a0!important;border-color:rgba(180,202,222,.12)!important}.signal-widget .data-table td{background:transparent!important;color:#dce6ed!important;border-color:rgba(180,202,222,.08)!important}.signal-widget .data-table tr:hover td{background:rgba(255,255,255,.025)!important}.signal-widget .news-item,.signal-widget .earnings-item{background:transparent!important;color:#dce6ed!important}.signal-widget .news-item-title,.signal-widget .earnings-estimate{color:#dce6ed!important}.signal-widget .news-item-sub,.signal-widget .earnings-source{color:#8293a0!important}.signal-widget .chart-empty-state{background:radial-gradient(circle at 50% 45%,rgba(53,202,130,.055),transparent 55%)!important;color:#8fa0ad!important}.signal-widget .chart-empty-state strong{color:#eaf3f8!important}.signal-widget .chart-empty-icon{background:transparent!important;color:#35ca82!important}.signal-widget .time-lenses{background:#0d141d!important}.signal-widget .time-lenses .active{background:#1a2732!important;color:#a6ecc6!important;box-shadow:none!important}.signal-widget .time-lenses span{color:#7f909d!important}.az-ownership-notice{background:#080c12!important;color:#748592!important;border-color:rgba(180,202,222,.10)!important}.notification-center{background:#0d141d!important;border-left-color:rgba(180,202,222,.16)!important}.notification-center-head h2,.in-app-notification strong{color:#edf3f8!important}.notification-tabs button{color:#9cabb6!important}.notification-tabs button.active{background:rgba(53,202,130,.12)!important;color:#7fe5ad!important}.in-app-notification{border-color:rgba(180,202,222,.10)!important}.in-app-notification p,.notification-empty,.in-app-notification small{color:#8393a0!important}@media(max-width:860px){.sidebar .tabs-wrap{background:#0b1118!important;border-top-color:rgba(180,202,222,.16)!important;box-shadow:0 -10px 30px rgba(0,0,0,.32)!important}.sidebar .tab-btn.active{box-shadow:inset 0 -2px 0 #35ca82!important}}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=20260901c"></script>
+    <script src="app.js?v=20260901d"></script>
 <style id="az-stable-release-2026">
 /* طبقة الاستقرار النهائية: ألوان هادئة، سطح مكتب متماسك، وجوال بعمود واحد. */
 :root{--app-bg:#080d13;--app-panel:#111a24;--app-panel-raised:#15212c;--app-panel-soft:#0d151e;--app-border:rgba(166,188,207,.16);--app-border-strong:rgba(166,188,207,.27);--app-text:#d8e1e8;--app-text-strong:#eaf0f5;--app-muted:#91a1af;--app-positive:#55cf8e;--app-negative:#e87880;--app-caution:#d9b56d;--app-info:#7bb3e8}
@@ -2272,22 +2278,23 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
 .gold-watch-strip strong{font:800 15px var(--font-mono);color:#fff}
 .gold-watch-strip button{margin-right:auto;padding:6px 10px;border:1px solid rgba(212,175,55,.4);border-radius:999px;background:transparent;color:#f0d48a;cursor:pointer;font:700 11px var(--font-body)}
 .gold-chip{padding:3px 8px;border-radius:999px;background:rgba(212,175,55,.2);font:700 10px var(--font-body)}
-.az-ai-launcher{position:fixed!important;left:16px!important;right:auto!important;bottom:18px!important;width:50px!important;height:50px!important;z-index:420!important}
+.az-fab-dock{position:fixed!important;left:12px!important;right:auto!important;bottom:18px!important;z-index:430!important;display:flex!important;align-items:center!important;gap:0!important;padding:4px!important;border-radius:18px!important;background:#101a21!important;border:1px solid rgba(107,216,208,.4)!important;box-shadow:0 12px 34px rgba(0,0,0,.38)!important}
+.az-fab-dock .az-ai-launcher,.az-fab-dock .android-install-fab{position:relative!important;left:auto!important;right:auto!important;bottom:auto!important;width:46px!important;height:46px!important;margin:0!important;border:0!important;box-shadow:none!important;background:transparent!important}
+.android-install-fab{display:grid!important;place-items:center;color:#3ddc97;border-radius:14px}
+.android-install-fab svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ios-install-reopen{display:none!important}
 .platform-guide-launcher#userGuide{position:fixed!important;left:auto!important;right:16px!important;bottom:18px!important;display:flex!important;width:50px!important;height:50px!important;z-index:420!important}
-.ios-install-reopen{position:fixed!important;left:auto!important;right:16px!important;bottom:80px!important;z-index:410!important}
 @media(max-width:860px){
   .canvas-head .eyebrow,.stream-head .eyebrow,.signal-widget-head small{display:none!important}
-  .az-ai-launcher{left:14px!important;right:auto!important;bottom:calc(var(--az-bottom-nav-h,64px) + 14px)!important}
+  .az-fab-dock{left:10px!important;bottom:calc(var(--az-bottom-nav-h,64px) + 12px)!important}
   .platform-guide-launcher#userGuide{display:none!important}
-  .ios-install-reopen{left:auto!important;right:14px!important;bottom:calc(var(--az-bottom-nav-h,64px) + 14px)!important}
   .picks-card-grid{grid-template-columns:1fr}
   .pick-metrics{grid-template-columns:1fr 1fr;gap:10px}
   .orbit-core{inset:48px!important}
   .gold-watch-strip{font-size:12px}
 }
 @media(min-width:861px){
-  .ios-install-reopen{right:16px!important;bottom:80px!important}
-  .platform-guide-launcher#userGuide{right:78px!important;bottom:18px!important}
+  .platform-guide-launcher#userGuide{right:16px!important;bottom:18px!important}
 }
 </style>
 </body>

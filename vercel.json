@@ -1,5 +1,5 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "$schema": "https://vercel.sh",
   "framework": null,
   "outputDirectory": ".",
   "cleanUrls": true,
@@ -14,10 +14,15 @@
     },
     {
       "source": "/manifest.json",
-      "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }]
+      "headers": [
+        { "key": "Content-Type", "value": "application/manifest+json" }
+      ]
     }
   ],
   "rewrites": [
-    { "source": "/((?!index.html|app.js|sw.js|manifest.json|icon.svg|icon-192.png|icon-512.png|brand-assets/(.*)).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!index\\.html|app\\.js|sw\\.js|manifest\\.json|icon\\.svg|icon-192\\.png|icon-512\\.png|brand-assets/(.*)).*)",
+      "destination": "/index.html"
+    }
   ]
 }

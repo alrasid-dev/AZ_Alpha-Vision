@@ -30,7 +30,7 @@ scripts/fetch_screener_signals.py
 
 ## Supabase
 
-شغّل محتوى `supabase_schema.sql` ثم `market_data_schema.sql` ثم `screener_schema.sql` ثم `notifications_and_data_schema.sql` في **Supabase → SQL Editor → New query → Run** (بهذا الترتيب).
+شغّل محتوى `supabase_schema.sql` ثم `market_data_schema.sql` ثم `screener_schema.sql` ثم `notifications_and_data_schema.sql` ثم `virtual_trader_schema.sql` في **Supabase → SQL Editor → New query → Run** (بهذا الترتيب).
 
 دوال الإرسال الست جاهزة بالكامل في:
 
@@ -42,6 +42,14 @@ supabase/functions/send-earnings-notifications/index.ts
 supabase/functions/send-admin-broadcast/index.ts
 supabase/functions/notify-subscription-expiry/index.ts
 ```
+
+ومحرك المحاكي المالي الحقيقي (شراء/بيع تلقائي مربوط بإشارات الدخول/الخروج) في:
+
+```text
+supabase/functions/run-virtual-trader/index.ts
+```
+
+هذه الدالة يستدعيها `.github/workflows/virtual_trader.yml` تلقائيًا كل 15 دقيقة أيام العمل، وتحتاج نفس أسرار `NOTIFY_RUN_KEY` و`SUPABASE_SERVICE_ROLE_KEY` الموثقة في `PUSH_NOTIFICATIONS_SETUP_AR.md`. بعد نشرها، ستراقب إشارات `screener_signals` لحظيًا: دخول قوي (صريح/مؤكد) ← شراء تلقائي فوري ضمن حدود إدارة مخاطر آلية (حد أقصى 8 مراكز، 20% من السيولة لكل مركز)، وخروج حقيقي (وقف خسارة −8%، جني أرباح +20%، أو انعكاس فني RSI/SMA50) ← بيع تلقائي فوري مع تحديث المحفظة والربح/الخسارة لحظيًا.
 
 خطوات النشر الكاملة وأسرار VAPID/النشر موثقة في `PUSH_NOTIFICATIONS_SETUP_AR.md`. لا تضع مفاتيح VAPID الخاصة داخل `app.js` أو المستودع — فقط في أسرار Supabase.
 

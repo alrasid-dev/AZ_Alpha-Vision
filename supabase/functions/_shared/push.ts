@@ -19,7 +19,7 @@ if (VAPID_PRIVATE_KEY) {
 export const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-notify-key, x-cron-key",
+    "authorization, x-client-info, apikey, content-type, x-notify-key, x-cron-key, x-trader-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -188,6 +188,54 @@ export async function restInsert(
     method: "POST",
     headers: { Prefer: "return=minimal" },
     body: JSON.stringify(rows),
+  });
+  return res.ok;
+}
+
+// upsert (insert-or-update) باستخدام on_conflict — مطلوب لمحرك الصفقات (شراء/تحديث مركز)
+export async function restUpsert(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  table: string,
+  rows: Record<string, unknown>[],
+  onConflict: string,
+): Promise<boolean> {
+  if (!rows.length) return true;
+  const res = await restFetch(
+    supabaseUrl,
+    serviceRoleKey,
+    `${table}?on_conflict=${encodeURIComponent(onConflict)}`,
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(rows),
+    },
+  );
+  return res.ok;
+}
+
+export async function restUpdate(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  path: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const res = await restFetch(supabaseUrl, serviceRoleKey, path, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(patch),
+  });
+  return res.ok;
+}
+
+export async function restDelete(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  path: string,
+): Promise<boolean> {
+  const res = await restFetch(supabaseUrl, serviceRoleKey, path, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
   });
   return res.ok;
 }

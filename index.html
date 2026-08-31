@@ -2033,5 +2033,74 @@ html[data-theme="light"] .az-overview-intro::before,
 html[data-theme="light"] #androidDownloadCard::before,
 html[data-theme="light"] .auth-card::before{opacity:.4}
 </style>
+<style id="az-force-luxury-v2">
+/* ============================================================
+   تحديث إجباري نهائي للهوية البصرية — الجولة الثانية من الفخامة
+   نظام ارتفاع (Elevation) موحّد + بطاقات وأزرار محسّنة لمس/فأرة
+   إضافي فوق كل الثيمات السابقة، بلا كسر لأي تخطيط قائم.
+   ============================================================ */
+:root{
+  --shadow-sm:0 2px 8px rgba(0,0,0,.18);
+  --shadow-md:0 10px 28px rgba(0,0,0,.24);
+  --shadow-lg:0 22px 60px rgba(0,0,0,.34);
+  --shadow-glow-cyan:0 0 0 1px rgba(107,216,208,.16),0 12px 30px rgba(107,216,208,.10);
+  --shadow-glow-gold:0 0 0 1px rgba(216,179,106,.18),0 12px 30px rgba(216,179,106,.10);
+}
+html[data-theme="light"]{
+  --shadow-sm:0 2px 8px rgba(30,40,60,.06);
+  --shadow-md:0 10px 26px rgba(30,40,60,.09);
+  --shadow-lg:0 20px 50px rgba(30,40,60,.12);
+}
+
+/* أرقام ولوحات المؤشرات بطابع طرفية مالية احترافية (tabular numerals) */
+.az-metric strong,.stat-row .val,.data-table td,#vtCash,#vtEquity,#vtPnl,#vtReturnPct,
+#vtRealizedPnl,#vtUnrealizedPnl,#vtWinRate,#vtOpenPositions,.overview-kpi strong{
+  font-variant-numeric:tabular-nums;letter-spacing:-.2px;
+}
+
+/* بطاقات رئيسية ترتفع بلطف عند المرور بالفأرة فقط (لا تتفاعل سلبًا مع اللمس) */
+@media(hover:hover) and (pointer:fine){
+  .az-overview-intro,.az-metric,.news-item,.watch-item,#androidDownloadCard,
+  .auth-card,.earnings-panel .earnings-item,.weekly-table-wrap,.ledger-surface{
+    transition:transform .28s ease,box-shadow .28s ease,border-color .28s ease;
+  }
+  .az-overview-intro:hover,.az-metric:hover,#androidDownloadCard:hover{
+    transform:translateY(-3px);box-shadow:var(--shadow-md);
+  }
+  .news-item:hover,.watch-item:hover{transform:translateX(-2px);box-shadow:var(--shadow-sm)}
+  .preset-btn:hover,.tab-btn:hover{transform:translateY(-1px)}
+}
+
+/* نظام أزرار موحّد: مساحة لمس مريحة 44px على الجوال + زوايا متناسقة */
+.btn-primary,.btn-modal-confirm,.android-download-btn,.btn-clear-filters,
+.btn-ind,.btn-upgrade,.btn-logout,.btn-add,.notification-toggle{
+  border-radius:var(--radius-sm,10px)!important;
+}
+@media(max-width:760px){
+  .btn-primary,.btn-modal-confirm,.android-download-btn,.btn-clear-filters,
+  .btn-ind,.preset-btn,.icon-btn,.tab-btn{min-height:44px}
+  .icon-btn{min-width:44px}
+}
+
+/* حالة تركيز واضحة ومتناسقة مع الهوية عند التنقل بلوحة المفاتيح (وصول شامل احترافي) */
+a:focus-visible,button:focus-visible,.tab-btn:focus-visible,.preset-btn:focus-visible,
+input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
+  outline:2px solid var(--accent-cyan);outline-offset:2px;border-radius:6px;
+}
+
+/* شبكة بطاقات آمنة احتياطية: أي حاوية عامة .cards-grid/.kpi-grid تتكيف تلقائيًا لكل قياس شاشة */
+.cards-grid,.kpi-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;
+}
+@media(max-width:480px){
+  .cards-grid,.kpi-grid{grid-template-columns:1fr}
+}
+
+/* عنوان القسم بطابع أكثر ثورية: تدرّج هادئ ذهبي↔تركوازي على الحروف الرئيسية */
+.az-overview-intro h1{
+  background:linear-gradient(95deg,var(--text) 35%,var(--accent-cyan) 75%,var(--accent-gold) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+</style>
 </body>
 </html>

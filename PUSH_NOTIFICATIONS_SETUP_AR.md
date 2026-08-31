@@ -8,9 +8,10 @@
 
 ```text
 notifications_and_data_schema.sql
+virtual_trader_schema.sql
 ```
 
-ثم اضغط Run. هذا ينشئ الجداول المفقودة: `notification_push_devices`, `notification_subscriptions`, `admin_broadcasts` (+ Storage bucket), `company_news`, `earnings_events`, `push_notification_log`.
+ثم اضغط Run لكل ملف. الأول ينشئ الجداول المفقودة: `notification_push_devices`, `notification_subscriptions`, `admin_broadcasts` (+ Storage bucket), `company_news`, `earnings_events`, `push_notification_log`. الثاني ينشئ جداول المحاكي المالي الحقيقي: `shared_virtual_portfolios`, `shared_virtual_positions`, `shared_virtual_trades`, `virtual_trader_runs`.
 
 ## 2) أضف أسرار Edge Functions (مرة واحدة)
 
@@ -25,7 +26,7 @@ notifications_and_data_schema.sql
 
 وفي **GitHub → Settings → Secrets and variables → Actions** أضف نفس قيمتَي `NOTIFY_RUN_KEY` و `SUBSCRIPTION_CRON_KEY` (تُستخدم في ملفات `.github/workflows/*.yml` الموجودة مسبقاً).
 
-## 3) انشر الدوال الست عبر Supabase CLI
+## 3) انشر الدوال السبع عبر Supabase CLI
 
 ```bash
 supabase link --project-ref <project-ref-الخاص-بك>
@@ -35,9 +36,10 @@ supabase functions deploy send-news-notifications
 supabase functions deploy send-earnings-notifications
 supabase functions deploy send-admin-broadcast
 supabase functions deploy notify-subscription-expiry --no-verify-jwt
+supabase functions deploy run-virtual-trader
 ```
 
-الدالة الأخيرة فقط تحتاج `--no-verify-jwt` لأن GitHub يستدعيها بمفتاح `x-cron-key` مباشرة بدون توكن جلسة.
+الدالة `notify-subscription-expiry` فقط تحتاج `--no-verify-jwt` لأن GitHub يستدعيها بمفتاح `x-cron-key` مباشرة بدون توكن جلسة. أما `run-virtual-trader` فتُستدعى بمفتاح `x-trader-key` (نفس قيمة `NOTIFY_RUN_KEY`) مع `Authorization: Bearer` صحيح، فتبقى بإعدادها الافتراضي.
 
 ## 4) تحقق من العمل
 

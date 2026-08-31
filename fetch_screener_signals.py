@@ -271,6 +271,29 @@ def tier(score: int) -> str | None:
     return "صريح" if score >= 3 else "مؤكد" if score == 2 else "دخول" if score == 1 else None
 
 
+def exit_score(row: dict[str, Any]) -> tuple[int, dict[str, bool]]:
+    """نظير عكسي لـ entry_score: يرصد انعكاسًا هبوطيًا حقيقيًا لسهم مُمسوك،
+    ليغذّي المحاكي الافتراضي (run-virtual-trader) وشارة "خروج" في الواجهة."""
+    price = num(row, "price") or 0
+    rsi = num(row, "rsi14")
+    change = num(row, "change_pct") or 0
+    relvol = num(row, "rel_volume", "rel_volume_9") or 0
+    sma20, sma50 = num(row, "sma20"), num(row, "sma50")
+    signals = {
+        "fibonacci": bool(sma20 is not None and sma50 is not None and price < sma20 < sma50),
+        "smc_atr": bool(sma50 is not None and price < sma50 * 0.97),
+        "candlestick": bool(change < 0 and (rsi is None or rsi > 55)),
+        "volume": bool(relvol > 1.5 and change < 0),
+    }
+    if rsi is not None and rsi >= 75:
+        signals["candlestick"] = True
+    return sum(signals.values()), signals
+
+
+def exit_tier(score: int) -> str | None:
+    return "صريح" if score >= 3 else "مؤكد" if score == 2 else "خروج" if score == 1 else None
+
+
 def upsert(rows: list[dict[str, Any]]) -> None:
     if not rows:
         log.warning("لم تنتج القوالب إشارات جديدة؛ لن نحذف الإشارات السابقة")
@@ -289,6 +312,12 @@ def upsert(rows: list[dict[str, Any]]) -> None:
         existing["entry_signals"] = {
             name: bool(existing.get("entry_signals", {}).get(name) or row.get("entry_signals", {}).get(name))
             for name in set(existing.get("entry_signals", {})) | set(row.get("entry_signals", {}))
+        }
+        existing["exit_score"] = max(int(existing.get("exit_score") or 0), int(row.get("exit_score") or 0))
+        existing["exit_tier"] = exit_tier(int(existing.get("exit_score") or 0))
+        existing["exit_signals"] = {
+            name: bool(existing.get("exit_signals", {}).get(name) or row.get("exit_signals", {}).get(name))
+            for name in set(existing.get("exit_signals", {})) | set(row.get("exit_signals", {}))
         }
     rows = list(deduped.values())
 
@@ -351,6 +380,7 @@ def main() -> None:
             score, signals = entry_score(row, spec)
             if strict_match and score <= 0:
                 continue
+            exit_sc, exit_sig = exit_score(row) if strict_match else (0, {})
             output.append({
                 # هذه هي أعمدة screener_signals الموجودة فعليًا فقط.
                 # RSI وSMA ومسافاتها محفوظة في market_technicals وتُطابقها الواجهة بالرمز.
@@ -365,9 +395,9 @@ def main() -> None:
                 "entry_score": score if strict_match else max(1, min(2, progress)),
                 "entry_tier": tier(score) if strict_match else "مراقبة",
                 "entry_signals": {**signals, "smc_atr": smc_ok, "template_progress": f"{progress}/{required}"},
-                "exit_score": 0,
-                "exit_tier": None,
-                "exit_signals": {},
+                "exit_score": exit_sc,
+                "exit_tier": exit_tier(exit_sc) if strict_match else None,
+                "exit_signals": exit_sig,
                 "fib_ratio": None,
             })
             count += 1

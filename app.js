@@ -6846,7 +6846,24 @@ function virtualRealizedPnl() {
     .filter((t) => t.action === "sell")
     .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
 }
+function markVirtualPositionsFromMarket() {
+  const rows = [
+    ...(Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : []),
+    ...(Array.isArray(screenerResults) ? screenerResults : []),
+  ];
+  const live = new Map();
+  for (const row of rows) {
+    const sym = String(row?.symbol || "").toUpperCase();
+    const price = virtualPrice(row);
+    if (sym && price) live.set(sym, price);
+  }
+  Object.values(virtualTrader.positions || {}).forEach((p) => {
+    const quote = live.get(String(p.symbol || "").toUpperCase());
+    if (quote) p.lastPrice = quote;
+  });
+}
 function virtualUnrealizedPnl() {
+  markVirtualPositionsFromMarket();
   return Object.values(virtualTrader.positions || {}).reduce((sum, p) => {
     const last = Number(p.lastPrice || p.entryPrice);
     const entry = Number(p.entryPrice);

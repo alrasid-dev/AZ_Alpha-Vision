@@ -18,6 +18,7 @@ create table if not exists public.shared_virtual_positions (
   qty           numeric not null,
   entry_price   numeric not null,
   last_price    numeric,
+  peak_price    numeric,
   entry_tier    text,
   reason        text,
   entered_at    timestamptz not null default now(),

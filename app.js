@@ -54,6 +54,16 @@ function escapeHtml(s) {
       ],
   );
 }
+// ينظّف نصوصًا واردة من قاعدة البيانات (إعلانات الأدمن، تذاكر الدعم) قد تحتوي أحيانًا
+// على تسلسلات هروب حرفية مثل \n أو \r بدل سطر فعلي، فتظهر للمستخدم كرموز غريبة.
+function normalizeDbText(s) {
+  return String(s ?? "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 function withTimeout(promise, ms = 15000) {
   return Promise.race([
     promise,
@@ -328,14 +338,26 @@ function urlBase64ToUint8Array(base64String) {
   const rawData = atob(base64);
   return Uint8Array.from([...rawData].map((ch) => ch.charCodeAt(0)));
 }
+function isPushSupported() {
+  return Boolean(
+    window.isSecureContext &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window,
+  );
+}
 async function registerPushWorker() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window))
-    throw new Error("المتصفح لا يدعم Web Push");
-  // register() قد يُرجع تسجيلاً لا يزال في حالة installing/waiting فقط؛ استدعاء
-  // pushManager.subscribe() في هذه اللحظة يفشل بخطأ "no active Service Worker".
-  // navigator.serviceWorker.ready لا يتحقق إلا بعد أن يصبح الووركر "نشطاً" فعلياً.
-  await navigator.serviceWorker.register("./sw.js", { scope: "./" });
-  return navigator.serviceWorker.ready;
+  if (!isPushSupported()) throw new Error("المتصفح لا يدعم Web Push");
+  try {
+    // register() قد يُرجع تسجيلاً لا يزال في حالة installing/waiting فقط؛ استدعاء
+    // pushManager.subscribe() في هذه اللحظة يفشل بخطأ "no active Service Worker".
+    // navigator.serviceWorker.ready لا يتحقق إلا بعد أن يصبح الووركر "نشطاً" فعلياً.
+    await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    return await navigator.serviceWorker.ready;
+  } catch (error) {
+    console.warn("تعذر تسجيل Service Worker:", error);
+    throw new Error("تعذر تسجيل عامل الخدمة (Service Worker) الخاص بالإشعارات");
+  }
 }
 
 // يحاول الاشتراك في Push مع إعادة محاولة صامتة (بلا أي نافذة خطأ للمستخدم) إذا لم
@@ -381,10 +403,15 @@ function setBrowserNotificationControl(enabled, supported = true) {
 }
 
 async function refreshBrowserNotificationControl() {
-  const supported = Boolean(window.isSecureContext && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window);
-  if (!supported) return setBrowserNotificationControl(false, false);
-  const enabled = localStorage.getItem("az_push_enabled") !== "0" && Notification.permission === "granted";
-  setBrowserNotificationControl(enabled, true);
+  try {
+    if (!isPushSupported()) return setBrowserNotificationControl(false, false);
+    const enabled =
+      localStorage.getItem("az_push_enabled") !== "0" &&
+      Notification.permission === "granted";
+    setBrowserNotificationControl(enabled, true);
+  } catch (error) {
+    console.warn("تعذر تحديث زر حالة الإشعارات:", error);
+  }
 }
 
 async function disableBrowserNotifications() {
@@ -415,8 +442,7 @@ async function syncExistingPushSubscription() {
     if (
       !currentUser ||
       localStorage.getItem("az_push_enabled") === "0" ||
-      !window.isSecureContext ||
-      !("Notification" in window) ||
+      !isPushSupported() ||
       Notification.permission !== "granted"
     ) {
       await refreshBrowserNotificationControl();
@@ -439,14 +465,22 @@ async function syncExistingPushSubscription() {
 }
 if ("serviceWorker" in navigator)
   navigator.serviceWorker.addEventListener("message", (event) => {
-    if (event.data?.type === "az-push-subscription-change")
-      syncExistingPushSubscription();
+    try {
+      if (event.data?.type === "az-push-subscription-change")
+        syncExistingPushSubscription();
+    } catch (error) {
+      console.warn("تعذر معالجة رسالة تغيير اشتراك Push:", error);
+    }
   });
 async function enableBrowserNotifications() {
   try {
     if (!currentUser)
       return toast("سجّل الدخول أولًا لتفعيل الإشعارات", "warn");
-    if (!window.isSecureContext) return toast("الإشعارات تحتاج HTTPS", "warn");
+    if (!isPushSupported())
+      return toast(
+        "متصفحك أو الاتصال الحالي (يتطلب HTTPS) لا يدعم إشعارات الويب",
+        "warn",
+      );
     localStorage.setItem("az_push_enabled", "1");
     const permission = await Notification.requestPermission();
     if (permission !== "granted")
@@ -682,6 +716,27 @@ function azBeeLocalAnswer(question) {
   for (const [re, answer] of map) if (re.test(q)) return answer;
   return "فتحت المعرفة المحلية فوراً. الرئيسية للعمل والتحليل أولاً، ثم المسوق، والدعم آخر القائمة. اسأل عن تبويب محدد أو رمز سهم لشرح تعليمي من بيانات المنصة المتاحة.";
 }
+// تفتح النحلة تلقائياً مع أول دخول فعلي للمستخدم فقط (لا تتكرر بعدها أبداً)، وتعطي
+// تقريراً تعليمياً مبسطاً ثم تسأله "وش تحتاج؟" لتوجيهه لأقرب تبويب مفيد.
+function maybeAutoOpenAzAiWelcome(shownOtherModal) {
+  if (!currentUser || shownOtherModal) return;
+  const key = `az_ai_welcomed_${currentUser.id}`;
+  if (localStorage.getItem(key)) return;
+  localStorage.setItem(key, "1");
+  setTimeout(() => {
+    const picksCount = Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE.length : 0;
+    const watchCount = Array.isArray(watchlist) ? watchlist.length : 0;
+    const report =
+      picksCount > 0
+        ? `رصد الماسح حتى الآن ${picksCount} إشارة نشطة عبر القوالب المتاحة${watchCount ? `، وقائمتك تتابع ${watchCount} رمز` : ""}.`
+        : "الماسح يجهّز الإشارات الآن؛ افتح تبويب «الماسح» أو «الترشيحات» بعد لحظات.";
+    openAzAi();
+    appendAzAiMessage(
+      "assistant",
+      `أهلاً بك في AZ Alpha Vision 👋 أنا AZ، مساعدك التعليمي.\n${report}\nأقدر أشرح لك الماسح، الترشيحات، المحاكي الافتراضي، أو الإشعارات. وش تحتاج؟`,
+    );
+  }, 900);
+}
 async function askAzBeePrompt(text) {
   const input = document.getElementById("azAiInput");
   if (input) input.value = text;
@@ -774,10 +829,13 @@ async function refreshMarketerDashboard() {
 }
 
 const AZ_RELEASE_VERSION = "2026.08-simulator-context-earnings";
+// تُعلَّم كمُشاهدة فور العرض (وليس فقط عند الضغط على "فهمت") لضمان ظهورها مرة واحدة
+// بالفعل ولو أغلق المستخدم الصفحة أو بدّل التبويب دون الضغط على الزر.
 function showReleaseNotesIfNeeded() {
-  if (!currentUser) return;
+  if (!currentUser) return false;
   const key = `az_release_seen_${currentUser.id}_${AZ_RELEASE_VERSION}`;
-  if (localStorage.getItem(key)) return;
+  if (localStorage.getItem(key)) return false;
+  localStorage.setItem(key, "1");
   const modal = document.getElementById("releaseNotesModal");
   const version = document.getElementById("releaseNotesVersion");
   if (version) version.textContent = AZ_RELEASE_VERSION;
@@ -785,6 +843,7 @@ function showReleaseNotesIfNeeded() {
     modal.style.display = "flex";
     modal.setAttribute("aria-hidden", "false");
   }
+  return true;
 }
 function acknowledgeReleaseNotes() {
   if (currentUser)
@@ -1139,8 +1198,9 @@ async function initApp(user, profile) {
   await loadMySupportTickets();
   await loadEmailAlertPreference();
   syncExistingPushSubscription();
-  await loadActiveOwnerAnnouncement();
-  showReleaseNotesIfNeeded();
+  const showedAnnouncement = await loadActiveOwnerAnnouncement();
+  const showedReleaseNotes = showReleaseNotesIfNeeded();
+  maybeAutoOpenAzAiWelcome(showedAnnouncement || showedReleaseNotes);
   updateTrial();
   updateSitePerformance();
   setInterval(updateTrial, 60000);
@@ -1665,7 +1725,7 @@ async function loadMySupportTickets() {
   tb.innerHTML = data
     .map(
       (t) =>
-        `<tr><td>${new Date(t.created_at).toLocaleString("ar-SA")}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(t.admin_reply || "بانتظار رد المسؤول")}</td></tr>`,
+        `<tr><td>${new Date(t.created_at).toLocaleString("ar-SA")}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.message))}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.admin_reply) || "بانتظار رد المسؤول")}</td></tr>`,
     )
     .join("");
 }
@@ -1690,7 +1750,7 @@ async function refreshSupportTickets() {
   tb.innerHTML = tickets
     .map((t) => {
       const p = map[t.user_id] || {};
-      return `<tr><td>${escapeHtml(p.name || p.email || "-")}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(t.message)}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td>${new Date(t.created_at).toLocaleDateString("ar-SA")}</td><td><button class="admin-btn btn-approve" onclick="replySupportTicket('${t.id}')">رد</button><button class="admin-btn" onclick="setSupportStatus('${t.id}','in_progress')">قيد المعالجة</button><button class="admin-btn btn-approve" onclick="setSupportStatus('${t.id}','resolved')">حل</button></td></tr>`;
+      return `<tr><td>${escapeHtml(p.name || p.email || "-")}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.message))}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td>${new Date(t.created_at).toLocaleDateString("ar-SA")}</td><td><button class="admin-btn btn-approve" onclick="replySupportTicket('${t.id}')">رد</button><button class="admin-btn" onclick="setSupportStatus('${t.id}','in_progress')">قيد المعالجة</button><button class="admin-btn btn-approve" onclick="setSupportStatus('${t.id}','resolved')">حل</button></td></tr>`;
     })
     .join("");
 }
@@ -1924,9 +1984,11 @@ async function loadActiveOwnerAnnouncement() {
     .limit(1)
     .maybeSingle();
   const seenKey = currentUser ? `az_broadcast_seen_${currentUser.id}_${data?.id || ""}` : "";
-  if (error || !data || (seenKey && localStorage.getItem(seenKey))) return;
-  document.getElementById("ownerAnnouncementTitle").textContent = data.title;
-  document.getElementById("ownerAnnouncementBody").textContent = data.body;
+  if (error || !data || (seenKey && localStorage.getItem(seenKey))) return false;
+  document.getElementById("ownerAnnouncementTitle").textContent =
+    normalizeDbText(data.title);
+  document.getElementById("ownerAnnouncementBody").textContent =
+    normalizeDbText(data.body);
   const img = document.getElementById("ownerAnnouncementImage");
   if (img) {
     img.style.display = data.image_url ? "block" : "none";
@@ -1938,6 +2000,7 @@ async function loadActiveOwnerAnnouncement() {
     modal.setAttribute("aria-hidden", "false");
   }
   if (seenKey) localStorage.setItem(seenKey, "1");
+  return true;
 }
 
 // ===== OWNERSHIP / COPY DETERRENCE =====
@@ -4566,6 +4629,31 @@ function quickAdd(sym, price) {
   toast(`تم تحديد ${sym} — اضغط إضافة`);
 }
 
+// ===== SHARE TO X (auto-hashtags for marketer reach) =====
+function shareStockToX(symbol, price, label) {
+  const sym = String(symbol || "")
+    .toUpperCase()
+    .trim();
+  if (!sym) return;
+  const priceNum = Number(price);
+  const priceText =
+    Number.isFinite(priceNum) && priceNum > 0
+      ? ` عند $${priceNum.toFixed(2)}`
+      : "";
+  const prefix = label ? `${label} ` : "";
+  const hashtags = [
+    `#${sym.replace(/[^A-Z0-9]/g, "")}`,
+    "#الأسهم_الأمريكية",
+    "#تحليل_فني",
+    "#StockMarket",
+    "#AZAlphaVision",
+  ].join(" ");
+  const text = `${prefix}$${sym}${priceText} — رصدها ماسح AZ Alpha Vision 📊🔍\n\n${hashtags}`;
+  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank", "noopener,noreferrer,width=600,height=520");
+  if (typeof toast === "function") toast("🐦 جاري فتح نافذة المشاركة على X");
+}
+
 // ===== SCREENER (826 stock universe — one bulk query instead of per-ticker batches) =====
 async function runScreener() {
   if (isScanning) return;
@@ -4802,7 +4890,7 @@ function renderScreener() {
           : d.ltDebt < 0.5
             ? "text-gold"
             : "text-red";
-    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div><div class="sym-sub">${escapeHtml(d.company || "")}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><span style="color:var(--accent-cyan);cursor:pointer;font-size:16px;" onclick="quickAdd('${d.symbol}',${d.price})">+</span></td></tr>`;
+    tb.innerHTML += `<tr><td class="font-mono">${i + 1}</td><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${(d.change ?? 0) >= 0 ? "text-green" : "text-red"}">${(d.change ?? 0) >= 0 ? "+" : ""}${(d.change ?? 0).toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td>${sn[d.sector] || d.sector}</td><td class="font-mono">${d.rsi != null ? d.rsi.toFixed(1) : "—"}</td><td class="font-mono text-cyan">${d.growth != null ? d.growth.toFixed(1) + "%" : "—"}</td><td class="font-mono">${d.pe != null ? d.pe.toFixed(1) : "—"}</td><td class="font-mono ${debtColor}">${d.ltDebt != null ? (d.ltDebt * 100).toFixed(1) + "%" : "—"}</td><td><span class="badge ${gc}">${d.grade}</span></td><td><span class="badge ${cls}">${sig}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="إضافة سريعة" onclick="quickAdd('${d.symbol}',${d.price})">+</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${d.symbol}',${d.price},'')">🐦</button></div></td></tr>`;
   });
 }
 
@@ -5197,9 +5285,39 @@ function weeklySignalDetails(row) {
   return [];
 }
 
+// وسوم مختصرة لعرضها في عمود السبب بدل الجمل الطويلة، مع إبقاء evidence الوصفي لتلميح الفأرة ولوحة AZ ai.
+const EVIDENCE_SHORT_TAG = {
+  "توافق فني مرتفع": "فني قوي",
+  "توافق فني جيد": "فني",
+  "نمو ربحية متاح": "نمو",
+  "نمو متوقع متاح": "نمو متوقع",
+  "مديونية منضبطة": "ديون منضبطة",
+  "تقييم سعري متوازن": "قيمة",
+  "سيولة داعمة": "سيولة",
+};
+// تصنيف قوة الفرضية A–D بحسب عدد نقاط البيانات الفعلية المتوفرة للسهم (لا علاقة له بدرجة التوصية نفسها).
+function assessmentDataGrade(row) {
+  const points = [
+    row?.grade,
+    row?.bestEntryScore ?? row?.entry_score,
+    row?.growth ?? row?.eps_growth_this_year,
+    row?.epsNext ?? row?.eps_growth_next_year,
+    row?.ltDebt ?? row?.lt_debt_equity,
+    row?.pb,
+    row?.relVolume ?? row?.rel_volume ?? row?.rel_volume_9,
+  ];
+  const available = points.filter((v) => {
+    if (v === undefined || v === null || v === "") return false;
+    return typeof v === "string" ? true : Number.isFinite(Number(v));
+  }).length;
+  if (available >= 6) return "A";
+  if (available >= 4) return "B";
+  if (available >= 2) return "C";
+  return "D";
+}
 function weeklyCompanyAssessment(row) {
   // تقييم تعليمي مركب: جودة الاتجاه والأساسيات والسيولة، لا توصية استثمارية.
-  let score = 48;
+  let rawScore = 48;
   const evidence = [];
   const grade = String(row?.grade || "").toUpperCase();
   const entryScore = Number(row?.bestEntryScore ?? row?.entry_score ?? 0);
@@ -5211,51 +5329,59 @@ function weeklyCompanyAssessment(row) {
     row?.relVolume ?? row?.rel_volume ?? row?.rel_volume_9,
   );
   if (grade === "A" || entryScore >= 4) {
-    score += 18;
+    rawScore += 18;
     evidence.push("توافق فني مرتفع");
   } else if (grade === "B" || entryScore >= 3) {
-    score += 11;
+    rawScore += 11;
     evidence.push("توافق فني جيد");
   }
   if (Number.isFinite(growth) && growth >= 15) {
-    score += 9;
+    rawScore += 9;
     evidence.push("نمو ربحية متاح");
   }
   if (Number.isFinite(nextGrowth) && nextGrowth >= 15) {
-    score += 6;
+    rawScore += 6;
     evidence.push("نمو متوقع متاح");
   }
   if (Number.isFinite(debt) && debt <= 0.6) {
-    score += 7;
+    rawScore += 7;
     evidence.push("مديونية منضبطة");
   }
   if (Number.isFinite(pb) && pb > 0 && pb <= 3) {
-    score += 4;
+    rawScore += 4;
     evidence.push("تقييم سعري متوازن");
   }
   if (Number.isFinite(relativeVolume) && relativeVolume >= 1.5) {
-    score += 5;
+    rawScore += 5;
     evidence.push("سيولة داعمة");
   }
   const plan = weeklyEntryPlan(row);
-  if (plan.avoid) score -= 13;
-  score = Math.max(0, Math.min(100, Math.round(score)));
-  const label = score >= 78 ? "قوي" : score >= 62 ? "متوازن" : "للمتابعة";
-  return { score, label, evidence, plan };
+  if (plan.avoid) rawScore -= 13;
+  rawScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const label =
+    rawScore >= 78 ? "قوي" : rawScore >= 62 ? "متوازن" : "للمتابعة";
+  const dataGrade = assessmentDataGrade(row);
+  // تحويل من 0-100 إلى 0-10 بمنزلة عشرية واحدة (مثال: 53 → 5.3) لتبسيط القراءة.
+  const score = Math.round(rawScore) / 10;
+  return { score, rawScore, label, evidence, plan, dataGrade };
 }
 function weeklyReason(row) {
   const assessment = row.companyAssessment || weeklyCompanyAssessment(row);
-  const presets = [...(row.presets || [])]
-    .map((p) => SIG_PRESET_LABEL[p] || p)
-    .filter(Boolean);
   const technical = [...(row.signalNames || [])].filter(Boolean);
-  const parts = [
-    assessment.evidence[0],
-    presets[0] && `من قالب ${presets[0]}`,
-    technical[0],
-  ].filter(Boolean);
-  if (assessment.plan?.avoid) parts.push("بانتظار تأكيد منطقة الدخول");
-  return parts.slice(0, 3).join(" • ") || "توافق مؤشرات المنصة المتاحة";
+  const tags = [];
+  const primaryEvidence = assessment.evidence[0];
+  if (primaryEvidence)
+    tags.push(EVIDENCE_SHORT_TAG[primaryEvidence] || primaryEvidence);
+  technical.forEach((name) => {
+    if (tags.length < 2 && !tags.includes(name)) tags.push(name);
+  });
+  if (tags.length < 2 && assessment.evidence[1]) {
+    const secondary = assessment.evidence[1];
+    const shortSecondary = EVIDENCE_SHORT_TAG[secondary] || secondary;
+    if (!tags.includes(shortSecondary)) tags.push(shortSecondary);
+  }
+  if (!tags.length && assessment.plan?.avoid) tags.push("بانتظار تأكيد");
+  return tags.length ? `(${tags.slice(0, 2).join(" + ")})` : "(توافق عام)";
 }
 function weeklyEntryPlan(row) {
   const price = Number(row?.price);
@@ -5385,7 +5511,7 @@ async function runWeeklyScan() {
           item.bestEntryScore * 4 +
           signalCount * 2 +
           item.totalEntryScore +
-          item.companyAssessment.score / 10 -
+          item.companyAssessment.score -
           (item.entryPlan.avoid ? 8 : 0);
         return item;
       })
@@ -5419,7 +5545,7 @@ async function runWeeklyScan() {
           : "اكتمل الفحص — لا توجد إشارة دخول من القوالب",
       );
       tb.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد إشارة دخول مؤكدة حاليًا؛ لا يتم ملء الترشيحات بصفقات افتراضية غير مكتملة.</td></tr>';
     }
 
     updateWeeklyScanMeta(`اكتمل الفحص — تم اختيار الترشيحات والمتابعة`);
@@ -5463,15 +5589,16 @@ async function runWeeklyScan() {
             : "إشارة دخول";
       const stateClass = watchOnly || plan.avoid ? "text-gold" : "text-green";
       const ratingClass =
-        assessment.score >= 78
+        assessment.rawScore >= 78
           ? "text-green"
-          : assessment.score >= 62
+          : assessment.rawScore >= 62
             ? "text-cyan"
             : "text-gold";
-      const company = sigEsc(s.company || s.symbol);
+      const gradeBadgeClass = `badge-${String(assessment.dataGrade || "D").toLowerCase()}`;
       const reason = sigEsc(s.aiReason || weeklyReason(s));
-      const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason}`;
-      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${company}</div><div class="sym-sub">${sigEsc(s.symbol)}</div></td><td><strong class="${ratingClass}">${assessment.score}/100</strong><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td></tr>`;
+      const rowHint = `${watchOnly ? "متابعة" : "ترشيح"}: ${reason} · ${plan.reason} · قوة البيانات: ${assessment.dataGrade}`;
+      const shareLabel = watchOnly ? "للمتابعة" : "ترشيح";
+      return `<tr title="${sigEsc(rowHint)}"><td class="font-mono">${i + 1}</td><td><div class="sym">${sigEsc(s.symbol)}</div></td><td><div class="rating-cell"><strong class="${ratingClass}">${assessment.score.toFixed(1)}/10</strong><span class="badge ${gradeBadgeClass} rating-grade-badge" title="قوة الفرضية بحسب توفر البيانات">${assessment.dataGrade}</span></div><div class="sym-sub">${assessment.label}</div></td><td class="font-mono">$${Number(s.price).toFixed(2)}</td><td class="font-mono ${plan.avoid ? "text-gold" : "text-green"}">${sigEsc(entryText)}</td><td class="weekly-reason">${reason}</td><td><span class="${stateClass}" style="font-weight:700;">${badge}</span></td><td><div class="row-actions"><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${s.symbol}',${Number(s.price) || 0},'${shareLabel}')">🐦</button></div></td></tr>`;
     };
     top.forEach((s, i) => {
       tb.innerHTML += renderRow(s, i, false);
@@ -5479,7 +5606,7 @@ async function runWeeklyScan() {
     if (watchTb) {
       if (!watch.length)
         watchTb.innerHTML =
-          '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
+          '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px;">لا توجد أسهم إضافية للمتابعة حاليًا</td></tr>';
       else
         watch.forEach((s, i) => {
           watchTb.innerHTML += renderRow(s, i, true);
@@ -5492,10 +5619,10 @@ async function runWeeklyScan() {
       "تعذر التحديث الآن — سيتم استخدام آخر نتائج موثوقة عند المحاولة التالية",
     );
     tb.innerHTML =
-      '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
+      '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">تعذر تحديث الترشيحات الآن. تحقق من اتصال بيانات الماسح ثم أعد المحاولة.</td></tr>';
     if (watchTb)
       watchTb.innerHTML =
-        '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
+        '<tr><td colspan="8" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا تتوفر قائمة متابعة حاليًا.</td></tr>';
   }
 }
 
@@ -5790,7 +5917,7 @@ function renderAZAssistant(stock, presetKey) {
     signalNames: new Set(active),
     companyAssessment: assessment,
   });
-  box.innerHTML = `<strong>AZ ai</strong> — ${sigEsc(stock.symbol)} عند سعر مرجعي ${priceText}. التقييم التعليمي: <b>${assessment.score}/100 (${assessment.label})</b>. السبب: ${sigEsc(reason)}. المصدر: ${sigEsc(templateLabel)}. ${timing}<div id="azNews" style="margin-top:12px;color:var(--text-muted);">جاري جلب الأخبار المرتبطة بالرمز...</div>`;
+  box.innerHTML = `<strong>AZ ai</strong> — ${sigEsc(stock.symbol)} عند سعر مرجعي ${priceText}. التقييم التعليمي: <b>${assessment.score.toFixed(1)}/10 (${assessment.label})</b> — قوة الفرضية: <b>${assessment.dataGrade}</b>. السبب: ${sigEsc(reason)}. المصدر: ${sigEsc(templateLabel)}. ${timing}<div id="azNews" style="margin-top:12px;color:var(--text-muted);">جاري جلب الأخبار المرتبطة بالرمز...</div>`;
   loadAZNews(stock.symbol, stock.company || stock.name || stock.symbol);
 }
 
@@ -5843,7 +5970,7 @@ async function loadAZNews(symbol, company) {
           : "#";
         const tone = azNewsTone(article.title || "", article.seendate || "");
         const date = String(article.seendate || "").replace(
-          /(\\d{4})(\\d{2})(\\d{2}).*/,
+          /(\d{4})(\d{2})(\d{2}).*/,
           "$1-$2-$3",
         );
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--text-main);text-decoration:none;border-bottom:1px solid var(--border);padding:5px 0;">${title} <span class="text-muted">(${tone} — ${sigEsc(date)})</span></a>`;
@@ -5870,7 +5997,7 @@ function renderSignalsTable(stocks) {
   const tb = document.getElementById("signalsTableBody");
   if (!stocks.length) {
     tb.innerHTML =
-      '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
+      '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">لا أسهم بلغت أولي (2/4 إشارات) ضمن هذا الفلتر حاليًا</td></tr>';
     return;
   }
   tb.innerHTML = stocks
@@ -5886,12 +6013,11 @@ function renderSignalsTable(stocks) {
           : '<span class="text-muted">—</span>';
       return `<tr>
             <td class="sym">${sigEsc(s.symbol)}</td>
-            <td>${sigEsc(s.company)}</td>
             <td class="font-mono">$${Number(s.price).toFixed(2)}</td>
             <td class="font-mono">${s.pe != null ? Number(s.pe).toFixed(1) : "—"}</td>
             <td>${entryBadge}<div style="margin-top:4px;">${sigDots(s.entry_signals, true)}</div></td>
             <td>${exitBadge}<div style="margin-top:4px;">${sigDots(s.exit_signals, false)}</div></td>
-            <td><button class="btn-ind" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button></td>
+            <td><div class="row-actions"><button type="button" class="icon-btn row-action-btn" title="عرض الرسم البياني" onclick="openSignalChart('${sigEsc(s.symbol)}')">📈</button><button type="button" class="icon-btn row-action-btn share-x-btn" title="مشاركة على X" onclick="shareStockToX('${sigEsc(s.symbol)}',${Number(s.price) || 0},'إشارة')">🐦</button></div></td>
         </tr>`;
     })
     .join("");
@@ -6405,7 +6531,7 @@ async function syncVirtualTraderFromServer() {
   const userTrades = !userTradesRes.error && Array.isArray(userTradesRes.data) ? userTradesRes.data : [];
   const positionsData = sharedPositions.length ? sharedPositions : userPositions;
   const tradesData = sharedTrades.length ? sharedTrades : userTrades;
-  const portfolio = (sharedPortfolioRes.data && !sharedPortfolioRes.error && sharedPositionsRes.error !== null)
+  const portfolio = (sharedPortfolioRes.data && !sharedPortfolioRes.error && !sharedPositionsRes.error)
     ? sharedPortfolioRes.data
     : (userPortfolioRes.data || sharedPortfolioRes.data || { cash: VIRTUAL_STARTING_CASH });
   if (sharedPortfolioRes.error && userPortfolioRes.error && sharedPositionsRes.error && userPositionsRes.error && sharedTradesRes.error && userTradesRes.error) {

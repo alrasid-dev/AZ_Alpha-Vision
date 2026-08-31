@@ -714,6 +714,27 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
   }
 }
 </style>
+<style id="az-stock-card-mobile-fix">
+/* Ticker-only stock rows: consistent, non-overlapping icons on mobile */
+.row-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap}
+.icon-btn.row-action-btn{width:30px;height:30px;border-radius:8px;font-size:14px;flex:0 0 auto}
+.icon-btn.share-x-btn{color:var(--accent-cyan,#6bd8d0);border-color:rgba(107,216,208,.3)}
+.icon-btn.share-x-btn:hover{background:rgba(107,216,208,.14);border-color:var(--accent-cyan,#6bd8d0)}
+.data-table .sym{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+@media (hover: none){.watch-item .del{opacity:.55}}
+@media (max-width: 860px){
+  .row-actions{gap:8px}
+  .icon-btn.row-action-btn{width:32px;height:32px}
+  .data-table td .badge{white-space:nowrap}
+  .weekly-table td,.data-table td{vertical-align:middle}
+}
+@media (max-width: 420px){
+  .row-actions{gap:6px}
+  .icon-btn.row-action-btn{width:28px;height:28px;font-size:13px}
+}
+.rating-cell{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.rating-grade-badge{flex:0 0 auto;min-width:22px;text-align:center;padding:2px 7px!important}
+</style>
 </head>
 <body>
     <div class="bg-mesh"></div>
@@ -1124,7 +1145,10 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>المحاكي الافتراضي</span><small>محاكاة تعليمية</small><div class="line"></div></div>
                     <div class="glass" style="padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
                         <div><strong>رأس المال الافتراضي: $10,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
-                        <div class="text-muted" style="font-size:11px;line-height:1.8;">التشغيل والتحديث تلقائيان في الخلفية. إعادة الضبط متاحة للمدير من صفحة الإدارة فقط.</div>
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <div class="text-muted" style="font-size:11px;line-height:1.8;max-width:260px;">التشغيل التلقائي كل 15 دقيقة أيام العمل. وقف خسارة ثابت -8%، ووقف متحرك 7% بعد تحقيق ربح 20%.</div>
+                            <button type="button" class="preset-btn" onclick="runVirtualTrader('manual')">🔄 مزامنة الآن</button>
+                        </div>
                     </div>
                     <div id="virtualPortfolioSummary" class="virtual-portfolio-summary"></div>
                     <div class="section-title compact-ledger-title">المراكز الحالية <span class="section-caption">تحديث آلي</span><div class="line"></div></div>
@@ -1293,8 +1317,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     </div>
                     <div style="overflow-x:auto; border-radius:var(--radius); border:1px solid var(--border); margin-bottom:24px;">
                         <table class="data-table">
-                            <thead><tr><th>الرمز</th><th>الشركة</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
-                            <tbody id="signalsTableBody"><tr><td colspan="8" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
+                            <thead><tr><th>الرمز</th><th>السعر</th><th>P/E</th><th>إشارة الدخول</th><th>إشارة الخروج</th><th></th></tr></thead>
+                            <tbody id="signalsTableBody"><tr><td colspan="6" class="text-muted" style="text-align:center;padding:30px;">اختر فلترًا أعلاه</td></tr></tbody>
                         </table>
                     </div>
 
@@ -1328,14 +1352,14 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <div class="section-title compact-ledger-title">أفضل 7 ترشيحات <div class="line"></div></div>
                     <div class="weekly-table-wrap">
                         <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الشركة</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب الترشيح</th><th>الإشارة</th></tr></thead>
+                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب الترشيح</th><th>الإشارة</th><th></th></tr></thead>
                             <tbody id="picksTableBody"></tbody>
                         </table>
                     </div>
                     <div class="section-title compact-ledger-title">7 أسهم للمتابعة <div class="line"></div></div>
                     <div class="weekly-table-wrap">
                         <table class="data-table weekly-table">
-                            <thead><tr><th>#</th><th>الشركة</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب المتابعة</th><th>الحالة</th></tr></thead>
+                            <thead><tr><th>#</th><th>الرمز</th><th>التقييم</th><th>السعر</th><th>منطقة الدخول التعليمية</th><th>سبب المتابعة</th><th>الحالة</th><th></th></tr></thead>
                             <tbody id="watchPicksTableBody"></tbody>
                         </table>
                     </div>
@@ -2100,6 +2124,79 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
 .az-overview-intro h1{
   background:linear-gradient(95deg,var(--text) 35%,var(--accent-cyan) 75%,var(--accent-gold) 100%);
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+</style>
+
+<!--
+  هذا هو المرجع الوحيد والنهائي لسلوك الجوال (الشريط السفلي، زر الذكاء الاصطناعي، أشرطة
+  الفلاتر القابلة للتمرير). وُضع عمدًا في آخر عنصر تنسيق بالصفحة كي يفوز بالأسبقية عبر
+  ترتيب المصدر (Source Order) على كل الطبقات السابقة المتراكمة، بدل حذفها وتحمّل مخاطر كسر
+  شيء آخر يعتمد عليها.
+-->
+<style id="az-mobile-ux-final">
+:root{--az-bottom-nav-h:66px}
+@media (max-width:860px){
+  :root{--az-bottom-nav-h:64px}
+  /* ===== الشريط السفلي الوحيد (بعد أن ينقله JS إلى premiumNavMount داخل .sidebar) ===== */
+  .sidebar .tabs-wrap{
+    position:fixed!important;inset:auto 0 0 0!important;z-index:500!important;
+    display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;
+    align-items:stretch!important;justify-content:flex-start!important;gap:2px!important;
+    width:100%!important;max-width:100vw!important;height:var(--az-bottom-nav-h)!important;
+    margin:0!important;padding:4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left))!important;
+    overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-x:contain!important;scrollbar-width:none!important;direction:rtl!important;
+    background:#0b1016!important;border-top:1px solid rgba(107,216,208,.22)!important;
+    box-shadow:0 -10px 26px rgba(0,0,0,.4)!important;box-sizing:border-box!important;
+  }
+  .sidebar .tabs-wrap::-webkit-scrollbar{display:none!important}
+  .sidebar .tabs-wrap .tab-btn{
+    display:flex!important;flex:0 0 auto!important;width:auto!important;min-width:64px!important;
+    height:100%!important;box-sizing:border-box!important;padding:6px 10px!important;margin:0!important;
+    align-items:center!important;justify-content:center!important;flex-direction:column!important;gap:3px!important;
+    border:1px solid transparent!important;border-radius:10px!important;background:transparent!important;
+    color:#90a0ae!important;font-size:10px!important;line-height:1.15!important;white-space:nowrap!important;
+    transform:none!important;writing-mode:horizontal-tb!important;
+  }
+  .sidebar .tabs-wrap .tab-btn.active{
+    background:rgba(107,216,208,.12)!important;border-color:rgba(107,216,208,.32)!important;color:#72e6cf!important;
+  }
+  .sidebar .tabs-wrap .tab-btn .tab-icon{
+    display:grid!important;place-items:center!important;width:20px!important;height:20px!important;
+    flex:0 0 20px!important;margin:0!important;
+  }
+  .sidebar .tabs-wrap .tab-btn .tab-icon svg{width:19px!important;height:19px!important;stroke:currentColor!important;fill:none!important}
+  /* أي شريط تبويب ثانٍ متبقٍ من نسخ سابقة (خارج .sidebar) يبقى مخفيًا كي لا يتكرر التنقل */
+  .main>.tabs-wrap{display:none!important}
+  .main{padding-bottom:0!important}
+  .content-area{padding-bottom:calc(var(--az-bottom-nav-h) + 18px)!important}
+
+  /* ===== زر الذكاء الاصطناعي (النحلة) ودليل المستخدم: مرجع موضع واحد لا يتصادم مع الشريط السفلي ===== */
+  .az-ai-launcher{
+    position:fixed!important;left:14px!important;right:auto!important;
+    bottom:calc(var(--az-bottom-nav-h) + 14px)!important;
+    width:50px!important;height:50px!important;margin:0!important;z-index:400!important;
+    border-radius:16px!important;
+  }
+  .platform-guide-launcher#userGuide{
+    position:fixed!important;left:auto!important;right:14px!important;
+    bottom:calc(var(--az-bottom-nav-h) + 14px)!important;
+    width:50px!important;height:50px!important;margin:0!important;z-index:400!important;
+  }
+
+  /* ===== أشرطة الفلاتر والأزرار الأفقية (الماسح/الترشيحات): تمرير سلس بدل التكدس ===== */
+  .preset-btns,.scan-actions{
+    flex-wrap:nowrap!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;
+    overscroll-behavior-x:contain!important;scrollbar-width:none!important;
+    padding-bottom:4px!important;margin-bottom:14px!important;
+  }
+  .preset-btns::-webkit-scrollbar,.scan-actions::-webkit-scrollbar{display:none!important}
+  .preset-btns .preset-btn,.scan-actions>*{flex:0 0 auto!important}
+  .screener-header{flex-wrap:wrap!important;gap:10px!important}
+}
+@media (max-width:420px){
+  .sidebar .tabs-wrap .tab-btn{min-width:58px!important;padding:5px 7px!important;font-size:9px!important}
+  .az-ai-launcher,.platform-guide-launcher#userGuide{width:46px!important;height:46px!important}
 }
 </style>
 </body>

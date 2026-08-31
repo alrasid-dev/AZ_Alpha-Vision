@@ -1,8 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "echo \"AZ Alpha Vision: static site, no install needed\"",
-  "buildCommand": "echo \"AZ Alpha Vision: static site, no build needed\"",
   "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,

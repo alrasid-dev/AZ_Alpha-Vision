@@ -2005,5 +2005,33 @@ html[data-theme="light"]{
   html[data-theme="light"] .sidebar .tab-btn.active{background:rgba(47,122,109,.08)!important;color:#2f7a6d!important}
 }
 </style>
+<style id="az-luxury-theme-polish">
+/* انتقال سلس واحترافي عند تبديل الوضع الداكن/الفاتح — بلا وميض أو قفزة بصرية */
+html{transition:background-color .45s ease}
+body,.glass,.sidebar,.topbar,.data-table,.data-table th,.data-table td,
+.modal-box,.watch-item,.stat-row,.badge,.tab-btn,.preset-btn,.input,
+.ledger-surface,.news-panel,.earnings-panel,.sidebar-global-stats,
+.weekly-scan-meta,.weekly-table-wrap,.az-overview,.az-metric,.az-overview-intro,
+.notification-toggle,.icon-btn,.switch-control span,.android-download-card,
+.ios-install-modal{
+  transition:background-color .38s ease,border-color .38s ease,color .38s ease,box-shadow .38s ease!important;
+}
+/* لمسة فخامة إضافية: خط علوي رفيع بتدرّج ذهبي هادئ على البطاقات الرئيسية والأزرار الأساسية */
+.az-overview-intro,#androidDownloadCard,.auth-card{position:relative}
+.az-overview-intro::before,#androidDownloadCard::before,.auth-card::before{
+  content:'';position:absolute;inset:0 0 auto 0;height:2px;border-radius:var(--radius) var(--radius) 0 0;
+  background:linear-gradient(90deg,transparent,var(--accent-gold,#d8b36a) 45%,var(--accent-cyan,#6bd8d0) 100%);
+  opacity:.55;pointer-events:none;
+}
+.btn-primary,.btn-modal-confirm,.android-download-btn{
+  box-shadow:0 10px 26px rgba(0,0,0,.16)!important;
+}
+.btn-primary:active,.btn-modal-confirm:active,.android-download-btn:active{transform:translateY(0)!important}
+/* دقّة أكبر في الوضع الفاتح لدرجة الذهبي بحيث تبقى هادئة لا صارخة على خلفية بيضاء */
+html[data-theme="light"]{--accent-gold:#b8862f}
+html[data-theme="light"] .az-overview-intro::before,
+html[data-theme="light"] #androidDownloadCard::before,
+html[data-theme="light"] .auth-card::before{opacity:.4}
+</style>
 </body>
 </html>

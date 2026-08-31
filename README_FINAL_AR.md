@@ -30,18 +30,23 @@ scripts/fetch_screener_signals.py
 
 ## Supabase
 
-شغّل محتوى `notification_subscriptions.sql` في **Supabase → SQL Editor → New query → Run**.
+شغّل محتوى `supabase_schema.sql` ثم `market_data_schema.sql` ثم `screener_schema.sql` ثم `notifications_and_data_schema.sql` في **Supabase → SQL Editor → New query → Run** (بهذا الترتيب).
 
-وظيفة الإرسال مكانها:
+دوال الإرسال الست جاهزة بالكامل في:
 
 ```text
 supabase/functions/send-signal-notifications/index.ts
+supabase/functions/send-price-alerts/index.ts
+supabase/functions/send-news-notifications/index.ts
+supabase/functions/send-earnings-notifications/index.ts
+supabase/functions/send-admin-broadcast/index.ts
+supabase/functions/notify-subscription-expiry/index.ts
 ```
 
-ولا تضع مفاتيح VAPID الخاصة أو Resend داخل `app.js` أو المستودع.
+خطوات النشر الكاملة وأسرار VAPID/النشر موثقة في `PUSH_NOTIFICATIONS_SETUP_AR.md`. لا تضع مفاتيح VAPID الخاصة داخل `app.js` أو المستودع — فقط في أسرار Supabase.
 
 ## ترتيب التشغيل
 
-بعد رفع الملفات، شغّل **Full Market Scan**، وانتظر نجاحه، ثم شغّل **Screener Signals (Confluence Engine)**. بعدها افتح الموقع بتحديث قوي. لتفعيل Push، سجّل الدخول واضغط زر تفعيل إشعار المتصفح. البريد يحتاج إعداد أسرار Supabase ومزود Resend وفق ملف `NOTIFICATIONS_SETUP.md`.
+بعد رفع الملفات، شغّل **Full Market Scan**، وانتظر نجاحه، ثم شغّل **Screener Signals (Confluence Engine)**. بعدها افتح الموقع بتحديث قوي. لتفعيل Push، سجّل الدخول واضغط زر تفعيل إشعار المتصفح، ثم اتبع `PUSH_NOTIFICATIONS_SETUP_AR.md` لتفعيل الإرسال الفعلي من الخادم.
 
 كل النظام تعليمي ومحاكاة فقط ولا ينفذ تداولًا حقيقيًا.

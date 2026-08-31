@@ -26,6 +26,7 @@ self.addEventListener('push', (event) => {
     body: data.body || 'وصلت إشارة تعليمية جديدة من الماسح.',
     icon: data.icon || './icon-192.png',
     badge: data.badge || './icon.svg',
+    image: data.image || undefined,
     tag: data.tag || `az-signal-${Date.now()}`,
     data: { url: data.url || './#signals', direction, alertType: data.alertType || 'general' },
     vibrate: [80, 40, 80],

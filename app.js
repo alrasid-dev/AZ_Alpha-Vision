@@ -25,7 +25,8 @@ let currentUser = null,
   watchlist = [],
   screenerResults = [],
   isScanning = false,
-  marketPulseTimer = null;
+  marketPulseTimer = null,
+  stockTableTimer = null;
 let activePresetKey = null;
 
 // ===== UTILS =====
@@ -1132,11 +1133,14 @@ async function initApp(user, profile) {
   await loadVirtualTrader();
   await loadSignalsData(true);
   await loadMarketPulse();
+  runScanner();
   if (marketPulseTimer) clearInterval(marketPulseTimer);
   marketPulseTimer = setInterval(() => {
     loadMarketPulse();
     loadWatchlist();
   }, 5 * 60 * 1000);
+  if (stockTableTimer) clearInterval(stockTableTimer);
+  stockTableTimer = setInterval(() => runScanner(), 5 * 60 * 1000);
   openTabFromHash();
   await refreshCompanyNews();
   await refreshEarningsCalendar();
@@ -3672,6 +3676,9 @@ function switchTab(id) {
     }
   }
 
+  if (id === "stocks") {
+    runScanner();
+  }
   if (id === "screener" && !screenerResults.length) {
     document.getElementById("screenerTableBody").innerHTML =
       '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:40px;">اضغط "بدء الفلترة" للبحث في 800+ سهم</td></tr>';
@@ -5101,7 +5108,7 @@ function loadPreset(p) {
   Object.entries(s).forEach(([key, val]) => {
     const idMap = {
       price: "fPrice",
-      volume: "fVolume",
+      volume: "fCurVol",
       change: "fChange",
       sector: "fSector",
       rsi: "fRSI",
@@ -5525,6 +5532,7 @@ const SIG_TIER_COLOR = {
   صريح: "badge-strong-buy",
   مؤكد: "badge-buy",
   دخول: "badge-hold",
+  مراقبة: "badge-hold",
 };
 const SIG_TIER_COLOR_EXIT = {
   صريح: "badge-strong-sell",
@@ -5536,6 +5544,7 @@ const SIG_LABEL = {
   smc_atr: "SMC+ATR",
   candlestick: "شمعة",
   volume: "حجم",
+  template_progress: "تقدم القالب",
 };
 const SIG_PRESET_LABEL = {
   military: "توافق المؤشرات الأربعة",

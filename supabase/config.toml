@@ -1,0 +1,6 @@
+# AZ Alpha Vision — إعدادات نشر Supabase Edge Functions
+# هذا الملف يضبط أي دالة تحتاج تعطيل التحقق التلقائي من JWT
+# (لأن GitHub Actions يستدعيها بمفتاح تشغيل مخصص x-cron-key بدل Authorization Bearer).
+
+[functions.notify-subscription-expiry]
+verify_jwt = false

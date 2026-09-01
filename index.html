@@ -9,8 +9,11 @@
     <meta name="application-name" content="AZ Alpha Vision — Virtual Simulator">
     <meta name="description" content="AZ Alpha Vision — محاكي تداول افتراضي وتعليمي.">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#071018">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>try{var azT=localStorage.getItem('az_theme');if(azT==='light'||azT==='dark')document.documentElement.setAttribute('data-theme',azT);}catch(e){}</script>
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
@@ -1693,7 +1696,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="us_market_hours.js?v=20260901a"></script>
-    <script src="app.js?v=20260901e"></script>
+    <script src="app.js?v=20260901g"></script>
 <style id="az-stable-release-2026">
 /* طبقة الاستقرار النهائية: ألوان هادئة، سطح مكتب متماسك، وجوال بعمود واحد. */
 :root{--app-bg:#080d13;--app-panel:#111a24;--app-panel-raised:#15212c;--app-panel-soft:#0d151e;--app-border:rgba(166,188,207,.16);--app-border-strong:rgba(166,188,207,.27);--app-text:#d8e1e8;--app-text-strong:#eaf0f5;--app-muted:#91a1af;--app-positive:#55cf8e;--app-negative:#e87880;--app-caution:#d9b56d;--app-info:#7bb3e8}
@@ -2296,6 +2299,45 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
 }
 @media(min-width:861px){
   .platform-guide-launcher#userGuide{right:16px!important;bottom:18px!important}
+}
+</style>
+<style id="az-cross-platform-safe-nav">
+/* مساحة النظام السفلية لكل المنصات:
+   iOS: env(safe-area) فقط (الخط المنزلي).
+   ويندوز/ماك/لينكس: صفر.
+   أندرويد/هواوي/هونر: env + تعويض JS فقط إذا كانت أزرار النظام فوق الصفحة. */
+:root{
+  --az-safe-bottom:env(safe-area-inset-bottom,0px);
+  --az-overlay-nav:0px;
+  --az-sys-nav:calc(var(--az-safe-bottom) + var(--az-overlay-nav));
+}
+@media(min-width:861px){
+  :root{--az-overlay-nav:0px;--az-sys-nav:0px}
+}
+@media(max-width:860px){
+  .sidebar .tabs-wrap{
+    bottom:var(--az-sys-nav)!important;
+    height:var(--az-bottom-nav-h,64px)!important;
+    padding-top:4px!important;
+    padding-bottom:4px!important;
+    padding-right:calc(4px + env(safe-area-inset-right,0px))!important;
+    padding-left:calc(4px + env(safe-area-inset-left,0px))!important;
+  }
+  .az-fab-dock{
+    left:10px!important;
+    bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 12px)!important;
+    z-index:420!important;
+    gap:2px!important;
+  }
+  .content-area{
+    padding-bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 76px)!important;
+  }
+  .az-ownership-notice{
+    padding-bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 18px)!important;
+  }
+  .topbar{
+    padding-top:calc(10px + env(safe-area-inset-top,0px))!important;
+  }
 }
 </style>
 </body>

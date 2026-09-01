@@ -9,8 +9,11 @@
     <meta name="application-name" content="AZ Alpha Vision — Virtual Simulator">
     <meta name="description" content="AZ Alpha Vision — محاكي تداول افتراضي وتعليمي.">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#071018">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>try{var azT=localStorage.getItem('az_theme');if(azT==='light'||azT==='dark')document.documentElement.setAttribute('data-theme',azT);}catch(e){}</script>
     <link rel="manifest" href="./manifest.json">
     <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
@@ -1692,7 +1695,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
       html,body,#authScreen{background:#080c12!important;color:#edf3f8!important}.app-container,.main{background:#080c12!important}.sidebar{background:rgba(9,14,20,.96)!important;border-left-color:rgba(180,202,222,.16)!important}.premium-brand,.premium-watch-header{border-color:rgba(180,202,222,.16)!important}.premium-brand strong,.sidebar-title{color:#edf3f8!important}.premium-brand span,.premium-nav-label{color:#8393a0!important}.sidebar .tab-btn{color:#a5b1bc!important;background:transparent!important}.sidebar .tab-btn:hover{background:rgba(255,255,255,.035)!important;color:#f5f9fb!important}.sidebar .tab-btn.active{background:rgba(53,202,130,.11)!important;color:#72e6aa!important;box-shadow:inset -3px 0 0 #35ca82!important}.sidebar .tab-btn.active:before{background:transparent!important}.topbar{background:rgba(8,12,18,.92)!important;border-bottom-color:rgba(180,202,222,.16)!important}.page-heading h1{color:#edf3f8!important}.page-heading .eyebrow{color:#35ca82!important}.global-search,.header-icon-button,.user-chip{background:#0d141d!important;border-color:rgba(180,202,222,.16)!important;color:#edf3f8!important}.global-search input{color:#edf3f8!important}.content-area{background:#080c12!important}.signal-widget .market-canvas,.signal-widget .market-stream{background:transparent!important;box-shadow:none!important}.signal-widget .chart-box{background:#0b1118!important;border:0!important;box-shadow:none!important}.signal-widget .data-table{background:#0d141d!important}.signal-widget .data-table th{background:#0e151d!important;color:#8393a0!important;border-color:rgba(180,202,222,.12)!important}.signal-widget .data-table td{background:transparent!important;color:#dce6ed!important;border-color:rgba(180,202,222,.08)!important}.signal-widget .data-table tr:hover td{background:rgba(255,255,255,.025)!important}.signal-widget .news-item,.signal-widget .earnings-item{background:transparent!important;color:#dce6ed!important}.signal-widget .news-item-title,.signal-widget .earnings-estimate{color:#dce6ed!important}.signal-widget .news-item-sub,.signal-widget .earnings-source{color:#8293a0!important}.signal-widget .chart-empty-state{background:radial-gradient(circle at 50% 45%,rgba(53,202,130,.055),transparent 55%)!important;color:#8fa0ad!important}.signal-widget .chart-empty-state strong{color:#eaf3f8!important}.signal-widget .chart-empty-icon{background:transparent!important;color:#35ca82!important}.signal-widget .time-lenses{background:#0d141d!important}.signal-widget .time-lenses .active{background:#1a2732!important;color:#a6ecc6!important;box-shadow:none!important}.signal-widget .time-lenses span{color:#7f909d!important}.az-ownership-notice{background:#080c12!important;color:#748592!important;border-color:rgba(180,202,222,.10)!important}.notification-center{background:#0d141d!important;border-left-color:rgba(180,202,222,.16)!important}.notification-center-head h2,.in-app-notification strong{color:#edf3f8!important}.notification-tabs button{color:#9cabb6!important}.notification-tabs button.active{background:rgba(53,202,130,.12)!important;color:#7fe5ad!important}.in-app-notification{border-color:rgba(180,202,222,.10)!important}.in-app-notification p,.notification-empty,.in-app-notification small{color:#8393a0!important}@media(max-width:860px){.sidebar .tabs-wrap{background:#0b1118!important;border-top-color:rgba(180,202,222,.16)!important;box-shadow:0 -10px 30px rgba(0,0,0,.32)!important}.sidebar .tab-btn.active{box-shadow:inset 0 -2px 0 #35ca82!important}}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=20260901d"></script>
+    <script src="us_market_hours.js?v=20260901a"></script>
+    <script src="app.js?v=20260901g"></script>
 <style id="az-stable-release-2026">
 /* طبقة الاستقرار النهائية: ألوان هادئة، سطح مكتب متماسك، وجوال بعمود واحد. */
 :root{--app-bg:#080d13;--app-panel:#111a24;--app-panel-raised:#15212c;--app-panel-soft:#0d151e;--app-border:rgba(166,188,207,.16);--app-border-strong:rgba(166,188,207,.27);--app-text:#d8e1e8;--app-text-strong:#eaf0f5;--app-muted:#91a1af;--app-positive:#55cf8e;--app-negative:#e87880;--app-caution:#d9b56d;--app-info:#7bb3e8}
@@ -2295,6 +2299,45 @@ input:focus-visible,select:focus-visible,.icon-btn:focus-visible{
 }
 @media(min-width:861px){
   .platform-guide-launcher#userGuide{right:16px!important;bottom:18px!important}
+}
+</style>
+<style id="az-cross-platform-safe-nav">
+/* مساحة النظام السفلية لكل المنصات:
+   iOS: env(safe-area) فقط (الخط المنزلي).
+   ويندوز/ماك/لينكس: صفر.
+   أندرويد/هواوي/هونر: env + تعويض JS فقط إذا كانت أزرار النظام فوق الصفحة. */
+:root{
+  --az-safe-bottom:env(safe-area-inset-bottom,0px);
+  --az-overlay-nav:0px;
+  --az-sys-nav:calc(var(--az-safe-bottom) + var(--az-overlay-nav));
+}
+@media(min-width:861px){
+  :root{--az-overlay-nav:0px;--az-sys-nav:0px}
+}
+@media(max-width:860px){
+  .sidebar .tabs-wrap{
+    bottom:var(--az-sys-nav)!important;
+    height:var(--az-bottom-nav-h,64px)!important;
+    padding-top:4px!important;
+    padding-bottom:4px!important;
+    padding-right:calc(4px + env(safe-area-inset-right,0px))!important;
+    padding-left:calc(4px + env(safe-area-inset-left,0px))!important;
+  }
+  .az-fab-dock{
+    left:10px!important;
+    bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 12px)!important;
+    z-index:420!important;
+    gap:2px!important;
+  }
+  .content-area{
+    padding-bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 76px)!important;
+  }
+  .az-ownership-notice{
+    padding-bottom:calc(var(--az-bottom-nav-h,64px) + var(--az-sys-nav) + 18px)!important;
+  }
+  .topbar{
+    padding-top:calc(10px + env(safe-area-inset-top,0px))!important;
+  }
 }
 </style>
 </body>

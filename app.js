@@ -7146,12 +7146,18 @@ function renderVirtualTrader() {
   const runTime = virtualTrader.lastRun
     ? new Date(virtualTrader.lastRun).toLocaleString("ar-SA")
     : null;
+  const clock = globalThis.AzUsMarketHours?.getUsMarketClock?.();
+  const sessionLine = clock
+    ? clock.tradable
+      ? `الآن: ${clock.labelAr}`
+      : `متوقف: ${clock.labelAr}`
+    : null;
   const status = runInfo
     ? `${runInfo.run_note || "اكتملت متابعة المحاكي"}${runTime ? ` · آخر فحص: ${runTime}` : ""}`
     : runTime
       ? `آخر متابعة: ${runTime}`
       : "لم تبدأ المتابعة الآلية بعد";
-  set("virtualTraderStatus", status);
+  set("virtualTraderStatus", sessionLine ? `${sessionLine} · ${status}` : status);
   ["vtPnl", "vtReturnPct", "vtRealizedPnl", "vtUnrealizedPnl"].forEach((id) => {
     const el = document.getElementById(id);
     if (el)
@@ -7271,3 +7277,60 @@ switchTab = function (id) {
   }
   return result;
 };
+
+// مساحة أزرار/مؤشر النظام لكل المنصات. لا نضاعف الحشوة إذا كان نظام التشغيل
+// يحجز المساحة مسبقاً، ولا نضيف شيئاً على ويندوز/سطح المكتب أو على iOS (env كافٍ).
+function measureSafeAreaBottom() {
+  const probe = document.createElement("div");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";
+  (document.body || document.documentElement).appendChild(probe);
+  const value = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+  probe.remove();
+  return value;
+}
+function applyCrossPlatformSystemNavInset() {
+  const root = document.documentElement;
+  if (!root) return;
+  const narrow = window.matchMedia("(max-width: 860px)").matches;
+  if (!narrow) {
+    root.style.setProperty("--az-overlay-nav", "0px");
+    return;
+  }
+  const ua = navigator.userAgent || "";
+  const isIOS =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /Android/i.test(ua);
+  const isHarmony = /HarmonyOS|HUAWEI|Huawei|Honor|HONOR/i.test(ua);
+  const envInset = measureSafeAreaBottom();
+  let overlay = 0;
+  if (!isIOS && (isAndroid || isHarmony)) {
+    const screenH = Number(window.screen?.height) || 0;
+    const availH = Number(window.screen?.availHeight) || screenH;
+    const innerH = Number(window.innerHeight) || 0;
+    const reservedByOs = Math.max(0, screenH - availH);
+    const chrome = Math.max(0, screenH - innerH);
+    const navAlreadyReserved = reservedByOs >= 32 || chrome >= 72;
+    if (!navAlreadyReserved && envInset < 12) {
+      overlay = isHarmony ? 48 : chrome < 36 ? 48 : 16;
+    }
+  }
+  root.style.setProperty("--az-overlay-nav", `${Math.min(48, Math.round(overlay))}px`);
+}
+function bootCrossPlatformSystemNavInset() {
+  applyCrossPlatformSystemNavInset();
+  window.addEventListener("resize", applyCrossPlatformSystemNavInset, { passive: true });
+  window.addEventListener("orientationchange", () => {
+    setTimeout(applyCrossPlatformSystemNavInset, 250);
+  });
+  window.visualViewport?.addEventListener("resize", applyCrossPlatformSystemNavInset, {
+    passive: true,
+  });
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootCrossPlatformSystemNavInset);
+} else {
+  bootCrossPlatformSystemNavInset();
+}

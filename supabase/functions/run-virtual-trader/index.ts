@@ -1,5 +1,6 @@
 // run-virtual-trader — محرك المحاكي المالي الحقيقي (Buy/Sell Engine)
-// يُستدعى كل 15 دقيقة أيام العمل عبر .github/workflows/virtual_trader.yml
+// يُستدعى كل 15 دقيقة؛ التنفيذ الفعلي فقط خلال ساعات NYSE الممتدة
+// (قبل التداول / الجلسة الرسمية / بعد التداول) مع وقوف تام في الإجازات وعطل نهاية الأسبوع.
 // يراقب إشارات screener_signals لحظة بلحظة: إشارة دخول قوية ← شراء تلقائي فوري،
 // إشارة/شرط خروج حقيقي على مركز مفتوح ← بيع تلقائي فوري + حساب الربح/الخسارة وتحديث المحفظة.
 // محاكاة تعليمية بالكامل — لا أموال حقيقية ولا تنفيذ فعلي في أي وسيط.
@@ -16,6 +17,7 @@ import {
   restUpdate,
   restDelete,
 } from "../_shared/push.ts";
+import { getUsMarketClock } from "../_shared/usMarketHours.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,16 +69,33 @@ interface TechnicalRow {
   sma50: number | null;
 }
 
-function isUsWeekday(): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "short",
-  }).format(new Date());
-  return !["Sat", "Sun"].includes(weekday);
-}
-
 async function insertRunLog(stats: Record<string, unknown>): Promise<void> {
   await restInsert(SUPABASE_URL, SERVICE_ROLE_KEY, "virtual_trader_runs", [stats]);
+}
+
+async function logClosedIfNeeded(note: string): Promise<void> {
+  const last = await restSelect<{ started_at: string; status: string; run_note: string | null }>(
+    SUPABASE_URL,
+    SERVICE_ROLE_KEY,
+    "virtual_trader_runs?select=started_at,status,run_note&order=started_at.desc&limit=1",
+  );
+  const prev = last[0];
+  const recentClosed =
+    prev?.status === "closed" &&
+    prev?.run_note === note &&
+    prev?.started_at &&
+    Date.now() - new Date(prev.started_at).getTime() < 4 * 60 * 60 * 1000;
+  if (recentClosed) return;
+  await insertRunLog({
+    status: "closed",
+    market_open: false,
+    candidate_count: 0,
+    entry_candidates: 0,
+    near_entries: 0,
+    blocked_by_plan: 0,
+    blocked_by_price: 0,
+    run_note: note,
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -85,7 +104,8 @@ Deno.serve(async (req: Request) => {
   if (authFail) return authFail;
 
   try {
-    const marketOpen = isUsWeekday();
+    const clock = getUsMarketClock();
+    const marketOpen = clock.tradable;
 
     const portfolios = await restSelect<PortfolioRow>(
       SUPABASE_URL,
@@ -110,17 +130,14 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!marketOpen) {
-      await insertRunLog({
-        status: "closed",
+      const note = `${clock.labelAr} — المحاكي متوقف تماماً (${positions.length} مركز مفتوح).`;
+      await logClosedIfNeeded(note);
+      return jsonResponse({
+        ok: true,
         market_open: false,
-        candidate_count: 0,
-        entry_candidates: 0,
-        near_entries: 0,
-        blocked_by_plan: 0,
-        blocked_by_price: 0,
-        run_note: `السوق الأمريكي مغلق حالياً — المحاكي في وضع المراقبة فقط (${positions.length} مركز مفتوح).`,
+        session: clock.session,
+        message: clock.labelAr,
       });
-      return jsonResponse({ ok: true, market_open: false, message: "السوق مغلق؛ لا تنفيذ صفقات في هذه الجولة" });
     }
 
     const heldSymbols = positions.map((p) => p.symbol.toUpperCase());
@@ -301,7 +318,7 @@ Deno.serve(async (req: Request) => {
     if (boughtCount) runNoteParts.push(`تم تنفيذ ${boughtCount} صفقة شراء تلقائية`);
     if (soldSymbols.size) runNoteParts.push(`تم إغلاق ${soldSymbols.size} صفقة (ربح/خسارة محقق: ${realizedPnl >= 0 ? "+" : ""}${realizedPnl.toFixed(2)}$)`);
     if (!runNoteParts.length) runNoteParts.push("لا صفقات جديدة هذه الجولة — لا توجد إشارات دخول/خروج قوية كافية");
-    const runNote = runNoteParts.join(" · ");
+    const runNote = `${clock.labelAr} · ${runNoteParts.join(" · ")}`;
 
     await insertRunLog({
       status: "ok",
@@ -333,6 +350,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       market_open: true,
+      session: clock.session,
       bought: boughtCount,
       sold: soldSymbols.size,
       realized_pnl: Number(realizedPnl.toFixed(2)),

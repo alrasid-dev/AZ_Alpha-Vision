@@ -3,7 +3,10 @@ name: AZ Alpha Vision - Virtual Trader Background
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * 1-5'
+    # كل 15 دقيقة خلال نافذة تغطي الساعات الممتدة بتوقيت نيويورك في كلا نظامي DST.
+    # التنفيذ الفعلي يُحسم داخل المحرك (قبل التداول / الجلسة / بعد التداول / إجازة).
+    - cron: '*/15 8-23 * * 1-5'
+    - cron: '*/15 0-1 * * 6'
 
 permissions:
   contents: read

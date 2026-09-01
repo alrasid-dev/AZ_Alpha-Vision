@@ -6,7 +6,7 @@
   "trailingSlash": false,
   "headers": [
     {
-      "source": "/(index.html|app.js|sw.js)",
+      "source": "/(index.html|app.js|sw.js|us_market_hours.js)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
         { "key": "Service-Worker-Allowed", "value": "/" }

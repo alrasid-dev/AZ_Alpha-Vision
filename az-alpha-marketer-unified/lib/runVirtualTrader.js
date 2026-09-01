@@ -1,5 +1,7 @@
-// محرك المحاكي التعليمي — يُشغَّل من Cron على Render كل 10 دقائق
-// حتى لا يعتمد التنفيذ على GitHub Actions المتقطع أو ساعات السوق فقط.
+// محرك المحاكي التعليمي — يُشغَّل من Cron على Render.
+// التنفيذ فقط خلال ساعات السوق الأمريكي الرسمية الممتدة (نيويورك):
+// قبل التداول 04:00–09:30، الجلسة 09:30–16:00، بعد التداول 16:00–20:00.
+// وقوف تام في عطل نهاية الأسبوع والإجازات الرسمية NYSE/NASDAQ.
 // محاكاة فقط: لا أموال حقيقية ولا أوامر وسيط.
 
 const SIMULATION_ID = 'global';
@@ -13,28 +15,22 @@ const TRAILING_ACTIVATION_PCT = 20;
 const TRAILING_STOP_PCT = 7;
 const STRONG_TIERS = new Set(['صريح', 'مؤكد']);
 
-function nyWeekday() {
-  const weekday = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-  }).format(new Date());
-  return weekday;
-}
-
-function isUsWeekday() {
-  return !['Sat', 'Sun'].includes(nyWeekday());
-}
+const { getUsMarketClock } = require('./usMarketHours');
 
 async function runVirtualTraderEngine(db) {
   if (!db) throw new Error('قاعدة البيانات مطلوبة لتشغيل المحاكي');
 
   const { data: lastRun } = await db
     .from('virtual_trader_runs')
-    .select('started_at')
+    .select('started_at,status,run_note')
     .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (lastRun?.started_at && Date.now() - new Date(lastRun.started_at).getTime() < 8 * 60 * 1000) {
+  if (
+    lastRun?.status !== 'closed' &&
+    lastRun?.started_at &&
+    Date.now() - new Date(lastRun.started_at).getTime() < 8 * 60 * 1000
+  ) {
     return { skipped: true, message: 'المحاكي اشتغل خلال الدقائق الثماني الماضية' };
   }
 
@@ -56,18 +52,27 @@ async function runVirtualTraderEngine(db) {
     .select('*')
     .eq('simulation_id', SIMULATION_ID);
 
-  if (!isUsWeekday()) {
-    await db.from('virtual_trader_runs').insert({
-      status: 'closed',
-      market_open: false,
-      candidate_count: 0,
-      entry_candidates: 0,
-      near_entries: 0,
-      blocked_by_plan: 0,
-      blocked_by_price: 0,
-      run_note: `عطلة نهاية الأسبوع — المحاكي في وضع المراقبة فقط (${positions.length} مركز مفتوح).`,
-    });
-    return { ok: true, market_open: false, message: 'عطلة نهاية الأسبوع' };
+  const clock = getUsMarketClock();
+  if (!clock.tradable) {
+    const note = `${clock.labelAr} — المحاكي متوقف تماماً (${positions.length} مركز مفتوح).`;
+    const sameClosedRecently =
+      lastRun?.status === 'closed' &&
+      lastRun?.run_note === note &&
+      lastRun?.started_at &&
+      Date.now() - new Date(lastRun.started_at).getTime() < 4 * 60 * 60 * 1000;
+    if (!sameClosedRecently) {
+      await db.from('virtual_trader_runs').insert({
+        status: 'closed',
+        market_open: false,
+        candidate_count: 0,
+        entry_candidates: 0,
+        near_entries: 0,
+        blocked_by_plan: 0,
+        blocked_by_price: 0,
+        run_note: note,
+      });
+    }
+    return { ok: true, market_open: false, session: clock.session, message: clock.labelAr };
   }
 
   const heldSymbols = (positions || []).map((p) => String(p.symbol || '').toUpperCase());
@@ -249,7 +254,7 @@ async function runVirtualTraderEngine(db) {
         : 'لا توجد إشارات دخول قوية (درجة 3/4 فأعلى) كافية حالياً',
     );
   }
-  const runNote = runNoteParts.join(' · ');
+  const runNote = `${clock.labelAr} · ${runNoteParts.join(' · ')}`;
 
   await db.from('virtual_trader_runs').insert({
     status: 'ok',
@@ -264,6 +269,8 @@ async function runVirtualTraderEngine(db) {
 
   return {
     ok: true,
+    market_open: true,
+    session: clock.session,
     bought: boughtCount,
     sold: soldSymbols.size,
     candidates: candidates.length,
@@ -272,4 +279,4 @@ async function runVirtualTraderEngine(db) {
   };
 }
 
-module.exports = { runVirtualTraderEngine };
+module.exports = { runVirtualTraderEngine, getUsMarketClock };

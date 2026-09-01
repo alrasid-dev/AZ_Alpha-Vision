@@ -7146,12 +7146,18 @@ function renderVirtualTrader() {
   const runTime = virtualTrader.lastRun
     ? new Date(virtualTrader.lastRun).toLocaleString("ar-SA")
     : null;
+  const clock = globalThis.AzUsMarketHours?.getUsMarketClock?.();
+  const sessionLine = clock
+    ? clock.tradable
+      ? `الآن: ${clock.labelAr}`
+      : `متوقف: ${clock.labelAr}`
+    : null;
   const status = runInfo
     ? `${runInfo.run_note || "اكتملت متابعة المحاكي"}${runTime ? ` · آخر فحص: ${runTime}` : ""}`
     : runTime
       ? `آخر متابعة: ${runTime}`
       : "لم تبدأ المتابعة الآلية بعد";
-  set("virtualTraderStatus", status);
+  set("virtualTraderStatus", sessionLine ? `${sessionLine} · ${status}` : status);
   ["vtPnl", "vtReturnPct", "vtRealizedPnl", "vtUnrealizedPnl"].forEach((id) => {
     const el = document.getElementById(id);
     if (el)

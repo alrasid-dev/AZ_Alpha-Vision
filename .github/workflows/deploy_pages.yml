@@ -7,6 +7,7 @@ on:
       - "index.html"
       - "app.js"
       - "sw.js"
+      - "us_market_hours.js"
       - "manifest.json"
       - "icon.svg"
       - "icon-192.png"
@@ -36,7 +37,7 @@ jobs:
       - name: تجميع ملفات الواجهة فقط (بدون كود المسوق الخلفي)
         run: |
           mkdir -p _site
-          cp index.html app.js sw.js manifest.json icon.svg icon-192.png icon-512.png _site/
+          cp index.html app.js sw.js us_market_hours.js manifest.json icon.svg icon-192.png icon-512.png _site/
 
       - name: تهيئة GitHub Pages
         uses: actions/configure-pages@v5

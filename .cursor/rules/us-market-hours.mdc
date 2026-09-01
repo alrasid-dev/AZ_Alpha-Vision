@@ -1,0 +1,21 @@
+---
+description: US market hours and NYSE holiday calendar for the virtual trader
+alwaysApply: true
+---
+
+# US market hours for the virtual trader
+
+The educational simulator must trade only during official NYSE/NASDAQ hours in `America/New_York`. Do not run buy/sell logic 24/7 or on weekdays without checking the clock.
+
+Sessions (ET):
+- Premarket 04:00–09:30
+- Regular 09:30–16:00
+- After-hours 16:00–20:00
+- Early-close days: regular until 13:00, after-hours until 17:00
+- Full stop: weekends, NYSE holidays, and outside extended hours
+
+NYSE holidays (observed Fri/Mon if Sat/Sun): New Year's Day, MLK (3rd Monday of January), Presidents' Day (3rd Monday of February), Good Friday, Memorial Day (last Monday of May), Juneteenth (June 19), Independence Day (July 4), Labor Day (1st Monday of September), Thanksgiving (4th Thursday of November), Christmas (December 25).
+
+Early closes: Black Friday, Christmas Eve (if a weekday and not a full holiday), July 3 when it is a weekday and not a holiday, July 2 when July 4 is Sunday.
+
+Canonical code: `us_market_hours.js`, `supabase/functions/_shared/usMarketHours.ts`, `az-alpha-marketer-unified/lib/usMarketHours.js`. Both `run-virtual-trader` engines must call `getUsMarketClock()` and skip execution when `tradable` is false.

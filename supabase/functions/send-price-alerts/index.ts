@@ -1,5 +1,5 @@
-// send-price-alerts — يُستدعى بعد كل تحديث أسعار حي (كل 5 دقائق وقت السوق).
-// يرسل Push شخصي فقط لمن يملك السهم المتحرك في قائمة مراقبته الخاصة.
+// send-price-alerts — بعد تحديث الأسعار الحية.
+// تنبيهات لقائمة المراقبة + محفظة المستخدم بروح سياسة المحاكي (وقف ~-8%، تقدم ~+20%).
 
 import {
   CORS_HEADERS,
@@ -23,6 +23,13 @@ interface LiveQuoteRow {
 interface WatchlistRow {
   user_id: string;
   symbol: string;
+  entry_price?: number | null;
+}
+interface PortfolioRow {
+  user_id: string;
+  symbol: string;
+  buy_price: number;
+  qty: number;
 }
 
 Deno.serve(async (req: Request) => {
@@ -40,54 +47,105 @@ Deno.serve(async (req: Request) => {
       SERVICE_ROLE_KEY,
       `live_quotes?select=symbol,price,change_pct&or=(change_pct.gte.${threshold},change_pct.lte.-${threshold})&limit=200`,
     );
-    if (!movers.length) {
-      return jsonResponse({ ok: true, movers: 0, notified: 0, message: "لا حركة سعرية تتجاوز الحد المطلوب الآن" });
-    }
-    const moverMap = new Map(movers.map((m) => [m.symbol, m]));
-    const symbolList = movers.map((m) => `"${m.symbol}"`).join(",");
+    const quoteMap = new Map(
+      (await restSelect<LiveQuoteRow>(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        `live_quotes?select=symbol,price,change_pct&limit=2000`,
+      )).map((q) => [q.symbol.toUpperCase(), q]),
+    );
 
     const watchRows = await restSelect<WatchlistRow>(
       SUPABASE_URL,
       SERVICE_ROLE_KEY,
-      `watchlist?select=user_id,symbol&symbol=in.(${symbolList})`,
+      `watchlist?select=user_id,symbol,entry_price`,
     );
-    if (!watchRows.length) {
-      return jsonResponse({ ok: true, movers: movers.length, notified: 0, message: "لا مستخدم يراقب هذه الرموز حاليًا" });
+    const portfolioRows = await restSelect<PortfolioRow>(
+      SUPABASE_URL,
+      SERVICE_ROLE_KEY,
+      `user_portfolio_positions?select=user_id,symbol,buy_price,qty`,
+    );
+
+    type AlertLine = { symbol: string; text: string; kind: "move" | "entry" | "exit"; up: boolean };
+    const byUser = new Map<string, AlertLine[]>();
+
+    const add = (userId: string, line: AlertLine) => {
+      if (!byUser.has(userId)) byUser.set(userId, []);
+      byUser.get(userId)!.push(line);
+    };
+
+    const moverMap = new Map(movers.map((m) => [m.symbol.toUpperCase(), m]));
+    for (const row of watchRows) {
+      const sym = String(row.symbol || "").toUpperCase();
+      const q = moverMap.get(sym);
+      if (!q) continue;
+      const sign = q.change_pct >= 0 ? "+" : "";
+      add(row.user_id, {
+        symbol: sym,
+        text: `${sym} ${sign}${q.change_pct.toFixed(2)}%`,
+        kind: "move",
+        up: q.change_pct >= 0,
+      });
     }
 
-    const byUser = new Map<string, WatchlistRow[]>();
-    for (const row of watchRows) {
-      if (!byUser.has(row.user_id)) byUser.set(row.user_id, []);
-      byUser.get(row.user_id)!.push(row);
+    // روح سياسة المحاكي على محفظة المستخدم: قرب وقف الخسارة أو تقدم ملحوظ
+    for (const row of portfolioRows) {
+      const sym = String(row.symbol || "").toUpperCase();
+      const q = quoteMap.get(sym);
+      const buy = Number(row.buy_price);
+      if (!q || !(buy > 0) || !(q.price > 0)) continue;
+      const pct = ((q.price - buy) / buy) * 100;
+      if (pct <= -8) {
+        add(row.user_id, {
+          symbol: sym,
+          text: `${sym} قرب منطقة وقف تعليمية (${pct.toFixed(1)}% من شراء $${buy.toFixed(2)})`,
+          kind: "exit",
+          up: false,
+        });
+      } else if (pct >= 20) {
+        add(row.user_id, {
+          symbol: sym,
+          text: `${sym} تقدّم تعليمي +${pct.toFixed(1)}% من شراء $${buy.toFixed(2)} — راقب منطقة خروج`,
+          kind: "exit",
+          up: true,
+        });
+      } else if (Math.abs(q.change_pct) >= threshold) {
+        const sign = q.change_pct >= 0 ? "+" : "";
+        add(row.user_id, {
+          symbol: sym,
+          text: `محفظتك · ${sym} ${sign}${q.change_pct.toFixed(2)}% (شراء $${buy.toFixed(2)})`,
+          kind: "move",
+          up: q.change_pct >= 0,
+        });
+      }
     }
 
     let notifiedUsers = 0;
     let totalSent = 0;
-    for (const [userId, rows] of byUser) {
-      const eligible: string[] = [];
-      for (const row of rows) {
-        const refId = `${userId}|${row.symbol}`;
-        const recently = await wasRecentlyNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "price_alert", refId, cooldown);
-        if (!recently) eligible.push(row.symbol);
+    for (const [userId, lines] of byUser) {
+      const eligible: AlertLine[] = [];
+      for (const line of lines) {
+        const refId = `${userId}|${line.kind}|${line.symbol}`;
+        const recently = await wasRecentlyNotified(
+          SUPABASE_URL,
+          SERVICE_ROLE_KEY,
+          line.kind === "move" ? "price_alert" : "portfolio_alert",
+          refId,
+          cooldown,
+        );
+        if (!recently) eligible.push(line);
       }
       if (!eligible.length) continue;
-
       const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY, [userId]);
       if (!devices.length) continue;
 
-      const lines = eligible
-        .map((sym) => {
-          const q = moverMap.get(sym)!;
-          const sign = q.change_pct >= 0 ? "+" : "";
-          return `${sym} ${sign}${q.change_pct.toFixed(2)}%`;
-        })
-        .join(" · ");
-      const anyUp = eligible.some((sym) => (moverMap.get(sym)?.change_pct ?? 0) >= 0);
-
+      const anyExit = eligible.some((l) => l.kind === "exit");
+      const anyUp = eligible.some((l) => l.up);
+      const body = eligible.slice(0, 6).map((l) => l.text).join(" · ");
       const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title: "📈 تحرك سعري في قائمة مراقبتك",
-        body: lines,
-        url: "./#dashboard",
+        title: anyExit ? "🔔 تنبيه محفظة/مراقبة — دخول/خروج تعليمي" : "📈 تحرك سعري في قائمتك",
+        body,
+        url: "./#portfolio",
         tag: `az-price-${userId}`,
         direction: anyUp ? "up" : "down",
         alertType: "price",
@@ -95,13 +153,23 @@ Deno.serve(async (req: Request) => {
       totalSent += result.sent;
       if (result.sent > 0) {
         notifiedUsers++;
-        for (const sym of eligible) {
-          await logNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "price_alert", `${userId}|${sym}`);
+        for (const line of eligible) {
+          await logNotified(
+            SUPABASE_URL,
+            SERVICE_ROLE_KEY,
+            line.kind === "move" ? "price_alert" : "portfolio_alert",
+            `${userId}|${line.kind}|${line.symbol}`,
+          );
         }
       }
     }
 
-    return jsonResponse({ ok: true, movers: movers.length, notified_users: notifiedUsers, push_sent: totalSent });
+    return jsonResponse({
+      ok: true,
+      movers: movers.length,
+      notified_users: notifiedUsers,
+      push_sent: totalSent,
+    });
   } catch (err) {
     console.error("send-price-alerts error:", err);
     return jsonResponse({ error: "خطأ غير متوقع أثناء إرسال تنبيهات الأسعار" }, 500);

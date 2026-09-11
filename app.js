@@ -23,6 +23,7 @@ let currentUser = null,
   currentProfile = null,
   chartInstance = null,
   watchlist = [],
+  userPortfolio = [],
   screenerResults = [],
   isScanning = false,
   marketPulseTimer = null,
@@ -697,6 +698,33 @@ function appendAzAiMessage(role, text) {
   const item = document.createElement("div");
   item.className = `az-ai-message ${role}`;
   item.textContent = cleanAzAiText(text);
+  if (role === "assistant") {
+    const tickers = Array.from(
+      new Set(
+        (String(text || "").toUpperCase().match(/\b[A-Z]{2,5}\b/g) || []).filter(
+          (t) => !["AZ", "RSI", "SMA", "ATR", "SMC", "HTTP", "HTTPS", "IOS", "NYSE"].includes(t),
+        ),
+      ),
+    ).slice(0, 3);
+    if (tickers.length) {
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;";
+      tickers.forEach((sym) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "preset-btn";
+        btn.style.cssText = "min-height:30px;padding:4px 10px;font-size:11px;";
+        btn.textContent = `＋ مراقبة ${sym}`;
+        btn.onclick = () => {
+          const input = document.getElementById("addSymbolInput");
+          if (input) input.value = sym;
+          addToWatchlist();
+        };
+        actions.appendChild(btn);
+      });
+      item.appendChild(actions);
+    }
+  }
   box.appendChild(item);
   box.scrollTop = box.scrollHeight;
   return item;
@@ -704,7 +732,8 @@ function appendAzAiMessage(role, text) {
 function azBeeLocalAnswer(question) {
   const q = String(question || "").toLowerCase();
   const map = [
-    [/محاك|محفظ|10,?000|افتراض/, "المحاكي محفظة تعليمية مشتركة بقيمة 10,000 دولار افتراضية. افتح تبويب المحفظة لمتابعة المراكز والصفقات. لا يوجد تنفيذ حقيقي ولا توصية مالية."],
+    [/محاك|افتراض|50,?000/, "المحاكي محفظة تعليمية مشتركة بقيمة 50,000 دولار على تبويب الرئيسية (حد ~10% لكل فرصة واحتياطي نقدي ~30%). تبويب المحفظة لمراكزك الشخصية منفصلة. لا تنفيذ حقيقي."],
+    [/محفظتي|مراكزي|سعر الشراء/, "تبويب «المحفظة» لمراكزك: أضف الرمز وسعر الشراء والكمية لعرض الربح/الخسارة (اليوم/الشهر/الكلي) وتنبيهات الدخول/الخروج والأخبار. قائمة المراقبة في الشريط الجانبي منفصلة."],
     [/تحليل|مؤشر|rsi|فيبون|smc/, "التحليل الفني في تبويب «التحليل» بعد الرئيسية مباشرة: متوسطات، RSI، فيبوناتشي وأدوات القراءة. المؤشر أداة وصف لا أمر تداول."],
     [/إشعار|تنبيه|push|خلف/, "فعّل زر الجرس في الشريط العلوي بعد تسجيل الدخول وعلى رابط HTTPS. بعد السماح، تصل التنبيهات عبر خدمة الويب حتى لو أُغلقت الصفحة على أندرويد كروم، وعلى iOS بعد إضافة المنصة للشاشة الرئيسية (iOS 16.4+)."],
     [/مسوق|تسويق|تويتر|تغريد/, "لوحة المسوق الذكي تقرأ الأخبار وصفقات المحاكي وتقويم الأرباح ثم تصوغ تشويقاً غير مباشر مع رابط التسجيل في نهاية التحديث. النشر على X يبقى مسودة ما لم يُفعَّل وضع النشر."],
@@ -714,7 +743,15 @@ function azBeeLocalAnswer(question) {
     [/ماسح|فلتر|ترشيح/, "الفلترة والماسح والترشيحات تعرض إشارات تعليمية من بيانات المنصة. ظهور رمز لا يعني شراء."],
   ];
   for (const [re, answer] of map) if (re.test(q)) return answer;
-  return "فتحت المعرفة المحلية فوراً. الرئيسية للعمل والتحليل أولاً، ثم المسوق، والدعم آخر القائمة. اسأل عن تبويب محدد أو رمز سهم لشرح تعليمي من بيانات المنصة المتاحة.";
+  const ticker = (String(question || "").toUpperCase().match(/\b[A-Z]{1,5}\b/) || [])[0];
+  if (ticker && !["AZ", "RSI", "SMA", "ATR", "SMC", "HTTPS", "IOS"].includes(ticker)) {
+    return (
+      `قراءة تعليمية لـ ${ticker} «وفقاً للمحللين»: غالباً تُناقش منطقة دخول قرب دعم/متوسط متحرك مع زخم معتدل، ومنطقة خروج عند مقاومة أو ضعف زخم/تشبع. ` +
+      `يمكنك إضافة ${ticker} لقائمة المراقبة من الشريط أو زر الإضافة أسفل الإجابة لتلقي تنبيهات السعر والأخبار. ` +
+      `هذا شرح تعليمي فقط وليس توصية شراء أو بيع.`
+    );
+  }
+  return "فتحت المعرفة المحلية فوراً. الرئيسية للمحاكي والتحليل أولاً، ثم محفظتك الشخصية، والدعم آخر القائمة. اسأل عن تبويب محدد أو رمز سهم لشرح تعليمي لمناطق الدخول/الخروج.";
 }
 // تفتح النحلة تلقائياً مع أول دخول فعلي للمستخدم فقط (لا تتكرر بعدها أبداً)، وتعطي
 // تقريراً تعليمياً مبسطاً ثم تسأله "وش تحتاج؟" لتوجيهه لأقرب تبويب مفيد.
@@ -919,6 +956,12 @@ function platformRelevantSymbols() {
   };
   Object.keys(virtualTrader?.positions || {}).forEach((symbol) =>
     add(symbol, "محفظة المحاكي"),
+  );
+  (Array.isArray(watchlist) ? watchlist : []).forEach((item) =>
+    add(item.symbol, "قائمة المراقبة"),
+  );
+  (Array.isArray(userPortfolio) ? userPortfolio : []).forEach((item) =>
+    add(item.symbol, "محفظتي"),
   );
   (LocalCache.getPicks() || []).forEach((item) =>
     add(item.symbol, "ترشيحات الأسبوع"),
@@ -1195,6 +1238,7 @@ async function initApp(user, profile) {
   }
   ensureEducationConsent();
   await loadWatchlist();
+  if (typeof loadUserPortfolio === "function") await loadUserPortfolio();
   await loadMySupportTickets();
   await loadEmailAlertPreference();
   syncExistingPushSubscription();
@@ -1220,12 +1264,17 @@ async function initApp(user, profile) {
   await loadMarketPulse();
   runScanner();
   if (marketPulseTimer) clearInterval(marketPulseTimer);
+  const liveRefreshMs = () => {
+    const clock = globalThis.AzUsMarketHours?.getUsMarketClock?.();
+    return clock?.tradable ? 60 * 1000 : 3 * 60 * 1000;
+  };
   marketPulseTimer = setInterval(() => {
     loadMarketPulse();
     loadWatchlist();
-  }, 5 * 60 * 1000);
+    if (typeof loadUserPortfolio === "function") loadUserPortfolio();
+  }, liveRefreshMs());
   if (stockTableTimer) clearInterval(stockTableTimer);
-  stockTableTimer = setInterval(() => runScanner(), 5 * 60 * 1000);
+  stockTableTimer = setInterval(() => runScanner(), liveRefreshMs());
   openTabFromHash();
   await refreshCompanyNews();
   await refreshEarningsCalendar();
@@ -1240,7 +1289,7 @@ async function initApp(user, profile) {
   if (!virtualTraderTimer)
     virtualTraderTimer = setInterval(
       () => syncVirtualTraderFromServer(),
-      5 * 60 * 1000,
+      2 * 60 * 1000,
     );
   const c = LocalCache.getScreener();
   if (c && c.t > Date.now() - 86400000) {
@@ -1283,7 +1332,6 @@ async function loadWatchlist() {
     );
   }
   renderWatchlist();
-  renderPortfolio();
 }
 async function addToWatchlist(symbolInputId = "addSymbolInput", entryInputId = "addEntryPrice") {
   const symbolInput = document.getElementById(symbolInputId);
@@ -1438,48 +1486,325 @@ function updateStats(w, l, pnl, invested, current) {
   invEl.textContent = "$" + (invested || 0).toFixed(2);
   curEl.textContent = "$" + (current || 0).toFixed(2);
 }
-async function renderPortfolio() {
-  const tb = document.getElementById("portfolioTableBody");
-  tb.innerHTML = "";
-  if (watchlist.length === 0) {
-    tb.innerHTML =
-      '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:40px;">لا توجد صفقات</td></tr>';
+async function fetchQuote(sym) {
+  const { data: live } = await sb
+    .from("live_quotes")
+    .select("price,change_pct")
+    .eq("symbol", sym)
+    .maybeSingle();
+  if (live && live.price != null) {
+    return {
+      price: Number(live.price),
+      change_pct: Number(live.change_pct ?? 0),
+    };
+  }
+  const { data: tech } = await sb
+    .from("market_technicals")
+    .select("price,change_pct")
+    .eq("symbol", sym)
+    .maybeSingle();
+  if (tech && tech.price != null) {
+    return {
+      price: Number(tech.price),
+      change_pct: Number(tech.change_pct ?? 0),
+    };
+  }
+  return { price: null, change_pct: 0 };
+}
+
+async function loadUserPortfolio() {
+  if (!currentUser?.id || !sb) return;
+  const { data, error } = await sb
+    .from("user_portfolio_positions")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .order("added_at", { ascending: true });
+  if (error) {
+    console.warn("user portfolio load:", error.message);
+    try {
+      userPortfolio = JSON.parse(
+        localStorage.getItem(`az_user_portfolio_${currentUser.id}`) || "[]",
+      );
+    } catch {
+      userPortfolio = [];
+    }
+  } else {
+    userPortfolio = (data || [])
+      .map((r) => ({
+        id: r.id,
+        symbol: String(r.symbol || "").toUpperCase(),
+        buy_price: Number(r.buy_price),
+        qty: Number(r.qty) || 1,
+        added: new Date(r.added_at || Date.now()).getTime(),
+      }))
+      .filter((r) => r.symbol && r.buy_price > 0);
+    localStorage.setItem(
+      `az_user_portfolio_${currentUser.id}`,
+      JSON.stringify(userPortfolio),
+    );
+  }
+  await renderPortfolio();
+}
+
+async function addToUserPortfolio() {
+  if (!currentUser?.id) {
+    toast("سجّل الدخول أولاً لإضافة مراكز لمحفظتك", "warn");
     return;
   }
-  const prices = await Promise.all(watchlist.map((w) => fetchPrice(w.symbol)));
+  const sym = String(document.getElementById("portfolioSymbolInput")?.value || "")
+    .toUpperCase()
+    .trim();
+  const buy = Number.parseFloat(document.getElementById("portfolioBuyPriceInput")?.value || "");
+  const qty = Number.parseFloat(document.getElementById("portfolioQtyInput")?.value || "1");
+  if (!/^[A-Z][A-Z.\-]{0,9}$/.test(sym)) {
+    toast("أدخل رمز سهم صحيحًا مثل AAPL", "error");
+    return;
+  }
+  if (!(buy > 0) || !(qty > 0)) {
+    toast("أدخل سعر شراء وكمية صالحين", "error");
+    return;
+  }
+  const existing = userPortfolio.find((x) => x.symbol === sym);
+  if (existing) {
+    const newQty = Number(existing.qty) + qty;
+    const newBuy =
+      (Number(existing.buy_price) * Number(existing.qty) + buy * qty) / newQty;
+    const { error } = await sb
+      .from("user_portfolio_positions")
+      .update({
+        buy_price: newBuy,
+        qty: newQty,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+    if (error) {
+      toast("تعذر تحديث المركز: " + error.message, "error");
+      return;
+    }
+  } else {
+    const { error } = await sb.from("user_portfolio_positions").insert({
+      user_id: currentUser.id,
+      symbol: sym,
+      buy_price: buy,
+      qty,
+    });
+    if (error) {
+      // fallback local if table not migrated yet
+      userPortfolio = [
+        ...userPortfolio,
+        {
+          id: `local-${Date.now()}`,
+          symbol: sym,
+          buy_price: buy,
+          qty,
+          added: Date.now(),
+        },
+      ];
+      localStorage.setItem(
+        `az_user_portfolio_${currentUser.id}`,
+        JSON.stringify(userPortfolio),
+      );
+      await renderPortfolio();
+      toast("أُضيف محليًا — شغّل ترحيل SQL لمزامنة السحابة", "warn");
+      return;
+    }
+  }
+  const symInput = document.getElementById("portfolioSymbolInput");
+  const buyInput = document.getElementById("portfolioBuyPriceInput");
+  const qtyInput = document.getElementById("portfolioQtyInput");
+  if (symInput) symInput.value = "";
+  if (buyInput) buyInput.value = "";
+  if (qtyInput) qtyInput.value = "1";
+  await loadUserPortfolio();
+  // أضف أيضاً للمراقبة لتنبيهات الأخبار/السعر بنفس روح المحاكي
+  if (!watchlist.some((w) => w.symbol === sym)) {
+    const input = document.getElementById("addSymbolInput");
+    const entry = document.getElementById("addEntryPrice");
+    if (input) input.value = sym;
+    if (entry) entry.value = String(buy);
+    try {
+      await addToWatchlist();
+    } catch (_) {}
+  }
+  toast(`تمت إضافة ${sym} لمحفظتك التعليمية`, "success");
+}
+
+async function removeFromUserPortfolio(sym) {
+  const item = userPortfolio.find((x) => x.symbol === sym);
+  if (!item) return;
+  if (item.id && !String(item.id).startsWith("local-")) {
+    const { error } = await sb
+      .from("user_portfolio_positions")
+      .delete()
+      .eq("id", item.id);
+    if (error) {
+      toast("تعذر الحذف: " + error.message, "error");
+      return;
+    }
+  }
+  userPortfolio = userPortfolio.filter((x) => x.symbol !== sym);
+  localStorage.setItem(
+    `az_user_portfolio_${currentUser.id}`,
+    JSON.stringify(userPortfolio),
+  );
+  await renderPortfolio();
+  toast(`حُذف ${sym} من محفظتك`);
+}
+
+function formatPnlMoney(value) {
+  const n = Number(value) || 0;
+  return `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+}
+function formatPnlPct(value) {
+  const n = Number(value) || 0;
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+function paintPnlEl(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const n = Number(value) || 0;
+  el.textContent = formatPnlMoney(n);
+  el.className = `font-mono ${n > 0 ? "text-green" : n < 0 ? "text-red" : "text-muted"}`;
+}
+function paintPnlPctEl(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const n = Number(value) || 0;
+  el.textContent = formatPnlPct(n);
+  el.className = `sym-sub ${n > 0 ? "text-green" : n < 0 ? "text-red" : "text-muted"}`;
+}
+
+async function persistUserPortfolioMarks(dayPnl, allTimePnl, equity, invested) {
+  if (!currentUser?.id || !sb) return;
+  const markDate = new Date().toISOString().slice(0, 10);
+  const localKey = `az_user_pnl_marks_${currentUser.id}`;
+  let local = {};
+  try {
+    local = JSON.parse(localStorage.getItem(localKey) || "{}");
+  } catch {
+    local = {};
+  }
+  local[markDate] = { dayPnl, allTimePnl, equity, invested };
+  // احتفظ بآخر ~120 يوماً محلياً
+  const keys = Object.keys(local).sort();
+  while (keys.length > 120) {
+    delete local[keys.shift()];
+  }
+  localStorage.setItem(localKey, JSON.stringify(local));
+  try {
+    await sb.from("user_portfolio_daily_marks").upsert(
+      {
+        user_id: currentUser.id,
+        mark_date: markDate,
+        equity,
+        invested,
+        all_time_pnl: allTimePnl,
+        day_pnl: dayPnl,
+      },
+      { onConflict: "user_id,mark_date" },
+    );
+  } catch (_) {}
+}
+
+async function computeMonthPnl(allTimePnl, equity) {
+  if (!currentUser?.id) return allTimePnl;
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const localKey = `az_user_pnl_marks_${currentUser.id}`;
+  let local = {};
+  try {
+    local = JSON.parse(localStorage.getItem(localKey) || "{}");
+  } catch {
+    local = {};
+  }
+  const monthDays = Object.keys(local)
+    .filter((d) => d.startsWith(monthPrefix))
+    .sort();
+  if (monthDays.length) {
+    const first = local[monthDays[0]];
+    const startEquity = Number(first?.equity ?? equity) - Number(first?.dayPnl ?? 0);
+    return equity - startEquity;
+  }
+  try {
+    const { data } = await sb
+      .from("user_portfolio_daily_marks")
+      .select("mark_date,equity,day_pnl")
+      .eq("user_id", currentUser.id)
+      .gte("mark_date", `${monthPrefix}-01`)
+      .order("mark_date", { ascending: true })
+      .limit(40);
+    if (data?.length) {
+      const first = data[0];
+      const startEquity = Number(first.equity) - Number(first.day_pnl || 0);
+      return equity - startEquity;
+    }
+  } catch (_) {}
+  // إن لم تتوفر علامات سابقة، اعرض الكلي كتقدير أولي للشهر
+  return allTimePnl;
+}
+
+async function renderPortfolio() {
+  const tb = document.getElementById("portfolioTableBody");
+  if (!tb) return;
+  tb.innerHTML = "";
+  if (!userPortfolio.length) {
+    tb.innerHTML =
+      '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:40px;">لا توجد مراكز في محفظتك بعد — أضف رمزاً مع سعر الشراء والكمية</td></tr>';
+    paintPnlEl("userPnlToday", 0);
+    paintPnlEl("userPnlMonth", 0);
+    paintPnlEl("userPnlAll", 0);
+    paintPnlPctEl("userPnlTodayPct", 0);
+    paintPnlPctEl("userPnlMonthPct", 0);
+    paintPnlPctEl("userPnlAllPct", 0);
+    return;
+  }
+  const quotes = await Promise.all(userPortfolio.map((w) => fetchQuote(w.symbol)));
   let totalPnl = 0,
     totalInvested = 0,
-    totalCurrent = 0;
-  watchlist.forEach((item, i) => {
-    const p = prices[i];
+    totalCurrent = 0,
+    dayPnl = 0;
+  userPortfolio.forEach((item, i) => {
+    const q = quotes[i] || {};
+    const p = q.price;
+    const changePct = Number(q.change_pct || 0);
     const hasPrice = Number.isFinite(p) && p > 0;
     const qty = Number(item.qty || 1);
-    const entry = Number(item.entry_price || 0);
+    const entry = Number(item.buy_price || 0);
     const invested = entry > 0 ? entry * qty : 0;
     const current = hasPrice ? p * qty : null;
     const pnl = hasPrice && entry > 0 ? current - invested : null;
     const pct = pnl !== null && invested > 0 ? (pnl / invested) * 100 : null;
-    const matchedPick = (LocalCache.getPicks() || []).find((pick) => pick.symbol === item.symbol);
-    const guidePrice = Number(matchedPick?.entryPrice || 0);
-    const statusLabel = !hasPrice ? "بانتظار السعر" : !entry ? "مراقبة" : pnl >= 0 ? "ارتفاع" : "تراجع";
-    const statusClass = !hasPrice || !entry ? "text-muted" : pnl >= 0 ? "text-green" : "text-red";
-    totalInvested += invested;
     if (hasPrice) {
-      totalPnl += pnl;
+      dayPnl += current * (changePct / 100);
+      totalInvested += invested;
+      totalPnl += pnl || 0;
       totalCurrent += current;
+    } else {
+      totalInvested += invested;
     }
+    const statusClass =
+      !hasPrice || pnl === null ? "text-muted" : pnl >= 0 ? "text-green" : "text-red";
+    const statusLabel = !hasPrice ? "بانتظار السعر" : pnl >= 0 ? "ربح" : "خسارة";
     const currentCell = hasPrice
       ? `$${p.toFixed(2)}`
       : '<span class="text-muted">بانتظار السعر</span>';
-    const pnlCell = pnl !== null ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` : "—";
-    const pctCell = pct !== null ? `${pct.toFixed(2)}%` : "—";
-    const guideCell = guidePrice > 0 ? `$${guidePrice.toFixed(2)} تقريبًا` : "تُحدد مع اكتمال الإشارة";
-    tb.innerHTML += `<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub ${statusClass}">${statusLabel} · ${qty} سهم</div></td><td class="font-mono">${entry > 0 ? `$${entry.toFixed(2)}` : "—"}<div class="sym-sub">منطقة الدخول: ${guideCell}</div></td><td class="font-mono">${currentCell}</td><td class="font-mono ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pnlCell}</td><td class="font-mono ${pct !== null ? (pct >= 0 ? "text-green" : "text-red") : "text-muted"}">${pctCell}</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">${hasPrice ? `$${current.toFixed(2)}` : "—"}</td><td><button type="button" class="watch-remove" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromWatchlist('${escapeHtml(item.symbol)}')">إزالة</button></td></tr>`;
+    const pnlCell =
+      pnl !== null ? `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` : "—";
+    const pctCell = pct !== null ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—";
+    tb.innerHTML += `<tr><td><div class="sym">${escapeHtml(item.symbol)}</div><div class="sym-sub ${statusClass}">${statusLabel} · ${qty} سهم</div></td><td class="font-mono">$${entry.toFixed(2)}</td><td class="font-mono">${currentCell}</td><td class="font-mono ${pnl !== null ? (pnl >= 0 ? "text-green" : "text-red") : "text-muted"}">${pnlCell}</td><td class="font-mono ${pct !== null ? (pct >= 0 ? "text-green" : "text-red") : "text-muted"}">${pctCell}</td><td class="font-mono">$${invested.toFixed(2)}</td><td class="font-mono text-cyan">${hasPrice ? `$${current.toFixed(2)}` : "—"}</td><td><button type="button" class="watch-remove" aria-label="إزالة ${escapeHtml(item.symbol)}" onclick="removeFromUserPortfolio('${escapeHtml(item.symbol)}')">إزالة</button></td></tr>`;
   });
-  if (watchlist.length > 0) {
-    const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-    tb.innerHTML += `<tr style="border-top:2px solid var(--border); background:rgba(0,240,255,0.03);"><td colspan="3" style="font-weight:700;">الإجمالي</td><td class="font-mono ${totalPnl >= 0 ? "text-green" : "text-red"}" style="font-weight:700;">${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}</td><td class="font-mono ${totalPct >= 0 ? "text-green" : "text-red"}" style="font-weight:700;">${totalPct.toFixed(2)}%</td><td class="font-mono">$${totalInvested.toFixed(2)}</td><td class="font-mono text-cyan" style="font-weight:700;">$${totalCurrent.toFixed(2)}</td><td></td></tr>`;
-  }
+  const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+  const dayPct = totalCurrent > 0 ? (dayPnl / totalCurrent) * 100 : 0;
+  tb.innerHTML += `<tr style="border-top:2px solid var(--border); background:rgba(0,240,255,0.03);"><td colspan="3" style="font-weight:700;">الإجمالي</td><td class="font-mono ${totalPnl >= 0 ? "text-green" : "text-red"}" style="font-weight:700;">${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}</td><td class="font-mono ${totalPct >= 0 ? "text-green" : "text-red"}" style="font-weight:700;">${totalPct >= 0 ? "+" : ""}${totalPct.toFixed(2)}%</td><td class="font-mono">$${totalInvested.toFixed(2)}</td><td class="font-mono text-cyan" style="font-weight:700;">$${totalCurrent.toFixed(2)}</td><td></td></tr>`;
+
+  await persistUserPortfolioMarks(dayPnl, totalPnl, totalCurrent, totalInvested);
+  const monthPnl = await computeMonthPnl(totalPnl, totalCurrent);
+  const monthPct = totalInvested > 0 ? (monthPnl / totalInvested) * 100 : 0;
+  paintPnlEl("userPnlToday", dayPnl);
+  paintPnlEl("userPnlMonth", monthPnl);
+  paintPnlEl("userPnlAll", totalPnl);
+  paintPnlPctEl("userPnlTodayPct", dayPct);
+  paintPnlPctEl("userPnlMonthPct", monthPct);
+  paintPnlPctEl("userPnlAllPct", totalPct);
 }
 
 // ===== TRIAL =====
@@ -3392,8 +3717,12 @@ function initChart() {
     chartInstance.remove();
     chartInstance = null;
   }
-  cont.innerHTML =
-    '<div class="chart-empty-state"><span class="chart-empty-icon">⌁</span><strong>الرسم البياني ينتظر بيانات تاريخية فعلية</strong><p>اختر سهمًا من الجدول لعرض الشموع والمؤشرات عند توفر بيانات OHLC الموثوقة.</p></div>';
+  // لا نعرض كتلة «الرسم البياني ينتظر بيانات تاريخية» الفارغة على الرئيسية.
+  cont.innerHTML = "";
+  box.classList.add("chart-awaiting-data");
+  box.classList.remove("has-ohlc");
+  box.hidden = true;
+  box.style.display = "none";
 }
 
 const PREMIUM_PAGE_TITLES = {
@@ -3520,7 +3849,7 @@ function mountSignalGridDashboard() {
   aiPanel.innerHTML = `<div class="ai-orb"><span>AZ</span></div><p>اقرأ الإشارة والخبر والمخاطر من بيانات المنصة المتاحة.</p><button type="button" onclick="openAzAi()">افتح AZ ai <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M3 12h4M17 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.5"/></svg></button>`;
   const picksPanel = document.createElement("div");
   picksPanel.className = "signal-grid-table";
-  picksPanel.innerHTML = `<table><thead><tr><th>الرمز</th><th>العدد</th><th>النسبة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة سجل الصفقات</td></tr></tbody></table><button class="widget-link" type="button" onclick="switchTab('portfolio')">عرض سجل المحاكي <span>←</span></button>`;
+  picksPanel.innerHTML = `<table><thead><tr><th>الرمز</th><th>العدد</th><th>النسبة</th></tr></thead><tbody id="dashboardPicksBody"><tr><td colspan="3" class="grid-empty-cell">جارٍ قراءة سجل الصفقات</td></tr></tbody></table><button class="widget-link" type="button" onclick="document.getElementById('homeVirtualTrader')?.scrollIntoView({behavior:'smooth'})">عرض سجل المحاكي <span>←</span></button>`;
   const newsPanel = document.createElement("div");
   newsPanel.className = "signal-grid-feed";
   newsPanel.id = "dashboardNewsList";
@@ -3875,15 +4204,15 @@ function switchTab(id) {
 
   const chartBox = document.getElementById("chartBox");
   if (chartBox) {
-    if (id === "stocks") {
+    if (id === "stocks" && chartInstance && chartBox.classList.contains("has-ohlc")) {
+      chartBox.hidden = false;
       chartBox.style.display = "block";
-      if (chartInstance)
-        setTimeout(
-          () =>
-            chartInstance.resize(chartBox.clientWidth, chartBox.clientHeight),
-          50,
-        );
-    } else {
+      setTimeout(
+        () => chartInstance.resize(chartBox.clientWidth, chartBox.clientHeight),
+        50,
+      );
+    } else if (!chartInstance) {
+      chartBox.hidden = true;
       chartBox.style.display = "none";
     }
   }
@@ -6441,7 +6770,7 @@ const PLATFORM_GUIDE = {
   },
   trader: {
     title: "المتداول الافتراضي",
-    body: "<p>هذا محاكي تداول افتراضي مشترك برصيد تعليمي. ينفذ صفقات داخل المحاكاة فقط، ولا يتصل بوسيط ولا يستخدم أموالًا حقيقية.</p><p><strong>المتابعة:</strong> راجع سعر الدخول، سبب الصفقة، المركز المفتوح، والربح أو الخسارة المسجلة.</p>",
+    body: "<p>تبويب المحفظة لمراكزك الشخصية: أضف الرمز وسعر الشراء والكمية لعرض الربح/الخسارة (اليوم والشهر والكلي) بألوان خضراء/حمراء، مع تنبيهات دخول/خروج وأخبار. المحاكي الافتراضي المشترك يبقى في الرئيسية بسجلّه المنفصل ($50,000 تعليمي).</p>",
   },
   screener: {
     title: "فلترة الأسهم",
@@ -6627,8 +6956,9 @@ addToWatchlist = async function () {
 };
 
 // ===== VIRTUAL TRADER — EDUCATIONAL SIMULATION ONLY =====
-const VIRTUAL_STARTING_CASH = 10000;
-const VIRTUAL_MAX_POSITION_PCT = 0.2;
+const VIRTUAL_STARTING_CASH = 50000;
+const VIRTUAL_MAX_POSITION_PCT = 0.1;
+const VIRTUAL_CASH_RESERVE_PCT = 0.3;
 let virtualTrader = {
   cash: VIRTUAL_STARTING_CASH,
   positions: {},
@@ -6881,10 +7211,17 @@ function virtualExecuteBuy(row) {
   const symbol = String(row?.symbol || "").toUpperCase();
   const price = virtualPrice(row);
   if (!symbol || !price || virtualTrader.positions[symbol]) return false;
-  const allocation = Math.min(
-    virtualTrader.cash * VIRTUAL_MAX_POSITION_PCT,
-    virtualTrader.cash,
+  const openValue = Object.values(virtualTrader.positions || {}).reduce(
+    (sum, p) => sum + Number(p.qty) * Number(p.lastPrice || p.entryPrice || 0),
+    0,
   );
+  const equityNow = Number(virtualTrader.cash || 0) + openValue;
+  const reserveFloor = Math.max(
+    VIRTUAL_STARTING_CASH * VIRTUAL_CASH_RESERVE_PCT,
+    equityNow * VIRTUAL_CASH_RESERVE_PCT,
+  );
+  const spendable = Math.max(0, Number(virtualTrader.cash || 0) - reserveFloor);
+  const allocation = Math.min(equityNow * VIRTUAL_MAX_POSITION_PCT, spendable);
   const qty = Math.floor(allocation / price);
   if (qty < 1) return false;
   const tier = virtualTierLabel(row, "buy");
@@ -7173,7 +7510,7 @@ function syncOverviewMetrics() {
     const target = document.getElementById(targetId);
     if (target) target.textContent = source?.textContent || fallback;
   };
-  copy("vtEquity", "overviewEquity", "$10,000.00");
+  copy("vtEquity", "overviewEquity", "$50,000.00");
   copy("vtPnl", "overviewPnl", "$0.00");
   copy("vtReturnPct", "overviewReturn", "0.00%");
   copy("vtOpenPositions", "overviewPositions", "0");
@@ -7256,22 +7593,19 @@ renderVirtualTrader = function () {
   syncOverviewMetrics();
 };
 
-// إعادة توجيه وظائف الواجهة القديمة إلى المتداول الافتراضي.
-const _oldRenderPortfolio =
-  typeof renderPortfolio === "function" ? renderPortfolio : null;
-renderPortfolio = function () {
-  loadVirtualTrader();
-  renderVirtualTrader();
-};
+// المحفظة الشخصية منفصلة عن المحاكي؛ المحاكي يبقى على الرئيسية.
 const _oldLoadWatchlist = loadWatchlist;
 loadWatchlist = async function () {
   await _oldLoadWatchlist();
-  loadVirtualTrader();
+  // لا تعِد تحميل المحاكي من قائمة المراقبة في كل مرة
 };
 const _oldSwitchTab = switchTab;
 switchTab = function (id) {
   const result = _oldSwitchTab(id);
   if (id === "portfolio") {
+    loadUserPortfolio();
+  }
+  if (id === "stocks") {
     loadVirtualTrader();
     renderVirtualTrader();
   }

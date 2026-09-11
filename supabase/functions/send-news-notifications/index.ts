@@ -1,5 +1,6 @@
 // send-news-notifications — يُستدعى بعد fetch_company_news.py كل ساعة أيام العمل.
-// يرسل Push فوري عند رصد خبر شركة "مادي" (Material) جديد يخص رموز المحاكي.
+// يرسل Push شخصي عندما يمسّ خبر مادي رمزاً في محفظة المستخدم أو قائمة مراقبته.
+// الأثر: إيجابي (أخضر) / محايد (رمادي) / سلبي (أحمر) في العنوان والنص.
 
 import {
   CORS_HEADERS,
@@ -22,6 +23,17 @@ interface NewsRow {
   impact: string | null;
   published_at: string;
 }
+interface SymbolOwner {
+  user_id: string;
+  symbol: string;
+}
+
+function impactVisual(impact: string | null): { emoji: string; label: string } {
+  const key = String(impact || "").toLowerCase();
+  if (key === "positive") return { emoji: "🟢", label: "إيجابي" };
+  if (key === "negative") return { emoji: "🔴", label: "سلبي" };
+  return { emoji: "⚪", label: "محايد" };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
@@ -36,7 +48,7 @@ Deno.serve(async (req: Request) => {
     const news = await restSelect<NewsRow>(
       SUPABASE_URL,
       SERVICE_ROLE_KEY,
-      `company_news?select=id,symbol,title,impact,published_at&is_material=eq.true&published_at=gte.${since}&order=published_at.desc&limit=15`,
+      `company_news?select=id,symbol,title,impact,published_at&is_material=eq.true&published_at=gte.${since}&order=published_at.desc&limit=40`,
     );
     if (!news.length) {
       return jsonResponse({ ok: true, new_items: 0, notified: 0, message: "لا أخبار مادية جديدة خلال هذه النافذة الزمنية" });
@@ -51,21 +63,57 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, new_items: 0, notified: 0, message: "كل الأخبار المادية المتاحة أُرسلت مسبقًا" });
     }
 
-    const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const symbols = Array.from(new Set(fresh.map((n) => n.symbol.toUpperCase())));
+    const symbolFilter = symbols.map((s) => `"${s}"`).join(",");
+
+    const [watchRows, portfolioRows] = await Promise.all([
+      restSelect<SymbolOwner>(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        `watchlist?select=user_id,symbol&symbol=in.(${symbolFilter})`,
+      ),
+      restSelect<SymbolOwner>(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        `user_portfolio_positions?select=user_id,symbol&symbol=in.(${symbolFilter})`,
+      ),
+    ]);
+
+    const ownersBySymbol = new Map<string, Set<string>>();
+    for (const row of [...watchRows, ...portfolioRows]) {
+      const sym = String(row.symbol || "").toUpperCase();
+      if (!ownersBySymbol.has(sym)) ownersBySymbol.set(sym, new Set());
+      ownersBySymbol.get(sym)!.add(row.user_id);
+    }
+
     let sent = 0;
-    for (const item of fresh.slice(0, 5)) {
+    let targeted = 0;
+    for (const item of fresh.slice(0, 12)) {
+      const owners = Array.from(ownersBySymbol.get(item.symbol.toUpperCase()) || []);
+      if (!owners.length) continue;
+      const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY, owners);
+      if (!devices.length) continue;
+      const visual = impactVisual(item.impact);
       const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title: `📰 خبر مادي: ${item.symbol}`,
+        title: `${visual.emoji} خبر ${visual.label}: ${item.symbol}`,
         body: item.title,
-        url: "./#dashboard",
+        url: "./#portfolio",
         tag: `az-news-${item.id}`,
         alertType: "news",
+        direction: item.impact === "positive" ? "up" : item.impact === "negative" ? "down" : "neutral",
       });
       sent += result.sent;
+      targeted += owners.length;
       await logNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "news", item.id);
     }
 
-    return jsonResponse({ ok: true, new_items: fresh.length, devices_targeted: devices.length, push_sent: sent });
+    return jsonResponse({
+      ok: true,
+      new_items: fresh.length,
+      users_targeted: targeted,
+      push_sent: sent,
+      scoped_to_portfolio_or_watchlist: true,
+    });
   } catch (err) {
     console.error("send-news-notifications error:", err);
     return jsonResponse({ error: "خطأ غير متوقع أثناء إرسال إشعارات الأخبار" }, 500);

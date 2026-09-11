@@ -2,12 +2,12 @@
 -- AZ Alpha Vision — محرك المحاكي المالي الحقيقي (Buy/Sell Engine)
 -- شغّل بعد supabase_schema.sql و market_data_schema.sql و screener_schema.sql
 -- الجداول التالية كانت تُقرأ من app.js منذ البداية لكنها لم تكن موجودة إطلاقاً؛
--- بدونها كان المحاكي يعرض دائماً القيم الافتراضية (10,000$ وبلا صفقات).
+-- بدونها كان المحاكي يعرض دائماً القيم الافتراضية (50,000$ وبلا صفقات).
 -- ============================================================
 
 create table if not exists public.shared_virtual_portfolios (
   simulation_id text primary key,
-  cash          numeric not null default 10000,
+  cash          numeric not null default 50000,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
@@ -66,9 +66,9 @@ create policy "virtual_trader_runs_read_all"       on public.virtual_trader_runs
 grant select on public.shared_virtual_portfolios, public.shared_virtual_positions,
   public.shared_virtual_trades, public.virtual_trader_runs to authenticated, anon;
 
--- تهيئة أولية إجبارية: محفظة عامة واحدة برأس مال $10,000 تعليمي (محاكاة فقط، بلا أموال حقيقية)
+-- تهيئة أولية إجبارية: محفظة عامة واحدة برأس مال $50,000 تعليمي (محاكاة فقط، بلا أموال حقيقية)
 insert into public.shared_virtual_portfolios (simulation_id, cash)
-values ('global', 10000)
+values ('global', 50000)
 on conflict (simulation_id) do nothing;
 
 -- ملاحظة: لا صلاحية كتابة لأي دور عميل على أي من الجداول الأربعة أعلاه —

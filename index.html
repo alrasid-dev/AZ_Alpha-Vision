@@ -753,6 +753,22 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
 .rating-cell{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .rating-grade-badge{flex:0 0 auto;min-width:22px;text-align:center;padding:2px 7px!important}
 </style>
+
+<style id="az-product-notes-2026">
+/* إخفاء كتلة الرسم الفارغة على الرئيسية حتى تتوفر بيانات OHLC حقيقية */
+#chartBox.chart-awaiting-data,.chart-empty-state{display:none!important}
+#chartBox{display:none}
+#chartBox.has-ohlc{display:block}
+.user-portfolio-form{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.7fr) auto;gap:8px;align-items:end;margin-bottom:14px}
+.user-portfolio-form label{display:grid;gap:5px;font-size:11px;color:var(--text-muted)}
+.user-portfolio-form input{height:38px;border:1px solid var(--border);border-radius:8px;background:#0e151e;color:var(--text);padding:0 10px}
+.user-portfolio-note{font-size:11px;color:var(--text-muted);line-height:1.7;margin:0 0 14px}
+.news-item.impact-positive{background:rgba(53,202,130,.06)!important}
+.news-item.impact-negative{background:rgba(233,140,145,.07)!important}
+.news-item.impact-neutral,.news-item.impact-caution{background:rgba(185,205,220,.04)!important}
+.home-virtual-trader{margin-top:18px}
+@media(max-width:760px){.user-portfolio-form{grid-template-columns:1fr}#userPortfolioPnlStrip{grid-template-columns:1fr!important}}#userPortfolioPnlStrip article{padding:8px;border:1px solid rgba(180,202,222,.12);border-radius:8px;background:#0d141d}#userPortfolioPnlStrip strong{display:block;margin-top:6px;font-size:16px}
+</style>
 </head>
 <body>
     <div class="bg-mesh"></div>
@@ -1065,10 +1081,10 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
             </div>
             <div class="watchlist-scroll" id="watchlistContainer"></div>
 <div class="stats-block sidebar-global-stats">
-                <h4>محفظة المحاكي — 10,000$</h4>
-                <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$10,000.00</span></div>
+                <h4>محفظة المحاكي — 50,000$</h4>
+                <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$50,000.00</span></div>
                 <div class="stat-row"><span>المستثمر محاكيًا</span><span class="val" id="vtInvested">$0.00</span></div>
-                <div class="stat-row"><span>رأس المال</span><span class="val" id="vtEquity">$10,000.00</span></div>
+                <div class="stat-row"><span>رأس المال</span><span class="val" id="vtEquity">$50,000.00</span></div>
                 <div class="stat-row"><span>الربح/الخسارة الإجمالي</span><span class="val" id="vtPnl">$0.00</span></div>
                 <div class="stat-row"><span>العائد الإجمالي</span><span class="val" id="vtReturnPct">0.00%</span></div>
                 <div class="stat-row"><span>ربح محقق من مبيعات</span><span class="val" id="vtRealizedPnl">$0.00</span></div>
@@ -1157,8 +1173,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                                 <div class="orbit-core">
                                     <div class="orbit-gold-mark" title="السهم الذهبي">↑</div>
                                     <small>رأس المال</small>
-                                    <strong id="overviewEquity">$10,000.00</strong>
-                                    <span id="orbitGoldTicker">ثابت $10,000</span>
+                                    <strong id="overviewEquity">$50,000.00</strong>
+                                    <span id="orbitGoldTicker">ثابت $50,000</span>
                                     <div class="orbit-live-row" aria-live="polite">
                                         <b id="orbitMarketPulse" class="orbit-pulse">●</b>
                                         <em id="orbitAlertCount">0 تنبيه</em>
@@ -1171,30 +1187,52 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <div class="decision-metrics"><article><span>الربح / الخسارة</span><strong id="overviewPnl">$0.00</strong><small>من بداية المحاكاة</small></article><article><span>العائد الكلي</span><strong id="overviewReturn">0.00%</strong><small>أداء تراكمي</small></article><article><span>المراكز المفتوحة</span><strong id="overviewPositions">0</strong><small>داخل المحاكي</small></article><article class="education-tile"><span>وضع التعليم</span><strong>محاكاة فقط</strong><small>بدون أموال حقيقية</small></article></div>
                         <div class="decision-thread" aria-label="مسار الإشارة"><div class="thread-label">مسار الإشارة</div><article><span class="thread-step">01</span><div><small>الإشارة</small><strong id="overviewSignal">لا توجد إشارة دخول جديدة</strong></div></article><i></i><article><span class="thread-step">02</span><div><small>المنطقة المرجعية</small><strong id="overviewEntry">السعر المقترح</strong></div></article><i></i><article><span class="thread-step">03</span><div><small>حالة المركز</small><strong id="overviewPosition">مركز افتراضي</strong></div></article><i></i><article><span class="thread-step">04</span><div><small>المتابعة</small><strong id="overviewResult">متابعة الأداء</strong></div></article><details><summary>كيف يقرأ المحاكي الإشارة؟</summary><p>يعرض المحاكي إشارات النظام ونتائجها التعليمية، ولا يشكل توصية أو أمر تداول.</p></details></div>
                     </section>
-                    <section class="market-canvas" aria-label="سوق الأسهم"><div class="canvas-head"><div><span class="eyebrow">MARKET LENS</span><h3>عدسة السوق</h3></div><div class="time-lenses"><span class="active">اليوم</span><span>الأسبوع</span><span>الشهر</span><span>منذ البداية</span></div></div><div id="marketPulseGrid" class="market-pulse-grid" aria-live="polite"><div class="market-pulse-empty">جارٍ تحميل نبض السوق من المصدر.</div></div><div id="marketDailyBrief" class="market-daily-brief">ستظهر قراءة AZ ai التعليمية بعد وصول مؤشرات السوق الفعلية.</div><div class="chart-box" id="chartBox"><div id="chartContainer" style="width:100%;height:100%;"></div></div></section>
+                    <section class="market-canvas" aria-label="سوق الأسهم"><div class="canvas-head"><div><span class="eyebrow">MARKET LENS</span><h3>عدسة السوق</h3></div><div class="time-lenses"><span class="active">اليوم</span><span>الأسبوع</span><span>الشهر</span><span>منذ البداية</span></div></div><div id="marketPulseGrid" class="market-pulse-grid" aria-live="polite"><div class="market-pulse-empty">جارٍ تحميل نبض السوق من المصدر.</div></div><div id="marketDailyBrief" class="market-daily-brief">ستظهر قراءة AZ ai التعليمية بعد وصول مؤشرات السوق الفعلية.</div><div class="chart-box chart-awaiting-data" id="chartBox" hidden><div id="chartContainer" style="width:100%;height:100%;"></div></div></section>
                     <section class="market-stream"><div class="stream-head"><div><span class="eyebrow">LIVE UNIVERSE</span><h3>الأسهم المتابعة</h3></div><button class="orbital-button small" onclick="switchTab('screener')">افتح الفلترة <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button></div><div class="market-table-wrap"><table class="data-table"><thead><tr><th>الرمز</th><th>السعر</th><th>التغيير</th><th>الحجم</th><th>RSI</th><th>الإشارة</th><th></th></tr></thead><tbody id="stockTableBody"></tbody></table></div></section>
+
+                    <section id="homeVirtualTrader" class="home-virtual-trader" aria-label="المحاكي الافتراضي">
+                        <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>المحاكي الافتراضي</span><small>سجل مشترك تعليمي — منفصل عن محفظتك</small><div class="line"></div></div>
+                        <div class="glass" style="padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <div><strong>رأس المال الافتراضي: $50,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
+                            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                                <div class="text-muted" style="font-size:11px;line-height:1.8;max-width:280px;">حد تقريباً 10% لكل فرصة، واحتياطي نقدي نحو 30% للفرص الذهبية. وقف -8% ووقف متحرك 7% بعد +20%.</div>
+                                <button type="button" class="preset-btn" onclick="runVirtualTrader('manual')">🔄 مزامنة الآن</button>
+                            </div>
+                        </div>
+                        <div id="virtualPortfolioSummary" class="virtual-portfolio-summary"></div>
+                        <div class="section-title compact-ledger-title">المراكز الحالية <span class="section-caption">تحديث آلي</span><div class="line"></div></div>
+                        <div class="ledger-surface virtual-ledger" style="overflow:auto;margin-bottom:18px;">
+                            <table class="data-table virtual-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>الدخول</th><th>الأخير</th><th>الربح العائم</th><th>العائد</th><th>الدرجة</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
+                        </div>
+                        <div class="section-title compact-ledger-title">آخر عمليات المحاكي <span class="section-caption">آخر 20 عملية</span><div class="line"></div></div>
+                        <div class="ledger-surface virtual-ledger" style="overflow:auto;margin-bottom:18px;">
+                            <table class="data-table virtual-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الربح/الخسارة</th><th>العائد</th><th>الدرجة</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
+                        </div>
+                    </section>
+
                 </div>
 
                 <div id="tab-portfolio" class="tab-panel hidden">
-                    <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>المحاكي الافتراضي</span><small>محاكاة تعليمية</small><div class="line"></div></div>
-                    <div class="glass" style="padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
-                        <div><strong>رأس المال الافتراضي: $10,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
-                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                            <div class="text-muted" style="font-size:11px;line-height:1.8;max-width:260px;">التشغيل التلقائي كل 15 دقيقة أيام العمل. وقف خسارة ثابت -8%، ووقف متحرك 7% بعد تحقيق ربح 20%.</div>
-                            <button type="button" class="preset-btn" onclick="runVirtualTrader('manual')">🔄 مزامنة الآن</button>
-                        </div>
+                    <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>محفظتي</span><small>مراكز شخصية تعليمية</small><div class="line"></div></div>
+                    <p class="user-portfolio-note">سجّل رموزك مع سعر الشراء والكمية لمتابعة الأداء وتنبيهات الدخول/الخروج والأخبار. قائمة المراقبة في الشريط الجانبي منفصلة. المحاكي الافتراضي يبقى في الرئيسية بسجلّه الخاص.</p>
+                    
+                    <div id="userPortfolioPnlStrip" class="glass" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px;margin-bottom:14px;">
+                        <article><small class="text-muted">ربح/خسارة اليوم</small><strong id="userPnlToday" class="font-mono">$0.00</strong><div class="sym-sub" id="userPnlTodayPct">0.00%</div></article>
+                        <article><small class="text-muted">ربح/خسارة الشهر</small><strong id="userPnlMonth" class="font-mono">$0.00</strong><div class="sym-sub" id="userPnlMonthPct">0.00%</div></article>
+                        <article><small class="text-muted">الربح/الخسارة الكلي</small><strong id="userPnlAll" class="font-mono">$0.00</strong><div class="sym-sub" id="userPnlAllPct">0.00%</div></article>
                     </div>
-                    <div id="virtualPortfolioSummary" class="virtual-portfolio-summary"></div>
-                    <div class="section-title compact-ledger-title">المراكز الحالية <span class="section-caption">تحديث آلي</span><div class="line"></div></div>
-                    <div class="ledger-surface virtual-ledger" style="overflow:auto;margin-bottom:18px;">
-                        <table class="data-table virtual-table"><thead><tr><th>الرمز</th><th>الكمية</th><th>الدخول</th><th>الأخير</th><th>الربح العائم</th><th>العائد</th><th>الدرجة</th></tr></thead><tbody id="virtualPositionsBody"></tbody></table>
+
+                    <form class="glass user-portfolio-form" onsubmit="event.preventDefault(); addToUserPortfolio();">
+                        <label>الرمز<input id="portfolioSymbolInput" type="text" maxlength="10" autocomplete="off" placeholder="مثل AAPL" style="text-transform:uppercase;" required></label>
+                        <label>سعر الشراء ($)<input id="portfolioBuyPriceInput" type="number" step="0.01" min="0.01" placeholder="0.00" required></label>
+                        <label>الكمية<input id="portfolioQtyInput" type="number" step="1" min="1" value="1" required></label>
+                        <button type="submit" class="preset-btn">إضافة للمحفظة</button>
+                    </form>
+                    <div class="ledger-surface" style="overflow:auto;margin-bottom:18px;">
+                        <table class="data-table"><thead><tr><th>الرمز</th><th>سعر الشراء</th><th>السعر الحالي</th><th>الربح/الخسارة</th><th>العائد</th><th>المستثمر</th><th>القيمة</th><th></th></tr></thead><tbody id="portfolioTableBody"><tr><td colspan="8" class="text-muted" style="text-align:center;padding:40px;">لا توجد مراكز في محفظتك بعد</td></tr></tbody></table>
                     </div>
-                    <div class="section-title compact-ledger-title">آخر عمليات المحاكي <span class="section-caption">آخر 20 عملية</span><div class="line"></div></div>
-                    <div class="ledger-surface virtual-ledger" style="overflow:auto;margin-bottom:18px;">
-                        <table class="data-table virtual-table"><thead><tr><th>الوقت</th><th>الرمز</th><th>العملية</th><th>الكمية</th><th>السعر</th><th>الربح/الخسارة</th><th>العائد</th><th>الدرجة</th></tr></thead><tbody id="virtualTradesBody"></tbody></table>
-                    </div>
-                    <div class="news-panel" id="companyNewsPanel"><div class="news-panel-head"><div><div class="news-panel-title">أخبار الشركات</div><div class="news-panel-meta">تحديث تلقائي للشركات المرتبطة بالمحاكي والترشيحات والمتابعة</div></div></div><div id="companyNewsList" class="news-list"><div class="news-empty">جارٍ تحميل الأخبار ذات الصلة…</div></div><div class="news-disclaimer">الأثر المحتمل تعليمي وليس توقعًا مؤكدًا للسعر. افتح رابط المصدر قبل اتخاذ أي استنتاج.</div></div>
-                    <div class="earnings-panel" id="earningsPanel"><div class="earnings-panel-head"><div><div class="earnings-title">تقويم الأرباح</div><div class="news-panel-meta">تحديث تلقائي للشركات المرتبطة بالمحاكي والترشيحات والمتابعة</div></div></div><div id="earningsList" class="earnings-list"><div class="earnings-empty">جارٍ تحميل مواعيد الأرباح…</div></div></div>
+                    <div class="news-panel" id="companyNewsPanel"><div class="news-panel-head"><div><div class="news-panel-title">أخبار الشركات</div><div class="news-panel-meta">تحديث تلقائي للشركات المرتبطة بمحفظتك وقائمة المراقبة والترشيحات والمحاكي</div></div></div><div id="companyNewsList" class="news-list"><div class="news-empty">جارٍ تحميل الأخبار ذات الصلة…</div></div><div class="news-disclaimer">الأثر المحتمل تعليمي وليس توقعًا مؤكدًا للسعر. الأخضر إيجابي، الرمادي محايد، الأحمر سلبي.</div></div>
+                    <div class="earnings-panel" id="earningsPanel"><div class="earnings-panel-head"><div><div class="earnings-title">تقويم الأرباح</div><div class="news-panel-meta">تحديث تلقائي للشركات المرتبطة بمحفظتك والمراقبة والترشيحات</div></div></div><div id="earningsList" class="earnings-list"><div class="earnings-empty">جارٍ تحميل مواعيد الأرباح…</div></div></div>
                 </div>
 
                 <div id="tab-screener" class="tab-panel hidden">
@@ -1599,7 +1637,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <div class="modal-box az-ai-modal" role="dialog" aria-modal="true" aria-labelledby="azAiTitle">
                         <div class="platform-guide-head"><div><div class="az-kicker">AZ BEE / ACTIVE ASSISTANT</div><h2 id="azAiTitle">النحلة النشطة</h2><p class="sub">إجابات فورية داخل المنصة للموظفين والمتعلمين — سريعة، عملية، وتعليمية فقط.</p></div><button class="btn-modal btn-modal-cancel" type="button" onclick="closeAzAi()">إغلاق</button></div>
                         <div class="az-bee-chips" aria-label="اختصارات سريعة">
-                            <button type="button" onclick="askAzBeePrompt('كيف أستخدم المحاكي؟')">المحاكي</button>
+                            <button type="button" onclick="askAzBeePrompt('كيف أستخدم المحاكي؟')">المحاكي</button><button type="button" onclick="askAzBeePrompt('اشرح لي سهم NVDA مناطق الدخول والخروج وفقا للمحللين تعليميا')">مناطق سهم</button>
                             <button type="button" onclick="askAzBeePrompt('أين التحليل الفني؟')">التحليل</button>
                             <button type="button" onclick="askAzBeePrompt('كيف أفعّل الإشعارات حتى لو أغلقت التطبيق؟')">الإشعارات</button>
                             <button type="button" onclick="askAzBeePrompt('كيف أشترك في المنصة؟')">الاشتراك</button>

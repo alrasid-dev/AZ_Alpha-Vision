@@ -23,11 +23,12 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SIMULATION_ID = "global";
-const STARTING_CASH = 10000;
+const STARTING_CASH = 50000;
 const MAX_OPEN_POSITIONS = 8;
-const MAX_POSITION_PCT = 0.2; // نفس VIRTUAL_MAX_POSITION_PCT في app.js
+const MAX_POSITION_PCT = 0.1; // ~10% من حقوق الملكية لكل فرصة — نفس app.js
 const MAX_NEW_BUYS_PER_RUN = 3;
-const MIN_CASH_RESERVE = 200;
+const CASH_RESERVE_PCT = 0.3; // احتفظ بنحو 30% نقداً للفرص الذهبية
+const MIN_CASH_RESERVE = STARTING_CASH * CASH_RESERVE_PCT;
 const STOP_LOSS_PCT = -8;
 // بعد تحقيق ربح 20% من سعر الدخول يتحول المركز تلقائياً إلى وقف خسارة متحرك (Trailing Stop)
 // بنسبة 7% من أعلى سعر تم بلوغه، بدل بيع فوري عند +20% فقط — لإتاحة الاستمرار في الربح
@@ -270,7 +271,13 @@ Deno.serve(async (req: Request) => {
         blockedByPrice++;
         continue;
       }
-      const allocation = Math.min(cash * MAX_POSITION_PCT, cash - MIN_CASH_RESERVE);
+      const openValue = positions
+        .filter((p) => !soldSymbols.has(p.symbol.toUpperCase()))
+        .reduce((sum, p) => sum + Number(p.qty) * (priceMap.get(p.symbol.toUpperCase()) ?? Number(p.last_price) ?? Number(p.entry_price)), 0);
+      const equityNow = cash + openValue;
+      const reserveFloor = Math.max(MIN_CASH_RESERVE, equityNow * CASH_RESERVE_PCT);
+      const spendable = Math.max(0, cash - reserveFloor);
+      const allocation = Math.min(equityNow * MAX_POSITION_PCT, spendable);
       const qty = Math.floor(allocation / price);
       if (qty < 1) {
         blockedByPrice++;

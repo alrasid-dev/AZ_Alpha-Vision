@@ -243,3 +243,146 @@ export async function restDelete(
   });
   return res.ok;
 }
+
+// —— تخصيص مصدر الرمز للمستخدم (محفظة / مفضلة / ترشيحات) ——
+
+export type UserSymbolSets = {
+  /** user_id → رموز في user_portfolio_positions */
+  portfolio: Map<string, Set<string>>;
+  /** user_id → رموز في watchlist (مفضلة) */
+  watchlist: Map<string, Set<string>>;
+};
+
+interface SymbolOwnerRow {
+  user_id: string;
+  symbol: string;
+}
+
+function addToUserSymbolMap(
+  map: Map<string, Set<string>>,
+  userId: string,
+  symbol: string,
+): void {
+  if (!userId || !symbol) return;
+  if (!map.has(userId)) map.set(userId, new Set());
+  map.get(userId)!.add(symbol);
+}
+
+/** تحميل محفظة + مفضلة دفعة واحدة لرموز الدفعة (تجنّب N+1). */
+export async function loadUserSymbolSets(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  symbols: string[],
+): Promise<UserSymbolSets> {
+  const portfolio = new Map<string, Set<string>>();
+  const watchlist = new Map<string, Set<string>>();
+  const unique = Array.from(
+    new Set(
+      symbols
+        .map((s) => String(s || "").toUpperCase().trim())
+        .filter(Boolean),
+    ),
+  );
+  if (!unique.length) return { portfolio, watchlist };
+
+  const symbolFilter = unique.map((s) => `"${s}"`).join(",");
+  const [watchRows, portfolioRows] = await Promise.all([
+    restSelect<SymbolOwnerRow>(
+      supabaseUrl,
+      serviceRoleKey,
+      `watchlist?select=user_id,symbol&symbol=in.(${symbolFilter})`,
+    ),
+    restSelect<SymbolOwnerRow>(
+      supabaseUrl,
+      serviceRoleKey,
+      `user_portfolio_positions?select=user_id,symbol&symbol=in.(${symbolFilter})`,
+    ),
+  ]);
+
+  for (const row of watchRows) {
+    addToUserSymbolMap(
+      watchlist,
+      row.user_id,
+      String(row.symbol || "").toUpperCase(),
+    );
+  }
+  for (const row of portfolioRows) {
+    addToUserSymbolMap(
+      portfolio,
+      row.user_id,
+      String(row.symbol || "").toUpperCase(),
+    );
+  }
+  return { portfolio, watchlist };
+}
+
+/**
+ * عبارة عربية قصيرة توضّح أين يقع الرمز لهذا المستخدم.
+ * أولوية الدمج: محفظة > مفضلة > ترشيحات (أو دمج مختصر عند التعدد).
+ * @param asPick true عندما يكون الإشعار أصلاً من ترشيحات الماسح (broadcast).
+ */
+export function symbolSourcePhrase(
+  inPortfolio: boolean,
+  inWatchlist: boolean,
+  asPick = false,
+): string {
+  if (inPortfolio && inWatchlist) {
+    // أولوية الدمج المختصر: محفظة + مفضلة (الترشيح واضح من نوع الإشعار)
+    return "في محفظتك ومفضلتك";
+  }
+  if (inPortfolio) {
+    return asPick ? "في محفظتك وترشيحاتك" : "في محفظتك";
+  }
+  if (inWatchlist) {
+    return asPick ? "في مفضلتك وترشيحاتك" : "في مفضلتك";
+  }
+  return asPick ? "في ترشيحاتك" : "في قائمتك";
+}
+
+/** تسمية قصيرة للرمز داخل سطر الإشعار، مثل: «سهم في محفظتك». */
+export function symbolSourceLabel(
+  inPortfolio: boolean,
+  inWatchlist: boolean,
+  asPick = false,
+): string {
+  if (inPortfolio && inWatchlist) return "سهم في محفظتك ومفضلتك";
+  if (inPortfolio) return "سهم في محفظتك";
+  if (inWatchlist) return "سهم في مفضلتك";
+  if (asPick) return "سهم في ترشيحاتك";
+  return "سهم في قائمتك";
+}
+
+export type SourceKind = "portfolio" | "watchlist" | "picks";
+
+/** المصدر الأعلى أولوية عبر رموز الدفعة لهذا المستخدم (محفظة > مفضلة > ترشيحات). */
+export function dominantSourceForUser(
+  symbols: string[],
+  portfolio: Set<string> | undefined,
+  watchlist: Set<string> | undefined,
+  asPickFallback = true,
+): SourceKind {
+  const pf = portfolio || new Set<string>();
+  const wl = watchlist || new Set<string>();
+  let anyPf = false;
+  let anyWl = false;
+  for (const raw of symbols) {
+    const sym = String(raw || "").toUpperCase();
+    if (pf.has(sym)) anyPf = true;
+    if (wl.has(sym)) anyWl = true;
+  }
+  if (anyPf) return "portfolio";
+  if (anyWl) return "watchlist";
+  return asPickFallback ? "picks" : "watchlist";
+}
+
+export function groupDevicesByUser(
+  devices: PushDeviceRow[],
+): Map<string, PushDeviceRow[]> {
+  const map = new Map<string, PushDeviceRow[]>();
+  for (const d of devices) {
+    if (!d.user_id) continue;
+    if (!map.has(d.user_id)) map.set(d.user_id, []);
+    map.get(d.user_id)!.push(d);
+  }
+  return map;
+}

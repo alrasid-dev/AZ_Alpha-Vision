@@ -1,0 +1,34 @@
+name: AZ Alpha Vision - Um Zaki Rumor Alerts
+
+on:
+  workflow_dispatch:
+  schedule:
+    # كل ساعة أيام العمل تقريباً خلال نافذة الأخبار
+    - cron: '20 12-23 * * 1-5'
+    - cron: '20 0-2 * * 2-6'
+
+permissions:
+  contents: read
+
+jobs:
+  send-um-zaki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run Um Zaki buzz + verify educational alerts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_URL:-}" || { echo "Missing SUPABASE_URL"; exit 1; }
+          test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+          if [ -z "${NOTIFY_RUN_KEY:-}" ]; then echo "NOTIFY_RUN_KEY missing; skip"; exit 0; fi
+          curl --fail-with-body --silent --show-error \
+            -X POST "$SUPABASE_URL/functions/v1/send-um-zaki-rumors?minutes=180&verify_after_minutes=90" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "x-notify-key: $NOTIFY_RUN_KEY" \
+            --data '{}'

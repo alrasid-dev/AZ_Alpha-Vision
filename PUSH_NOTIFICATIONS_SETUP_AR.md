@@ -1,35 +1,36 @@
 # تفعيل نظام الإشعارات الفورية الخلفية بالكامل (Push Notifications)
 
-هذا الدليل يشرح الخطوة الوحيدة المتبقية لتفعيل الإشعارات 100%: **نشر 6 دوال Supabase Edge Functions** التي تمت برمجتها بالكامل في `supabase/functions/`، ثم تشغيل ملف SQL واحد. كل شيء آخر (الاشتراك من المتصفح، Service Worker، الأزرار) جاهز وشغّال فعلياً من قبل.
+هذا الدليل يشرح تفعيل الإشعارات 100%: **تشغيل ملفات SQL** ثم **نشر دوال Supabase Edge Functions** وتشغيل الـ Workflows. الموقع يبقى على `azalphavision.vercel.app`.
 
-## 1) شغّل ملف SQL مرة واحدة
+## 1) شغّل ملفات SQL مرة واحدة
 
-افتح **Supabase Dashboard → SQL Editor → New query**، الصق محتوى:
+افتح **Supabase Dashboard → SQL Editor → New query**، ثم Run لكل ملف بالترتيب المناسب:
 
 ```text
 notifications_and_data_schema.sql
 virtual_trader_schema.sql
+notification_prefs_um_zaki_migration.sql
 ```
 
-ثم اضغط Run لكل ملف. الأول ينشئ الجداول المفقودة: `notification_push_devices`, `notification_subscriptions`, `admin_broadcasts` (+ Storage bucket), `company_news`, `earnings_events`, `push_notification_log`. الثاني ينشئ جداول المحاكي المالي الحقيقي: `shared_virtual_portfolios`, `shared_virtual_positions`, `shared_virtual_trades`, `virtual_trader_runs`.
+الملف الجديد `notification_prefs_um_zaki_migration.sql` يضيف:
+- مفاتيح التفضيلات: محفظتي / عمليات المحاكي / ترشيحاتي / الماسح / وضع صامت / أم زكي / حكمة يومية / ماكرو أسبوعي
+- جدول `um_zaki_rumor_events` لتدفق طراطيش الكلام ثم التحقق التعليمي
 
-## 2) أضف أسرار Edge Functions (مرة واحدة)
+## 2) أسرار Edge Functions
 
 من **Supabase Dashboard → Edge Functions → Manage secrets**:
 
 | السر | القيمة |
 |---|---|
-| `VAPID_PRIVATE_KEY` | المفتاح الخاص المطابق لمفتاح `WEB_PUSH_PUBLIC_KEY` في `app.js` (شغّل `node generate_vapid_keys.js` إذا لم يكن محفوظاً لديك، وحدّث المفتاح العام في `app.js` بالمقابل) |
+| `VAPID_PRIVATE_KEY` | المفتاح الخاص المطابق للمفتاح العام في `app.js` |
 | `VAPID_SUBJECT` | `mailto:azalphavision2026@gmail.com` |
-| `NOTIFY_RUN_KEY` | نص عشوائي طويل (نفس القيمة المضافة في GitHub Secrets) |
-| `SUBSCRIPTION_CRON_KEY` | نص عشوائي طويل آخر (نفس القيمة المضافة في GitHub Secrets) |
+| `NOTIFY_RUN_KEY` | نص عشوائي طويل (نفس GitHub Secrets) |
+| `SUBSCRIPTION_CRON_KEY` | نص عشوائي طويل آخر |
 
-وفي **GitHub → Settings → Secrets and variables → Actions** أضف نفس قيمتَي `NOTIFY_RUN_KEY` و `SUBSCRIPTION_CRON_KEY` (تُستخدم في ملفات `.github/workflows/*.yml` الموجودة مسبقاً).
-
-## 3) انشر الدوال السبع عبر Supabase CLI
+## 3) انشر / أعد نشر الدوال
 
 ```bash
-supabase link --project-ref <project-ref-الخاص-بك>
+supabase link --project-ref <project-ref>
 supabase functions deploy send-signal-notifications
 supabase functions deploy send-price-alerts
 supabase functions deploy send-news-notifications
@@ -37,19 +38,47 @@ supabase functions deploy send-earnings-notifications
 supabase functions deploy send-admin-broadcast
 supabase functions deploy notify-subscription-expiry --no-verify-jwt
 supabase functions deploy run-virtual-trader
+supabase functions deploy send-daily-wisdom
+supabase functions deploy send-weekly-macro
+supabase functions deploy send-um-zaki-rumors
 ```
 
-الدالة `notify-subscription-expiry` فقط تحتاج `--no-verify-jwt` لأن GitHub يستدعيها بمفتاح `x-cron-key` مباشرة بدون توكن جلسة. أما `run-virtual-trader` فتُستدعى بمفتاح `x-trader-key` (نفس قيمة `NOTIFY_RUN_KEY`) مع `Authorization: Bearer` صحيح، فتبقى بإعدادها الافتراضي.
+### قائمة إعادة النشر لهذه الحزمة (مهم)
 
-## 4) تحقق من العمل
+**محدَّثة:**
+1. `send-signal-notifications`
+2. `send-price-alerts`
+3. `send-news-notifications`
+4. `run-virtual-trader`
+5. (يُعاد نشر أي دالة تعتمد على `_shared/push.ts` تلقائياً مع الدالة نفسها)
 
-- شغّل أي Workflow يدوياً من تبويب **Actions** في GitHub (مثلاً "AZ Alpha Vision - Ready Filter Templates") وتأكد أن خطوة "Send signal notifications" تنجح (HTTP 200).
-- من المنصة: سجّل الدخول → فعّل "إشعارات المتصفح" من الأعلى → أغلق المتصفح تماماً → انتظر تشغيل أي Workflow (أو شغّله يدوياً) → يجب أن يصلك إشعار حتى والتطبيق مغلق بالكامل.
+**جديدة:**
+6. `send-daily-wisdom`
+7. `send-weekly-macro`
+8. `send-um-zaki-rumors`
 
-## ما الذي يعمل الآن بدون أي خطوة إضافية؟
+> ملاحظة: تعديلات `_shared/push.ts` و`_shared/usMarketHours.ts` تُضمَّن عند نشر الدوال التي تستوردها.
 
-- تسجيل جهاز المستخدم (`savePushDevice`) والاشتراك عبر Service Worker: **يعمل فعلياً 100%**.
-- استقبال وعرض الإشعارات في الخلفية حتى مع إغلاق التطبيق (`sw.js` → `push` + `notificationclick`): **يعمل فعلياً 100%**.
-- إرسال الإشعارات من الخادم (الماسح المالي، تحركات الأسعار، الأخبار، الأرباح، انتهاء الاشتراك، بث الأدمن): **الكود جاهز بالكامل**، وينتظر فقط تنفيذ الخطوات 1-3 أعلاه (مجانية 100% ولا تحتاج أي بطاقة دفع).
+## 4) GitHub Actions الجديدة
 
-كل الجداول والدوال تستخدم `service_role` فقط للكتابة، ولا صلاحية كتابة مباشرة من المتصفح — بنفس منهج الأمان المتبع في بقية المشروع.
+- `daily_wisdom.yml` — حكمة قصيرة عند افتتاح السوق الأمريكي
+- `weekly_macro.yml` — ماكرو/فيد/عطل يوم الاثنين قبل الافتتاح (🟢/⚪/🔴)
+- `um_zaki_rumors.yml` — أم زكي: طراطيش ثم تحقق
+
+تتطلب نفس الأسرار: `SUPABASE_URL` و `SUPABASE_SERVICE_ROLE_KEY` و `NOTIFY_RUN_KEY`.
+
+## 5) سلوك المنتج (ملخص)
+
+- **وضع صامت:** الإشعار الملون يظهر على شاشة الهاتف، بدون صوت/اهتزاز (`silent: true` في SW).
+- **لوحة الفئات:** محفظتي · عمليات المحاكي · ترشيحاتي · الماسح · وضع صامت · أم زكي.
+- **المحاكي:** تنفيذ وتنبيهات فقط في premarket / regular / afterhours؛ مع فلتر الأسهم القابلة للتداول.
+- **الترشيحات:** استبعاد المتوقفة/غير القابلة للتداول قدر الإمكان.
+- **أم زكي:** لهجة شامية فقط؛ نطاق الرموز = محفظة المستخدم أو المحاكي أو الترشيحات؛ تعليمي بلا اختراع حقائق.
+- كل الإشعارات تعليمية — ليست توصية مالية.
+
+## 6) تحقق سريع
+
+1. سجّل الدخول على `https://azalphavision.vercel.app` → فعّل إشعار المتصفح.
+2. اضبط لوحة الفئات (جرّب وضع صامت).
+3. شغّل Workflow يدوياً من Actions أو استدعِ الدالة بـ curl مع المفاتيح.
+4. يجب أن يصل إشعار حتى والتطبيق مغلق؛ في الوضع الصامت بدون صوت.

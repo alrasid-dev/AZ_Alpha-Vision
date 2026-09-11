@@ -10,12 +10,15 @@ import {
   jsonResponse,
   checkRunKey,
   fetchActiveDevices,
-  sendPushToDevices,
   restSelect,
   restInsert,
   restUpsert,
   restUpdate,
   restDelete,
+  loadNotificationPrefs,
+  sendCategorizedPush,
+  filterTradableSymbols,
+  isTradableCommonEquity,
 } from "../_shared/push.ts";
 import { getUsMarketClock } from "../_shared/usMarketHours.ts";
 
@@ -162,8 +165,21 @@ Deno.serve(async (req: Request) => {
       const existing = bestBySymbol.get(sym);
       if (!existing || row.entry_score > existing.entry_score) bestBySymbol.set(sym, row);
     }
+    // فلتر الأسهم القابلة للتداول وفق سياسة الأسهم العادية قبل الشراء
+    const tradableSet = await filterTradableSymbols(
+      SUPABASE_URL,
+      SERVICE_ROLE_KEY,
+      Array.from(bestBySymbol.keys()),
+    );
     const candidates = Array.from(bestBySymbol.values())
       .filter((c) => !heldSymbols.includes(c.symbol.toUpperCase()))
+      .filter((c) => tradableSet.has(c.symbol.toUpperCase()))
+      .filter((c) =>
+        isTradableCommonEquity({
+          symbol: c.symbol,
+          company: c.company,
+        })
+      )
       .sort((a, b) => b.entry_score - a.entry_score);
 
     const allSymbols = Array.from(
@@ -338,20 +354,44 @@ Deno.serve(async (req: Request) => {
       run_note: runNote,
     });
 
-    if (trades.length) {
+    if (trades.length && clock.tradable) {
       const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
-      const buys = trades.filter((t) => t.action === "buy");
-      const sells = trades.filter((t) => t.action === "sell");
-      const lines: string[] = [];
-      if (buys.length) lines.push(`شراء: ${buys.map((t) => t.symbol).join("، ")}`);
-      if (sells.length) lines.push(`بيع: ${sells.map((t) => t.symbol).join("، ")}`);
-      await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title: "🤖 المحاكي نفّذ صفقات تلقائية",
-        body: lines.join(" | "),
-        url: "./#portfolio",
-        tag: "az-virtual-trade",
-        alertType: "trade",
-      });
+      const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
+      const sessionAr =
+        clock.session === "premarket"
+          ? "ما قبل التداول"
+          : clock.session === "afterhours"
+            ? "بعد الإغلاق"
+            : "الجلسة الرسمية";
+      for (const t of trades.slice(0, 8)) {
+        const sym = String(t.symbol || "").toUpperCase();
+        const isBuy = t.action === "buy";
+        const px = Number(t.price);
+        const title = isBuy
+          ? `🤖 المحاكي · شراء ${sym}`
+          : `🤖 المحاكي · بيع ${sym}`;
+        const pnlBit =
+          !isBuy && t.pnl != null
+            ? ` · نتيجة تعليمية ${Number(t.pnl) >= 0 ? "+" : ""}${Number(t.pnl).toFixed(2)}$`
+            : "";
+        const body =
+          `${isBuy ? "تنفيذ شراء" : "تنفيذ بيع"} تعليمي @ $${px.toFixed(2)}${pnlBit} · جلسة ${sessionAr}. تعليمي فقط — ليست صفقة حقيقية.`;
+        await sendCategorizedPush(
+          SUPABASE_URL,
+          SERVICE_ROLE_KEY,
+          devices,
+          prefsMap,
+          "simulator",
+          {
+            title,
+            body,
+            url: "./#home",
+            tag: `az-sim-${t.action}-${sym}-${Date.now()}`,
+            direction: isBuy ? "up" : Number(t.pnl || 0) >= 0 ? "up" : "down",
+            alertType: "trade",
+          },
+        );
+      }
     }
 
     return jsonResponse({

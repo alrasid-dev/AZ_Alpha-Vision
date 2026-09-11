@@ -1,0 +1,34 @@
+name: AZ Alpha Vision - Daily US Open Wisdom
+
+on:
+  workflow_dispatch:
+  schedule:
+    # حوالي 09:30–10:15 بتوقيت نيويورك في كلا نظامي DST (UTC تقريبي)
+    - cron: '35 13 * * 1-5'
+    - cron: '45 14 * * 1-5'
+
+permissions:
+  contents: read
+
+jobs:
+  send-daily-wisdom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send educational opening wisdom push
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_URL:-}" || { echo "Missing SUPABASE_URL"; exit 1; }
+          test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+          if [ -z "${NOTIFY_RUN_KEY:-}" ]; then echo "NOTIFY_RUN_KEY missing; skip"; exit 0; fi
+          curl --fail-with-body --silent --show-error \
+            -X POST "$SUPABASE_URL/functions/v1/send-daily-wisdom" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "x-notify-key: $NOTIFY_RUN_KEY" \
+            --data '{}'

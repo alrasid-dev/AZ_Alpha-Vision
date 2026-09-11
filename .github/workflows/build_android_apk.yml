@@ -7,6 +7,7 @@ on:
       - "index.html"
       - "app.js"
       - "sw.js"
+      - "us_market_hours.js"
       - "manifest.json"
       - "icon*.png"
       - "icon.svg"
@@ -46,7 +47,7 @@ jobs:
         working-directory: mobile
         run: |
           mkdir -p www
-          cp ../index.html ../app.js ../sw.js ../manifest.json ../icon.svg ../icon-192.png ../icon-512.png www/
+          cp ../index.html ../app.js ../sw.js ../us_market_hours.js ../manifest.json ../icon.svg ../icon-192.png ../icon-512.png www/
 
       - name: إنشاء مشروع Android إن لم يكن موجوداً
         working-directory: mobile

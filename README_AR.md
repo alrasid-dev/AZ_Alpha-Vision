@@ -1,33 +1,43 @@
-# AZ Alpha Vision — المشغل الموحد لـ X
+# AZ Alpha Vision — نظرة عامة على المنصة
 
-هذا المجلد هو المرجع الوحيد للتسويق الآلي. يقرأ أحداثًا حقيقية من قاعدة AZ Alpha Vision: صفقات المحاكي الافتراضي، الأخبار الجوهرية، ومواعيد الأرباح القريبة. لا يعتمد على اختيار موضوع عشوائي من قائمة منفصلة.
+منصة ويب تعليمية لمحاكاة الأسواق الأمريكية: شاشة إشارات، بيانات سوق، أخبار/أرباح، إشعارات، ومحاكي تداول افتراضي. **لا يوجد تنفيذ تداول حقيقي** — كل شيء تعليمي ومحاكاة فقط.
 
-## السلوك الآمن
+## المكوّنات الرئيسية
 
-الإعداد الافتراضي هو `PUBLISH_MODE=draft`. في هذا الوضع ينشئ المشغل مسودة في جدول `marketing_posts` ولا ينشر على X. بعد اختبار مسودة واحدة والتأكد من أن الحساب والصلاحيات صحيحة، غيّر القيمة في Render إلى `publish` لتفعيل النشر الفعلي.
+| المكوّن | الموقع |
+|--------|--------|
+| واجهة SPA (HTML/JS) | `index.html`, `app.js`, `sw.js`, `us_market_hours.js`, `manifest.json` |
+| جالبات Python للبيانات | `fetch_market_data.py`, `fetch_screener_signals.py`, `fetch_company_news.py`, `fetch_earnings_calendar.py` (+ `scripts/`) |
+| مخططات Supabase | `supabase_schema.sql`, `market_data_schema.sql`, `screener_schema.sql`, `notifications_and_data_schema.sql`, `virtual_trader_schema.sql` |
+| دوال Edge | `supabase/functions/` (إشعارات، محاكي افتراضي، az-ai، …) |
+| GitHub Actions | `.github/workflows/` (بيانات السوق، إشارات، أخبار، أرباح، صفحات، APK، محاكي، انتهاء اشتراك) |
+| تطبيق أندرويد (Capacitor) | `mobile/` |
+| المسوق الموحد لـ X | `az-alpha-marketer-unified/` (نظام فرعي مستقل) |
 
-المشغل يفحص كل 10 دقائق لالتقاط الأخبار الجوهرية بسرعة، لكنه لا ينشر المنشورات العادية إلا بعد مرور ساعتين على آخر منشور. ويعالج حدثًا واحدًا في كل تشغيل، ويسجل `event_key` فريدًا قبل النشر لمنع تكرار الخبر أو الصفقة أو موعد الأرباح. يضيف رابط المصدر عندما يكون متاحًا، ويمنع صياغة المنشور كتوصية مالية أو وعد بالربح.
+## ترتيب إعداد قاعدة البيانات (Supabase SQL Editor)
 
-## إعداد Render
+1. `supabase_schema.sql`
+2. `market_data_schema.sql`
+3. `screener_schema.sql`
+4. `notifications_and_data_schema.sql`
+5. `virtual_trader_schema.sql` ثم `virtual_trader_trailing_stop_migration.sql` عند الحاجة
 
-أنشئ Cron Job واحدًا فقط باسم `az-alpha-vision-unified-marketer`. استخدم:
+تفاصيل الإشعارات وVAPID في `PUSH_NOTIFICATIONS_SETUP_AR.md`. لا تضع مفاتيح سرية داخل المستودع.
 
-```text
-Build Command: npm ci
-Command: node index.js
-Schedule: */10 * * * *
-```
+## المسوق الموحد (`az-alpha-marketer-unified/`)
 
-أضف متغيرات `.env.example` إلى Environment في Render، ولا تضعها داخل GitHub أو الملفات العامة. شغّل أولًا بقيمة `PUBLISH_MODE=draft`، وراجع Logs وجدول `marketing_posts`. لا تغيّر إلى `publish` إلا بعد الموافقة الصريحة على أول منشور.
+توثيق المسوق الكامل موجود **فقط** تحت ذلك المجلد (`az-alpha-marketer-unified/README_AR.md`). لإعداد جدول المنشورات لأول مرة:
 
-## متطلبات X
+1. `az-alpha-marketer-unified/marketing_posts_unified.sql` — إنشاء الجدول
+2. `az-alpha-marketer-unified/marketing_posts_education_migration.sql`
+3. `az-alpha-marketer-unified/marketing_style_migration.sql`
 
-يجب أن تكون مفاتيح X من التطبيق الصحيح في developer.x.com وأن تكون صلاحية المستخدم `Read and Write`. عند تدوير مفاتيح التطبيق أو تغيير الصلاحية، أعد إنشاء Access Token وAccess Token Secret من حساب X نفسه، ثم حدّث القيم في Render.
+الإعداد الآمن: `PUBLISH_MODE=draft` (افتراضي في `render.yaml`) حتى تُراجع المسودات في `marketing_posts` قبل التحويل إلى `publish`.
 
-## متطلبات Google AI Studio
+## النشر
 
-أضف `GEMINI_API_KEY` من Google AI Studio إلى Render. المفتاح يستخدم فقط لتوليد نص المسودة، ولا يُحفظ داخل قاعدة البيانات. إذا فشل التوليد فستظهر تفاصيل الخطأ في Render Logs ولن يتم النشر.
+- **Vercel / Netlify / GitHub Pages**: ملفات ثابتة من الجذر (`vercel.json`, `netlify.toml`, `.github/workflows/deploy_pages.yml`).
+- **Render Cron**: إعداد المسوق عبر `render.yaml` أو `az-alpha-marketer-unified/render.yaml`.
+- **أندرويد**: `.github/workflows/build_android_apk.yml` ينسخ واجهة الجذر إلى `mobile/www` ويبني APK.
 
-## قاعدة البيانات
-
-نفّذ `marketing_posts_unified.sql` في Supabase SQL Editor بعد تنفيذ جداول `company_news` و`earnings_events`. يجب أن تكون الخدمة الخلفية قادرة على قراءة `shared_virtual_trades` و`company_news` و`earnings_events` باستخدام Service Role Key.
+للتفصيل الأقدم عن ترتيب الرفع والحزم، راجع `README_FINAL_AR.md`.

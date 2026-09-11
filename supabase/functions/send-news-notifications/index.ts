@@ -1,6 +1,7 @@
 // send-news-notifications — يُستدعى بعد fetch_company_news.py كل ساعة أيام العمل.
 // يرسل Push شخصي عندما يمسّ خبر مادي رمزاً في محفظة المستخدم أو قائمة مراقبته.
 // الأثر: إيجابي (أخضر) / محايد (رمادي) / سلبي (أحمر) في العنوان والنص.
+// يميّز النص: محفظتك vs مفضلتك (أو الاثنين).
 
 import {
   CORS_HEADERS,
@@ -11,6 +12,8 @@ import {
   restSelect,
   wasRecentlyNotified,
   logNotified,
+  symbolSourceLabel,
+  groupDevicesByUser,
 } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -79,30 +82,69 @@ Deno.serve(async (req: Request) => {
       ),
     ]);
 
+    // user_id → symbols per source (محفظة / مفضلة) — للتمييز في النص
+    const portfolioByUser = new Map<string, Set<string>>();
+    const watchlistByUser = new Map<string, Set<string>>();
     const ownersBySymbol = new Map<string, Set<string>>();
-    for (const row of [...watchRows, ...portfolioRows]) {
-      const sym = String(row.symbol || "").toUpperCase();
+
+    const addOwner = (
+      map: Map<string, Set<string>>,
+      userId: string,
+      sym: string,
+    ) => {
+      if (!map.has(userId)) map.set(userId, new Set());
+      map.get(userId)!.add(sym);
       if (!ownersBySymbol.has(sym)) ownersBySymbol.set(sym, new Set());
-      ownersBySymbol.get(sym)!.add(row.user_id);
+      ownersBySymbol.get(sym)!.add(userId);
+    };
+
+    for (const row of watchRows) {
+      const sym = String(row.symbol || "").toUpperCase();
+      addOwner(watchlistByUser, row.user_id, sym);
+    }
+    for (const row of portfolioRows) {
+      const sym = String(row.symbol || "").toUpperCase();
+      addOwner(portfolioByUser, row.user_id, sym);
     }
 
     let sent = 0;
     let targeted = 0;
     for (const item of fresh.slice(0, 12)) {
-      const owners = Array.from(ownersBySymbol.get(item.symbol.toUpperCase()) || []);
+      const sym = item.symbol.toUpperCase();
+      const owners = Array.from(ownersBySymbol.get(sym) || []);
       if (!owners.length) continue;
       const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY, owners);
       if (!devices.length) continue;
+
       const visual = impactVisual(item.impact);
-      const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title: `${visual.emoji} خبر ${visual.label}: ${item.symbol}`,
-        body: item.title,
-        url: "./#portfolio",
-        tag: `az-news-${item.id}`,
-        alertType: "news",
-        direction: item.impact === "positive" ? "up" : item.impact === "negative" ? "down" : "neutral",
-      });
-      sent += result.sent;
+      const byUser = groupDevicesByUser(devices);
+      const groups = new Map<
+        string,
+        { devices: typeof devices; title: string; body: string }
+      >();
+
+      for (const [userId, userDevices] of byUser) {
+        const inPf = Boolean(portfolioByUser.get(userId)?.has(sym));
+        const inWl = Boolean(watchlistByUser.get(userId)?.has(sym));
+        const sourceLabel = symbolSourceLabel(inPf, inWl, false);
+        const title = `${visual.emoji} خبر ${visual.label}: ${item.symbol} · ${sourceLabel}`;
+        const body = `${item.title} — ${sourceLabel}.`;
+        const key = `${title}||${body}`;
+        if (!groups.has(key)) groups.set(key, { devices: [], title, body });
+        groups.get(key)!.devices.push(...userDevices);
+      }
+
+      for (const group of groups.values()) {
+        const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, group.devices, {
+          title: group.title,
+          body: group.body,
+          url: "./#portfolio",
+          tag: `az-news-${item.id}`,
+          alertType: "news",
+          direction: item.impact === "positive" ? "up" : item.impact === "negative" ? "down" : "neutral",
+        });
+        sent += result.sent;
+      }
       targeted += owners.length;
       await logNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "news", item.id);
     }
@@ -113,6 +155,7 @@ Deno.serve(async (req: Request) => {
       users_targeted: targeted,
       push_sent: sent,
       scoped_to_portfolio_or_watchlist: true,
+      personalized_by_source: true,
     });
   } catch (err) {
     console.error("send-news-notifications error:", err);

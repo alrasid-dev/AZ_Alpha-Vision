@@ -1,4 +1,4 @@
-const CACHE_NAME = 'az-alpha-shell-v7';
+const CACHE_NAME = 'az-alpha-shell-v8';
 const APP_URL = './';
 
 self.addEventListener('install', (event) => {
@@ -17,23 +17,50 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
 
+function directionAccent(direction) {
+  if (direction === 'up') return { emoji: '🟢', color: '#12b76a' };
+  if (direction === 'down') return { emoji: '🔴', color: '#f04438' };
+  return { emoji: '⚪', color: '#98a2b3' };
+}
+
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data?.text?.() || '' }; }
-  const title = data.title || 'AZ Alpha Vision — تنبيه تعليمي';
+
   const direction = data.direction === 'up' ? 'up' : data.direction === 'down' ? 'down' : 'neutral';
+  const accent = directionAccent(direction);
+  const silent = Boolean(data.silent);
+  const alertType = data.alertType || 'general';
+
+  // عناوين مركّزة للجوال — تجنّب تجميع رموز كثيرة في سطر واحد قبيح
+  let title = data.title || 'AZ Alpha Vision — تنبيه تعليمي';
+  if (!String(title).includes('🟢') && !String(title).includes('🔴') && !String(title).includes('⚪') && direction !== 'neutral') {
+    title = `${accent.emoji} ${title}`;
+  }
+
+  const body = data.body || 'وصلت إشارة تعليمية جديدة.';
+  const tag = data.tag || `az-${alertType}-${Date.now()}`;
+
   const options = {
-    body: data.body || 'وصلت إشارة تعليمية جديدة من الماسح.',
+    body,
     icon: data.icon || './icon-192.png',
     badge: data.badge || './icon.svg',
     image: data.image || undefined,
-    tag: data.tag || `az-signal-${Date.now()}`,
-    data: { url: data.url || './#signals', direction, alertType: data.alertType || 'general' },
-    vibrate: [80, 40, 80],
-    renotify: true,
+    tag,
+    data: {
+      url: data.url || './#signals',
+      direction,
+      alertType,
+      silent,
+      color: accent.color,
+    },
+    // وضع صامت: يظهر الإشعار الملون على شاشة الهاتف بدون صوت/اهتزاز
+    silent,
+    vibrate: silent ? [] : [80, 40, 80],
+    renotify: !silent,
     requireInteraction: Boolean(data.requireInteraction),
-    silent: false,
   };
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

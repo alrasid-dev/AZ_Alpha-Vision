@@ -8,12 +8,13 @@ import {
   jsonResponse,
   checkRunKey,
   fetchActiveDevices,
-  sendPushToDevices,
   restSelect,
   wasRecentlyNotified,
   logNotified,
   symbolSourceLabel,
   groupDevicesByUser,
+  loadNotificationPrefs,
+  sendCategorizedPush,
 } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -107,6 +108,7 @@ Deno.serve(async (req: Request) => {
       addOwner(portfolioByUser, row.user_id, sym);
     }
 
+    const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
     let sent = 0;
     let targeted = 0;
     for (const item of fresh.slice(0, 12)) {
@@ -135,14 +137,21 @@ Deno.serve(async (req: Request) => {
       }
 
       for (const group of groups.values()) {
-        const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, group.devices, {
-          title: group.title,
-          body: group.body,
-          url: "./#portfolio",
-          tag: `az-news-${item.id}`,
-          alertType: "news",
-          direction: item.impact === "positive" ? "up" : item.impact === "negative" ? "down" : "neutral",
-        });
+        const result = await sendCategorizedPush(
+          SUPABASE_URL,
+          SERVICE_ROLE_KEY,
+          group.devices,
+          prefsMap,
+          "news",
+          {
+            title: group.title,
+            body: `${group.body} تعليمي فقط.`,
+            url: "./#portfolio",
+            tag: `az-news-${item.id}`,
+            alertType: "news",
+            direction: item.impact === "positive" ? "up" : item.impact === "negative" ? "down" : "neutral",
+          },
+        );
         sent += result.sent;
       }
       targeted += owners.length;

@@ -91,7 +91,10 @@ export interface PushPayload {
   alertType?: string;
   icon?: string;
   image?: string;
+  badge?: string;
   requireInteraction?: boolean;
+  /** وضع صامت: يظهر الإشعار الملون بدون صوت/اهتزاز على الجهاز */
+  silent?: boolean;
 }
 
 export async function sendPushToDevices(
@@ -385,4 +388,265 @@ export function groupDevicesByUser(
     map.get(d.user_id)!.push(d);
   }
   return map;
+}
+
+
+// —— تفضيلات إشعارات المستخدم (فئات + وضع صامت) ——
+
+export type NotifyCategory =
+  | "portfolio"
+  | "simulator"
+  | "picks"
+  | "screener"
+  | "price"
+  | "um_zaki"
+  | "daily_wisdom"
+  | "weekly_macro"
+  | "news"
+  | "earnings"
+  | "general";
+
+export interface NotificationPrefs {
+  user_id: string;
+  portfolio_alerts_enabled: boolean;
+  simulator_alerts_enabled: boolean;
+  picks_alerts_enabled: boolean;
+  screener_alerts_enabled: boolean;
+  silent_mode: boolean;
+  um_zaki_enabled: boolean;
+  price_alerts_enabled: boolean;
+  daily_wisdom_enabled: boolean;
+  weekly_macro_enabled: boolean;
+  email_enabled?: boolean;
+}
+
+const DEFAULT_PREFS: Omit<NotificationPrefs, "user_id"> = {
+  portfolio_alerts_enabled: true,
+  simulator_alerts_enabled: true,
+  picks_alerts_enabled: true,
+  screener_alerts_enabled: true,
+  silent_mode: false,
+  um_zaki_enabled: true,
+  price_alerts_enabled: true,
+  daily_wisdom_enabled: true,
+  weekly_macro_enabled: true,
+};
+
+function normalizePrefs(row: Partial<NotificationPrefs> & { user_id: string }): NotificationPrefs {
+  return {
+    user_id: row.user_id,
+    portfolio_alerts_enabled: row.portfolio_alerts_enabled !== false,
+    simulator_alerts_enabled: row.simulator_alerts_enabled !== false,
+    picks_alerts_enabled: row.picks_alerts_enabled !== false,
+    screener_alerts_enabled: row.screener_alerts_enabled !== false,
+    silent_mode: Boolean(row.silent_mode),
+    um_zaki_enabled: row.um_zaki_enabled !== false,
+    price_alerts_enabled: row.price_alerts_enabled !== false,
+    daily_wisdom_enabled: row.daily_wisdom_enabled !== false,
+    weekly_macro_enabled: row.weekly_macro_enabled !== false,
+    email_enabled: Boolean(row.email_enabled),
+  };
+}
+
+export async function loadNotificationPrefs(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  userIds?: string[],
+): Promise<Map<string, NotificationPrefs>> {
+  const map = new Map<string, NotificationPrefs>();
+  let path =
+    "notification_subscriptions?select=user_id,portfolio_alerts_enabled,simulator_alerts_enabled,picks_alerts_enabled,screener_alerts_enabled,silent_mode,um_zaki_enabled,price_alerts_enabled,daily_wisdom_enabled,weekly_macro_enabled,email_enabled";
+  if (userIds && userIds.length) {
+    path += `&user_id=in.(${userIds.join(",")})`;
+  }
+  const rows = await restSelect<Partial<NotificationPrefs> & { user_id: string }>(
+    supabaseUrl,
+    serviceRoleKey,
+    path,
+  );
+  for (const row of rows) {
+    if (!row?.user_id) continue;
+    map.set(row.user_id, normalizePrefs(row));
+  }
+  return map;
+}
+
+export function prefsForUser(
+  prefsMap: Map<string, NotificationPrefs>,
+  userId: string,
+): NotificationPrefs {
+  return prefsMap.get(userId) || { user_id: userId, ...DEFAULT_PREFS };
+}
+
+export function categoryEnabled(prefs: NotificationPrefs, category: NotifyCategory): boolean {
+  switch (category) {
+    case "portfolio":
+      return prefs.portfolio_alerts_enabled;
+    case "simulator":
+      return prefs.simulator_alerts_enabled;
+    case "picks":
+      return prefs.picks_alerts_enabled;
+    case "screener":
+      return prefs.screener_alerts_enabled;
+    case "price":
+      return prefs.price_alerts_enabled;
+    case "um_zaki":
+      return prefs.um_zaki_enabled;
+    case "daily_wisdom":
+      return prefs.daily_wisdom_enabled;
+    case "weekly_macro":
+      return prefs.weekly_macro_enabled;
+    case "news":
+    case "earnings":
+    case "general":
+      return true;
+    default:
+      return true;
+  }
+}
+
+/** إرسال مع احترام فئة الإشعار + وضع الصامت لكل مستخدم. */
+export async function sendCategorizedPush(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  devices: PushDeviceRow[],
+  prefsMap: Map<string, NotificationPrefs>,
+  category: NotifyCategory,
+  payload: PushPayload,
+): Promise<{ sent: number; failed: number; pruned: number; skipped: number }> {
+  const byUser = groupDevicesByUser(devices);
+  let sent = 0;
+  let failed = 0;
+  let pruned = 0;
+  let skipped = 0;
+  for (const [userId, userDevices] of byUser) {
+    const prefs = prefsForUser(prefsMap, userId);
+    if (!categoryEnabled(prefs, category)) {
+      skipped += userDevices.length;
+      continue;
+    }
+    const silent = Boolean(payload.silent) || prefs.silent_mode;
+    const result = await sendPushToDevices(supabaseUrl, serviceRoleKey, userDevices, {
+      ...payload,
+      silent,
+    });
+    sent += result.sent;
+    failed += result.failed;
+    pruned += result.pruned;
+  }
+  return { sent, failed, pruned, skipped };
+}
+
+// —— فلتر الأسهم القابلة للتداول (سياسة الأسهم العادية NYSE/NASDAQ) ——
+
+const NON_COMMON_RE =
+  /etf|exchange[ -]?traded|etn|closed[ -]?end|warrant|unit|preferred|fund|trust|spac|rights|note|depositary|acquisition|bond|convertible|royalty|partnership|limited partnership|adr/i;
+
+export function isTradableCommonEquity(row: {
+  symbol?: string | null;
+  exchange?: string | null;
+  industry?: string | null;
+  company?: string | null;
+  sector?: string | null;
+  finviz_sector?: string | null;
+  halt?: boolean | null;
+  is_halted?: boolean | null;
+  tradable?: boolean | null;
+  status?: string | null;
+}): boolean {
+  const symbol = String(row?.symbol || "").toUpperCase().trim();
+  if (!symbol || !/^[A-Z]{1,5}$/.test(symbol)) return false;
+  if (row?.halt === true || row?.is_halted === true) return false;
+  if (row?.tradable === false) return false;
+  const status = String(row?.status || "").toLowerCase();
+  if (status && /halt|suspend|delist|otc|pink|inactive/.test(status)) return false;
+  const exchange = String(row?.exchange || "").toUpperCase().trim();
+  if (exchange && !["NYSE", "NASDAQ", "NMS", "NYQ", "XNAS", "XNYS"].includes(exchange)) {
+    return false;
+  }
+  const blob = [row?.industry, row?.company, row?.sector, row?.finviz_sector]
+    .map((x) => String(x || ""))
+    .join(" ");
+  if (NON_COMMON_RE.test(blob)) return false;
+  return true;
+}
+
+export async function filterTradableSymbols(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  symbols: string[],
+): Promise<Set<string>> {
+  const unique = Array.from(
+    new Set(symbols.map((s) => String(s || "").toUpperCase().trim()).filter(Boolean)),
+  );
+  const ok = new Set<string>();
+  if (!unique.length) return ok;
+  const filter = unique.map((s) => `"${s}"`).join(",");
+  const rows = await restSelect<{
+    symbol: string;
+    exchange?: string;
+    industry?: string;
+    company?: string;
+    sector?: string;
+    finviz_sector?: string;
+  }>(
+    supabaseUrl,
+    serviceRoleKey,
+    `screener_signals?select=symbol,exchange,industry,company,finviz_sector,sector&symbol=in.(${filter})&limit=500`,
+  );
+  const bySym = new Map<string, (typeof rows)[0]>();
+  for (const r of rows) bySym.set(String(r.symbol || "").toUpperCase(), r);
+  // fallback fundamentals if screener row missing exchange
+  const missing = unique.filter((s) => !bySym.has(s));
+  if (missing.length) {
+    const mf = missing.map((s) => `"${s}"`).join(",");
+    const fund = await restSelect<{
+      symbol: string;
+      exchange?: string;
+      industry?: string;
+      company?: string;
+      sector?: string;
+    }>(
+      supabaseUrl,
+      serviceRoleKey,
+      `market_fundamentals?select=symbol,exchange,industry,company,sector&symbol=in.(${mf})&limit=500`,
+    );
+    for (const r of fund) bySym.set(String(r.symbol || "").toUpperCase(), r);
+  }
+  for (const sym of unique) {
+    const row = bySym.get(sym);
+    if (!row) {
+      // بدون بيانات: اسمح فقط بالرمز القصير الشكلي (حماية خفيفة)
+      if (/^[A-Z]{1,5}$/.test(sym)) ok.add(sym);
+      continue;
+    }
+    if (isTradableCommonEquity({ ...row, symbol: sym })) ok.add(sym);
+  }
+  return ok;
+}
+
+/** رموز المحاكي المفتوحة (سجل مشترك). */
+export async function loadSimulatorSymbols(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  simulationId = "global",
+): Promise<Set<string>> {
+  const rows = await restSelect<{ symbol: string }>(
+    supabaseUrl,
+    serviceRoleKey,
+    `shared_virtual_positions?select=symbol&simulation_id=eq.${encodeURIComponent(simulationId)}`,
+  );
+  return new Set(rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean));
+}
+
+/** تسمية مصدر أم زكي: محفظتك / المحاكي / ترشيحاتك */
+export function umZakiSourceLabel(opts: {
+  inPortfolio: boolean;
+  inSimulator: boolean;
+  inPicks: boolean;
+}): string {
+  if (opts.inPortfolio) return "محفظتك";
+  if (opts.inSimulator) return "المحاكي";
+  if (opts.inPicks) return "ترشيحاتك";
+  return "قائمتك";
 }

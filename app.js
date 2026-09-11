@@ -628,20 +628,86 @@ async function loadEmailAlertPreference() {
   if (!currentUser || !sb) return;
   const { data, error } = await sb
     .from("notification_subscriptions")
-    .select("email,email_enabled,price_alerts_enabled")
+    .select(
+      "email,email_enabled,price_alerts_enabled,portfolio_alerts_enabled,simulator_alerts_enabled,picks_alerts_enabled,screener_alerts_enabled,silent_mode,um_zaki_enabled,daily_wisdom_enabled,weekly_macro_enabled",
+    )
     .eq("user_id", currentUser.id)
     .maybeSingle();
   if (error) {
-    console.warn("تعذر تحميل إعداد تنبيه السعر:", error.message);
+    console.warn("تعذر تحميل إعدادات الإشعارات:", error.message);
     return;
   }
   const input = document.getElementById("alertEmail");
   const emailToggle = document.getElementById("emailAlertsToggle");
   const priceToggle = document.getElementById("priceAlertsToggle");
+  const setChecked = (id, value, defaultOn = true) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.checked = value == null ? defaultOn : Boolean(value);
+  };
   if (data) {
     if (input && data.email) input.value = data.email;
     if (emailToggle) emailToggle.checked = data.email_enabled === true;
     if (priceToggle) priceToggle.checked = data.price_alerts_enabled !== false;
+    setChecked("prefPortfolioAlerts", data.portfolio_alerts_enabled, true);
+    setChecked("prefSimulatorAlerts", data.simulator_alerts_enabled, true);
+    setChecked("prefPicksAlerts", data.picks_alerts_enabled, true);
+    setChecked("prefScreenerAlerts", data.screener_alerts_enabled, true);
+    setChecked("prefSilentMode", data.silent_mode, false);
+    setChecked("prefUmZaki", data.um_zaki_enabled, true);
+  }
+}
+
+/** حفظ مفتاح واحد من لوحة فئات الإشعارات (محافتي / المحاكي / ترشيحاتي / الماسح / صامت / أم زكي). */
+async function saveNotificationCategoryPref(column, enabled) {
+  const allowed = new Set([
+    "portfolio_alerts_enabled",
+    "simulator_alerts_enabled",
+    "picks_alerts_enabled",
+    "screener_alerts_enabled",
+    "silent_mode",
+    "um_zaki_enabled",
+    "daily_wisdom_enabled",
+    "weekly_macro_enabled",
+    "price_alerts_enabled",
+  ]);
+  try {
+    if (!currentUser) return toast("سجّل الدخول أولًا", "warn");
+    if (!allowed.has(column)) return;
+    const payload = {
+      user_id: currentUser.id,
+      [column]: Boolean(enabled),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb
+      .from("notification_subscriptions")
+      .upsert(payload, { onConflict: "user_id" });
+    if (error) throw error;
+    const labels = {
+      portfolio_alerts_enabled: "محفظتي",
+      simulator_alerts_enabled: "عمليات المحاكي",
+      picks_alerts_enabled: "ترشيحاتي",
+      screener_alerts_enabled: "الماسح",
+      silent_mode: "وضع صامت",
+      um_zaki_enabled: "أم زكي",
+    };
+    const name = labels[column] || column;
+    if (column === "silent_mode") {
+      toast(
+        enabled
+          ? "تم تفعيل الوضع الصامت: إشعار ملون يظهر بدون صوت"
+          : "تم إيقاف الوضع الصامت",
+      );
+    } else {
+      toast(enabled ? `تم تفعيل تنبيهات ${name}` : `تم إيقاف تنبيهات ${name}`);
+    }
+  } catch (e) {
+    console.error(e);
+    toast(
+      "تعذر حفظ التفضيل: " +
+        (e?.message || "نفّذ ملف notification_prefs_um_zaki_migration.sql"),
+      "error",
+    );
   }
 }
 async function saveDisplayName() {
@@ -4701,10 +4767,17 @@ function isCommonStockRow(row) {
     row?.security_type,
     row?.quote_type,
     row?.asset_type,
+    row?.status,
+    row?.trading_status,
   ]
     .map((v) => String(v || "").toLowerCase())
     .join(" ");
   if (!symbol || EXCLUDED_SYMBOLS.has(symbol)) return false;
+  // استبعاد المتوقفة/غير القابلة للتداول من الترشيحات والمحاكي
+  if (row?.halt === true || row?.is_halted === true || row?.tradable === false)
+    return false;
+  if (/halt|suspend|delist|otc|pink|inactive|non[- ]?tradable/.test(text))
+    return false;
   if (!GENERAL_MARKET_RULE.exchanges.has(exchange)) return false;
   if (NON_COMMON_INSTRUMENT_RE.test(text) || EXCLUDED_SECTOR_RE.test(text))
     return false;
@@ -4730,11 +4803,17 @@ function isStoredSignalCommonStock(row) {
     row?.security_type,
     row?.quote_type,
     row?.asset_type,
+    row?.status,
+    row?.trading_status,
   ]
     .map((v) => String(v || "").toLowerCase())
     .join(" ");
   const price = Number(row?.price || 0);
   if (!symbol || EXCLUDED_SYMBOLS.has(symbol) || /[.\-\^]/.test(symbol))
+    return false;
+  if (row?.halt === true || row?.is_halted === true || row?.tradable === false)
+    return false;
+  if (/halt|suspend|delist|otc|pink|inactive|non[- ]?tradable/.test(text))
     return false;
   if (NON_COMMON_INSTRUMENT_RE.test(text) || EXCLUDED_SECTOR_RE.test(text))
     return false;

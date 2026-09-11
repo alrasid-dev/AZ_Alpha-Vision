@@ -1,25 +1,25 @@
-// send-signal-notifications — يُستدعى بعد fetch_screener_signals.py
-// إشعارات دخول صريح/مؤكد مع السعر، وإشعارات خروج للترشيحات/الماسح.
-// يُبقي البث لكل الأجهزة، مع نص مخصّص يوضح مصدر الرمز لكل مستلم
-// (محفظتك / مفضلتك / ترشيحاتك).
+// send-signal-notifications — بعد fetch_screener_signals.py
+// إشعارات دخول/خروج تعليمية، رمز واحد لكل إشعار (واجهة جوال أوضح)،
+// مع فلتر الأسهم القابلة للتداول واحترام تفضيلات ترشيحاتي/الماسح + الصامت.
 
 import {
   CORS_HEADERS,
   jsonResponse,
   checkRunKey,
   fetchActiveDevices,
-  sendPushToDevices,
   restSelect,
   restInsert,
   wasRecentlyNotified,
   logNotified,
   loadUserSymbolSets,
   symbolSourceLabel,
-  symbolSourcePhrase,
-  dominantSourceForUser,
+  loadNotificationPrefs,
+  sendCategorizedPush,
+  filterTradableSymbols,
   groupDevicesByUser,
   type PushDeviceRow,
   type SourceKind,
+  type NotifyCategory,
 } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -37,110 +37,74 @@ interface SignalRow {
   exit_tier: string | null;
   exit_signals: Record<string, unknown> | null;
   updated_at: string;
+  exchange?: string | null;
+  industry?: string | null;
+  sector?: string | null;
+  finviz_sector?: string | null;
 }
 
-function formatSignalLine(
-  s: SignalRow,
-  tierFallback: string,
-  priceField: "entry" | "exit",
-  sourceLabel: string,
-): string {
-  const tier =
-    priceField === "entry"
-      ? s.entry_tier || tierFallback
-      : s.exit_tier || tierFallback;
-  const px = Number(s.price);
-  const priceBit =
-    Number.isFinite(px) && px > 0 ? ` @ $${px.toFixed(2)}` : "";
-  return `${s.symbol}${priceBit} (${tier} · ${sourceLabel})`;
+function entryTitle(kind: SourceKind, symbol: string): string {
+  if (kind === "portfolio") return `📌 ${symbol} · ترشيح في محفظتك`;
+  if (kind === "watchlist") return `📌 ${symbol} · ترشيح في مفضلتك`;
+  return `📌 ${symbol} · دخول تعليمي`;
 }
 
-function entryTitle(kind: SourceKind): string {
-  if (kind === "portfolio") return "📌 ترشيح — سهم في محفظتك · دخول تعليمي";
-  if (kind === "watchlist") return "📌 ترشيح — سهم في مفضلتك · دخول تعليمي";
-  return "📌 ترشيح — دخول تعليمي صريح";
+function exitTitle(kind: SourceKind, symbol: string): string {
+  if (kind === "portfolio") return `🚪 ${symbol} · خروج · محفظتك`;
+  if (kind === "watchlist") return `🚪 ${symbol} · خروج · مفضلتك`;
+  return `🚪 ${symbol} · خروج تعليمي`;
 }
 
-function exitTitle(kind: SourceKind): string {
-  if (kind === "portfolio") return "🚪 ترشيح — خروج تعليمي · سهم في محفظتك";
-  if (kind === "watchlist") return "🚪 ترشيح — خروج تعليمي · سهم في مفضلتك";
-  return "🚪 ترشيح — إشارة خروج تعليمية";
-}
-
-async function pushPersonalizedBatch(
+async function pushOneSymbolBatches(
   devices: PushDeviceRow[],
   signals: SignalRow[],
   mode: "entry" | "exit",
   sets: Awaited<ReturnType<typeof loadUserSymbolSets>>,
+  prefsMap: Awaited<ReturnType<typeof loadNotificationPrefs>>,
+  category: NotifyCategory,
 ): Promise<number> {
   if (!signals.length || !devices.length) return 0;
-
   const byUser = groupDevicesByUser(devices);
-  const symbols = signals.map((s) => s.symbol);
   let pushSent = 0;
 
-  // تجميع المستخدمين الذين يحصلون على نفس النص لتقليل عدد الإرسالات المتطابقة
-  const groups = new Map<
-    string,
-    { devices: PushDeviceRow[]; title: string; body: string }
-  >();
+  // رمز واحد لكل إشعار — أفضل للجوال من تجميع قبيح
+  for (const s of signals.slice(0, 12)) {
+    const sym = String(s.symbol || "").toUpperCase();
+    const px = Number(s.price);
+    const priceBit = Number.isFinite(px) && px > 0 ? ` @ $${px.toFixed(2)}` : "";
+    const tier = mode === "entry" ? s.entry_tier || "دخول" : s.exit_tier || "خروج";
 
-  for (const [userId, userDevices] of byUser) {
-    const pf = sets.portfolio.get(userId);
-    const wl = sets.watchlist.get(userId);
-    const lines = signals.slice(0, 5).map((s) => {
-      const sym = String(s.symbol || "").toUpperCase();
+    for (const [userId, userDevices] of byUser) {
+      const pf = sets.portfolio.get(userId);
+      const wl = sets.watchlist.get(userId);
       const inPf = Boolean(pf?.has(sym));
       const inWl = Boolean(wl?.has(sym));
       const label = symbolSourceLabel(inPf, inWl, true);
-      return formatSignalLine(
-        s,
-        mode === "entry" ? "دخول" : "خروج",
-        mode,
-        label,
+      const kind: SourceKind = inPf ? "portfolio" : inWl ? "watchlist" : "picks";
+      const title = mode === "entry" ? entryTitle(kind, sym) : exitTitle(kind, sym);
+      const body =
+        mode === "entry"
+          ? `${tier}${priceBit} · ${label}. تعليمي فقط — افتح الترشيحات.`
+          : `${tier}${priceBit} · ${label}. تعليمي فقط — راجع الخروج.`;
+
+      const result = await sendCategorizedPush(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        userDevices,
+        prefsMap,
+        category,
+        {
+          title,
+          body,
+          url: "./#picks",
+          tag: `az-pick-${mode}-${sym}`,
+          direction: mode === "entry" ? "up" : "down",
+          alertType: "signal",
+        },
       );
-    });
-    const extra =
-      signals.length > 5 ? ` و${signals.length - 5} أخرى` : "";
-    const kind = dominantSourceForUser(symbols, pf, wl, true);
-    const title = mode === "entry" ? entryTitle(kind) : exitTitle(kind);
-    const anyPf = signals.some((s) =>
-      pf?.has(String(s.symbol || "").toUpperCase())
-    );
-    const anyWl = signals.some((s) =>
-      wl?.has(String(s.symbol || "").toUpperCase())
-    );
-    const phrase = symbolSourcePhrase(anyPf, anyWl, true);
-    // جملة ختامية تعليمية مع إشارة للمصدر الغالب
-    const body =
-      mode === "entry"
-        ? `سعر الدخول المقترح: ${lines.join(" · ")}${extra}. تعليمي فقط — ${phrase}. افتح تبويب الترشيحات.`
-        : `مناطق الخروج المقترحة: ${lines.join(" · ")}${extra}. تعليمي فقط — ${phrase}. راجع الترشيحات.`;
-
-    const groupKey = `${title}||${body}`;
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, { devices: [], title, body });
+      pushSent += result.sent;
     }
-    groups.get(groupKey)!.devices.push(...userDevices);
   }
-
-  for (const group of groups.values()) {
-    const result = await sendPushToDevices(
-      SUPABASE_URL,
-      SERVICE_ROLE_KEY,
-      group.devices,
-      {
-        title: group.title,
-        body: group.body,
-        url: "./#picks",
-        tag: mode === "entry" ? "az-pick-entry" : "az-pick-exit",
-        direction: mode === "entry" ? "up" : "down",
-        alertType: "signal",
-      },
-    );
-    pushSent += result.sent;
-  }
-
   return pushSent;
 }
 
@@ -157,16 +121,23 @@ Deno.serve(async (req: Request) => {
     const signals = await restSelect<SignalRow>(
       SUPABASE_URL,
       SERVICE_ROLE_KEY,
-      `screener_signals?select=preset,symbol,company,price,entry_score,entry_tier,entry_signals,exit_score,exit_tier,exit_signals,updated_at&updated_at=gte.${since}&order=entry_score.desc&limit=80`,
+      `screener_signals?select=preset,symbol,company,price,entry_score,entry_tier,entry_signals,exit_score,exit_tier,exit_signals,updated_at,exchange,industry,sector,finviz_sector&updated_at=gte.${since}&order=entry_score.desc&limit=80`,
+    );
+
+    const tradable = await filterTradableSymbols(
+      SUPABASE_URL,
+      SERVICE_ROLE_KEY,
+      signals.map((s) => s.symbol),
     );
 
     const entryFresh: SignalRow[] = [];
     const exitFresh: SignalRow[] = [];
     for (const s of signals) {
+      const sym = String(s.symbol || "").toUpperCase();
+      if (!tradable.has(sym)) continue;
       const isStrongEntry =
         s.entry_tier === "صريح" || s.entry_tier === "مؤكد" || Number(s.entry_score || 0) >= 3;
-      const isExit =
-        Boolean(s.exit_tier) || Number(s.exit_score || 0) >= 2;
+      const isExit = Boolean(s.exit_tier) || Number(s.exit_score || 0) >= 2;
       if (isStrongEntry) {
         const refId = `entry|${s.preset}|${s.symbol}`;
         const repeated = await wasRecentlyNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "signal", refId, minutes);
@@ -180,7 +151,13 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!entryFresh.length && !exitFresh.length) {
-      return jsonResponse({ ok: true, new_alerts: 0, notified: 0, message: "لا إشارات دخول/خروج جديدة خلال هذه النافذة" });
+      return jsonResponse({
+        ok: true,
+        new_alerts: 0,
+        notified: 0,
+        filtered_non_tradable: true,
+        message: "لا إشارات دخول/خروج جديدة قابلة للتداول خلال هذه النافذة",
+      });
     }
 
     if (entryFresh.length) {
@@ -222,17 +199,18 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // بث لكل الأجهزة النشطة — مع تخصيص النص حسب محفظة/مفضلة كل مستخدم
     const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
     const allSymbols = [...entryFresh, ...exitFresh].map((s) => s.symbol);
     const sets = await loadUserSymbolSets(SUPABASE_URL, SERVICE_ROLE_KEY, allSymbols);
+    const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     let pushSent = 0;
+    // الترشيحات تستخدم فئة picks؛ الماسح screener لنفس القناة عند البث العام
     if (entryFresh.length) {
-      pushSent += await pushPersonalizedBatch(devices, entryFresh, "entry", sets);
+      pushSent += await pushOneSymbolBatches(devices, entryFresh, "entry", sets, prefsMap, "picks");
     }
     if (exitFresh.length) {
-      pushSent += await pushPersonalizedBatch(devices, exitFresh, "exit", sets);
+      pushSent += await pushOneSymbolBatches(devices, exitFresh, "exit", sets, prefsMap, "picks");
     }
 
     return jsonResponse({
@@ -241,7 +219,8 @@ Deno.serve(async (req: Request) => {
       exit_alerts: exitFresh.length,
       devices_targeted: devices.length,
       push_sent: pushSent,
-      personalized_by_source: true,
+      one_symbol_per_notification: true,
+      filtered_non_tradable: true,
     });
   } catch (err) {
     console.error("send-signal-notifications error:", err);

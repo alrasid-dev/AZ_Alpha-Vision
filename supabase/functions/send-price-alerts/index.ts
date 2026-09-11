@@ -7,11 +7,13 @@ import {
   jsonResponse,
   checkRunKey,
   fetchActiveDevices,
-  sendPushToDevices,
   restSelect,
   wasRecentlyNotified,
   logNotified,
+  loadNotificationPrefs,
+  sendCategorizedPush,
 } from "../_shared/push.ts";
+import { getUsMarketClock } from "../_shared/usMarketHours.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -39,6 +41,16 @@ Deno.serve(async (req: Request) => {
   if (authFail) return authFail;
 
   try {
+    const clock = getUsMarketClock();
+    // لا ترسل تحركات سعر عامة خارج الساعات الممتدة (يبقى التنبيه تعليمياً ومنضبطاً)
+    if (!clock.tradable) {
+      return jsonResponse({
+        ok: true,
+        skipped: true,
+        session: clock.session,
+        message: `${clock.labelAr} — تأجيل تنبيهات السعر خارج الجلسات الممتدة`,
+      });
+    }
     const url = new URL(req.url);
     const threshold = Number(url.searchParams.get("threshold") || "2");
     const cooldown = Number(url.searchParams.get("cooldown_minutes") || "60");
@@ -131,6 +143,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
     let notifiedUsers = 0;
     let totalSent = 0;
     for (const [userId, lines] of byUser) {
@@ -150,37 +163,31 @@ Deno.serve(async (req: Request) => {
       const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY, [userId]);
       if (!devices.length) continue;
 
-      const anyExit = eligible.some((l) => l.kind === "exit");
-      const anyUp = eligible.some((l) => l.up);
-      const anyPf = eligible.some((l) => l.source === "portfolio");
-      const anyWl = eligible.some((l) => l.source === "watchlist");
-      const body = eligible.slice(0, 6).map((l) => l.text).join(" · ");
-
-      let title: string;
-      if (anyExit) {
-        title = anyPf
-          ? "🔔 تنبيه محفظتك — دخول/خروج تعليمي"
-          : "🔔 تنبيه مفضلتك — دخول/خروج تعليمي";
-      } else if (anyPf && anyWl) {
-        title = "📈 تحرك سعري في محفظتك ومفضلتك";
-      } else if (anyPf) {
-        title = "📈 تحرك سعري في محفظتك";
-      } else {
-        title = "📈 تحرك سعري في مفضلتك";
-      }
-
-      const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title,
-        body,
-        url: "./#portfolio",
-        tag: `az-price-${userId}`,
-        direction: anyUp ? "up" : "down",
-        alertType: "price",
-      });
-      totalSent += result.sent;
-      if (result.sent > 0) {
-        notifiedUsers++;
-        for (const line of eligible) {
+      // إشعار مركّز لكل رمز (أفضل للجوال من تجميع طويل)
+      let userGot = false;
+      for (const line of eligible.slice(0, 4)) {
+        const category = line.source === "portfolio" ? "portfolio" : "price";
+        const title = line.source === "portfolio"
+          ? (line.kind === "exit" ? `🔔 محفظتك · ${line.symbol}` : `📈 محفظتك · ${line.symbol}`)
+          : `📈 مفضلتك · ${line.symbol}`;
+        const result = await sendCategorizedPush(
+          SUPABASE_URL,
+          SERVICE_ROLE_KEY,
+          devices,
+          prefsMap,
+          category,
+          {
+            title,
+            body: `${line.text}. تعليمي فقط.`,
+            url: "./#portfolio",
+            tag: `az-price-${line.symbol}-${line.kind}`,
+            direction: line.up ? "up" : "down",
+            alertType: "price",
+          },
+        );
+        totalSent += result.sent;
+        if (result.sent > 0) {
+          userGot = true;
           await logNotified(
             SUPABASE_URL,
             SERVICE_ROLE_KEY,
@@ -189,6 +196,7 @@ Deno.serve(async (req: Request) => {
           );
         }
       }
+      if (userGot) notifiedUsers++;
     }
 
     return jsonResponse({

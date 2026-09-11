@@ -135,6 +135,43 @@ Deno.serve(async (req: Request) => {
     const minutes = Number(url.searchParams.get("minutes") || "180");
     const since = new Date(Date.now() - minutes * 60000).toISOString();
     const verifyAfterMin = Number(url.searchParams.get("verify_after_minutes") || "90");
+    const bodyJson = await req.json().catch(() => ({} as Record<string, unknown>));
+    const wantIntro =
+      url.searchParams.get("intro") === "1" ||
+      bodyJson?.intro === true ||
+      bodyJson?.intro === "1";
+
+    // بث تعريف أم زكي لكل الأجهزة النشطة (مرة عند الطلب)
+    if (wantIntro) {
+      const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
+      const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
+      const introTitle = "👂 أنا أم زكي";
+      const introBody =
+        "هلا فيكم عيني… أنا أم زكي 😋😂 بتتبّع الطراطيش والإشاعات اللي تدور على الأسهم (محفظتك / المحاكي / الترشيحات)، ولما أتأكد بخبركم بصراحة. تعليمي بس — مو توصية تداول.";
+      const result = await sendCategorizedPush(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        devices,
+        prefsMap,
+        "um_zaki",
+        {
+          title: introTitle,
+          body: introBody,
+          url: "./#dashboard",
+          tag: "az-um-zaki-intro",
+          alertType: "um_zaki",
+          direction: "neutral",
+          requireInteraction: false,
+        },
+      );
+      await logNotified(SUPABASE_URL, SERVICE_ROLE_KEY, "um_zaki_intro", `intro|${new Date().toISOString().slice(0, 13)}`);
+      return jsonResponse({
+        ok: true,
+        mode: "intro",
+        devices_targeted: devices.length,
+        ...result,
+      });
+    }
 
     const [portfolioRows, pickRows, simSymbols] = await Promise.all([
       restSelect<OwnerRow>(SUPABASE_URL, SERVICE_ROLE_KEY, `user_portfolio_positions?select=user_id,symbol`),

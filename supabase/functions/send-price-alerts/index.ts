@@ -1,5 +1,6 @@
 // send-price-alerts — بعد تحديث الأسعار الحية.
 // تنبيهات لقائمة المراقبة + محفظة المستخدم بروح سياسة المحاكي (وقف ~-8%، تقدم ~+20%).
+// يميّز النص: محفظتك vs مفضلتك.
 
 import {
   CORS_HEADERS,
@@ -66,7 +67,13 @@ Deno.serve(async (req: Request) => {
       `user_portfolio_positions?select=user_id,symbol,buy_price,qty`,
     );
 
-    type AlertLine = { symbol: string; text: string; kind: "move" | "entry" | "exit"; up: boolean };
+    type AlertLine = {
+      symbol: string;
+      text: string;
+      kind: "move" | "entry" | "exit";
+      up: boolean;
+      source: "portfolio" | "watchlist";
+    };
     const byUser = new Map<string, AlertLine[]>();
 
     const add = (userId: string, line: AlertLine) => {
@@ -82,9 +89,10 @@ Deno.serve(async (req: Request) => {
       const sign = q.change_pct >= 0 ? "+" : "";
       add(row.user_id, {
         symbol: sym,
-        text: `${sym} ${sign}${q.change_pct.toFixed(2)}%`,
+        text: `مفضلتك · ${sym} ${sign}${q.change_pct.toFixed(2)}%`,
         kind: "move",
         up: q.change_pct >= 0,
+        source: "watchlist",
       });
     }
 
@@ -98,16 +106,18 @@ Deno.serve(async (req: Request) => {
       if (pct <= -8) {
         add(row.user_id, {
           symbol: sym,
-          text: `${sym} قرب منطقة وقف تعليمية (${pct.toFixed(1)}% من شراء $${buy.toFixed(2)})`,
+          text: `محفظتك · ${sym} قرب منطقة وقف تعليمية (${pct.toFixed(1)}% من شراء $${buy.toFixed(2)})`,
           kind: "exit",
           up: false,
+          source: "portfolio",
         });
       } else if (pct >= 20) {
         add(row.user_id, {
           symbol: sym,
-          text: `${sym} تقدّم تعليمي +${pct.toFixed(1)}% من شراء $${buy.toFixed(2)} — راقب منطقة خروج`,
+          text: `محفظتك · ${sym} تقدّم تعليمي +${pct.toFixed(1)}% من شراء $${buy.toFixed(2)} — راقب منطقة خروج`,
           kind: "exit",
           up: true,
+          source: "portfolio",
         });
       } else if (Math.abs(q.change_pct) >= threshold) {
         const sign = q.change_pct >= 0 ? "+" : "";
@@ -116,6 +126,7 @@ Deno.serve(async (req: Request) => {
           text: `محفظتك · ${sym} ${sign}${q.change_pct.toFixed(2)}% (شراء $${buy.toFixed(2)})`,
           kind: "move",
           up: q.change_pct >= 0,
+          source: "portfolio",
         });
       }
     }
@@ -141,9 +152,25 @@ Deno.serve(async (req: Request) => {
 
       const anyExit = eligible.some((l) => l.kind === "exit");
       const anyUp = eligible.some((l) => l.up);
+      const anyPf = eligible.some((l) => l.source === "portfolio");
+      const anyWl = eligible.some((l) => l.source === "watchlist");
       const body = eligible.slice(0, 6).map((l) => l.text).join(" · ");
+
+      let title: string;
+      if (anyExit) {
+        title = anyPf
+          ? "🔔 تنبيه محفظتك — دخول/خروج تعليمي"
+          : "🔔 تنبيه مفضلتك — دخول/خروج تعليمي";
+      } else if (anyPf && anyWl) {
+        title = "📈 تحرك سعري في محفظتك ومفضلتك";
+      } else if (anyPf) {
+        title = "📈 تحرك سعري في محفظتك";
+      } else {
+        title = "📈 تحرك سعري في مفضلتك";
+      }
+
       const result = await sendPushToDevices(SUPABASE_URL, SERVICE_ROLE_KEY, devices, {
-        title: anyExit ? "🔔 تنبيه محفظة/مراقبة — دخول/خروج تعليمي" : "📈 تحرك سعري في قائمتك",
+        title,
         body,
         url: "./#portfolio",
         tag: `az-price-${userId}`,
@@ -169,6 +196,7 @@ Deno.serve(async (req: Request) => {
       movers: movers.length,
       notified_users: notifiedUsers,
       push_sent: totalSent,
+      personalized_by_source: true,
     });
   } catch (err) {
     console.error("send-price-alerts error:", err);

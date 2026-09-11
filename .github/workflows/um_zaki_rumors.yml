@@ -2,6 +2,11 @@ name: AZ Alpha Vision - Um Zaki Rumor Alerts
 
 on:
   workflow_dispatch:
+    inputs:
+      intro:
+        description: 'Send Um Zaki intro broadcast to all devices (1=yes)'
+        required: false
+        default: '0'
   schedule:
     # كل ساعة أيام العمل تقريباً خلال نافذة الأخبار
     - cron: '20 12-23 * * 1-5'
@@ -20,15 +25,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NOTIFY_RUN_KEY: ${{ secrets.NOTIFY_RUN_KEY }}
+          INTRO: ${{ github.event.inputs.intro || '0' }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "${SUPABASE_URL:-}" || { echo "Missing SUPABASE_URL"; exit 1; }
           test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
           if [ -z "${NOTIFY_RUN_KEY:-}" ]; then echo "NOTIFY_RUN_KEY missing; skip"; exit 0; fi
-          curl --fail-with-body --silent --show-error \
-            -X POST "$SUPABASE_URL/functions/v1/send-um-zaki-rumors?minutes=180&verify_after_minutes=90" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "x-notify-key: $NOTIFY_RUN_KEY" \
-            --data '{}'
+          if [ "${INTRO}" = "1" ]; then
+            curl --fail-with-body --silent --show-error \
+              -X POST "$SUPABASE_URL/functions/v1/send-um-zaki-rumors?intro=1" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "x-notify-key: $NOTIFY_RUN_KEY" \
+              --data '{"intro":true}'
+          else
+            curl --fail-with-body --silent --show-error \
+              -X POST "$SUPABASE_URL/functions/v1/send-um-zaki-rumors?minutes=180&verify_after_minutes=90" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "x-notify-key: $NOTIFY_RUN_KEY" \
+              --data '{}'
+          fi

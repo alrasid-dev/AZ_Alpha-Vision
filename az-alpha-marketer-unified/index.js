@@ -262,7 +262,7 @@ async function run() {
   }
 
   if (String(process.env.PUBLISH_MODE || 'draft').toLowerCase() !== 'publish') {
-    console.log('وضع المعاينة مفعّل؛ لم يتم النشر على X');
+    console.log('وضع المعاينة مفعّل؛ لم يتم النشر على X (اضبط PUBLISH_MODE=publish للنشر التلقائي). الهاشتاجات جاهزة:', hashtags);
     return;
   }
   if (draft.status === 'posted') return;

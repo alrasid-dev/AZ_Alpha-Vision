@@ -655,6 +655,9 @@ async function loadEmailAlertPreference() {
     setChecked("prefScreenerAlerts", data.screener_alerts_enabled, true);
     setChecked("prefSilentMode", data.silent_mode, false);
     setChecked("prefUmZaki", data.um_zaki_enabled, true);
+    setChecked("prefDailyWisdom", data.daily_wisdom_enabled, true);
+    setChecked("prefWeeklyMacro", data.weekly_macro_enabled, true);
+    setChecked("prefPriceAlertsProfile", data.price_alerts_enabled, true);
   }
 }
 
@@ -1120,47 +1123,55 @@ function earningsEstimateText(event) {
 }
 async function refreshEarningsCalendar() {
   const box = document.getElementById("earningsList");
-  if (!box || !sb) return;
-  const tracked = platformRelevantSymbols();
-  const symbols = [...tracked.keys()];
-  if (!symbols.length) {
-    box.innerHTML =
-      '<div class="earnings-empty">لا توجد مراكز أو ترشيحات فعّالة لعرض تقويم أرباحها.</div>';
-    return;
-  }
-  box.innerHTML = cardSkeleton(3);
+  if (!box) return;
   try {
-    const { data, error } = await sb
+    const today = new Date();
+    const from = today.toISOString().slice(0, 10);
+    const toDate = new Date(today.getTime() + 45 * 86400000).toISOString().slice(0, 10);
+    // Main calendar for ALL users: upcoming earnings broadly (not only portfolio/watchlist).
+    let { data, error } = await sb
       .from("earnings_events")
-      .select(
-        "symbol,company_name,event_date,source_name,source_url,analyst_eps_avg,analyst_eps_low,analyst_eps_high,analyst_count,estimate_period,tracking_sources,estimates_fetched_at",
-      )
-      .in("symbol", symbols)
-      .gte("event_date", new Date(Date.now() - 86400000).toISOString())
-      .lte("event_date", new Date(Date.now() + 45 * 86400000).toISOString())
+      .select("id,symbol,company_name,event_date,event_type,source_name,source_url,analyst_eps_avg,analyst_eps_low,analyst_eps_high,analyst_count,estimate_period,tracking_sources")
+      .gte("event_date", from)
+      .lte("event_date", toDate)
       .order("event_date", { ascending: true })
-      .limit(28);
+      .limit(80);
     if (error) throw error;
-    if (!data?.length) {
+    const personal = new Set(
+      [
+        ...(watchlist || []).map((w) => String(w.symbol || "").toUpperCase()),
+        ...Object.keys(virtualTrader?.positions || {}),
+      ].filter(Boolean),
+    );
+    const rows = data || [];
+    if (!rows.length) {
       box.innerHTML =
-        '<div class="earnings-empty">لا توجد مواعيد أرباح قريبة لهذه الترشيحات بعد. سيظهر التقويم بعد تشغيل جامع الأرباح الخلفي.</div>';
+        '<div class="earnings-empty">لا توجد مواعيد أرباح قريبة حالياً. سيظهر التقويم بعد تشغيل جامع الأرباح الخلفي.</div>';
       return;
     }
-    box.innerHTML = data
+    // Personal symbols first, then the rest
+    rows.sort((a, b) => {
+      const ap = personal.has(String(a.symbol).toUpperCase()) ? 0 : 1;
+      const bp = personal.has(String(b.symbol).toUpperCase()) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return String(a.event_date).localeCompare(String(b.event_date));
+    });
+    box.innerHTML = rows
+      .slice(0, 40)
       .map((e) => {
-        const localSources = [
-          ...(tracked.get(String(e.symbol || "").toUpperCase()) || []),
-        ];
-        const sources = trackedSourcesText([
-          ...new Set([...(e.tracking_sources || []), ...localSources]),
-        ]);
-        return `<article class="earnings-item"><div class="earnings-symbol">${escapeHtml(e.symbol)}</div><div class="earnings-date">${earningsCountdown(e.event_date)}<br><span class="text-muted">${new Date(e.event_date).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}</span></div><div class="earnings-estimate">${escapeHtml(earningsEstimateText(e))}</div><div class="earnings-source">${escapeHtml(sources)} · <a class="news-source" href="${escapeHtml(e.source_url || "#")}" target="_blank" rel="noopener noreferrer">مصدر البيانات</a></div></article>`;
+        const sources = Array.isArray(e.tracking_sources)
+          ? e.tracking_sources.join(" · ")
+          : e.source_name || "مصدر عام";
+        const mine = personal.has(String(e.symbol).toUpperCase())
+          ? ' <span class="trial-pill">محفوظاتي</span>'
+          : "";
+        return `<article class="earnings-item"><div class="earnings-symbol">${escapeHtml(e.symbol)}${mine}</div><div class="earnings-date">${earningsCountdown(e.event_date)}<br><span class="text-muted">${new Date(e.event_date).toLocaleDateString("ar-SA", { year: "numeric", month: "short", day: "numeric" })}</span></div><div class="earnings-estimate">${escapeHtml(earningsEstimateText(e))}</div><div class="earnings-source">${escapeHtml(sources)} · <a class="news-source" href="${escapeHtml(e.source_url || "#")}" target="_blank" rel="noopener noreferrer">مصدر البيانات</a></div></article>`;
       })
       .join("");
-  } catch (error) {
-    console.warn("تعذر تحميل تقويم الأرباح:", error);
+  } catch (err) {
+    console.error(err);
     box.innerHTML =
-      '<div class="earnings-empty">تعذر تحميل التقويم. نفّذ ملف earnings_estimates.sql ثم شغّل مهمة تحديث الأرباح.</div>';
+      '<div class="earnings-empty">تعذر تحميل التقويم. نفّذ ملفات SQL للأرباح ثم شغّل مهمة التحديث.</div>';
   }
 }
 
@@ -1279,6 +1290,89 @@ async function requestSymbolResearch(symbol) {
     console.warn("تعذر تسجيل طلب البحث الخلفي:", error);
   }
 }
+
+
+async function openPickDrawer(symbol) {
+  const sym = String(symbol || "").toUpperCase();
+  const drawer = document.getElementById("pickDrawer");
+  const body = document.getElementById("pickDrawerBody");
+  if (!drawer || !body) return;
+  body.innerHTML = `<div class="text-muted">جارٍ تحميل ${escapeHtml(sym)}…</div>`;
+  drawer.classList.add("active");
+  drawer.hidden = false;
+  const [{ data: quote }, { data: tech }, { data: fund }] = await Promise.all([
+    sb.from("live_quotes").select("*").eq("symbol", sym).maybeSingle(),
+    sb.from("market_technicals").select("*").eq("symbol", sym).maybeSingle(),
+    sb.from("market_fundamentals").select("*").eq("symbol", sym).maybeSingle(),
+  ]);
+  const price = quote?.price ?? tech?.price;
+  const rsi = tech?.rsi14;
+  const demand = Number.isFinite(Number(tech?.sma50)) && Number(price) <= Number(tech.sma50) * 1.02;
+  const supply = Number.isFinite(Number(rsi)) && Number(rsi) >= 65;
+  body.innerHTML = `<div class="pick-drawer-head"><h3>${escapeHtml(sym)}</h3>
+    <button type="button" class="icon-btn" onclick="closePickDrawer()">×</button></div>
+    <p>${escapeHtml(fund?.company || "")}</p>
+    <div class="decision-metrics" style="grid-template-columns:repeat(2,1fr)">
+      <article><span>السعر الحي</span><strong>$${Number(price || 0).toFixed(2)}</strong></article>
+      <article><span>RSI14</span><strong>${rsi == null ? "—" : Number(rsi).toFixed(1)}</strong></article>
+      <article><span>Demand</span><strong>${demand ? "قرب طلب تعليمي" : "—"}</strong></article>
+      <article><span>Supply</span><strong>${supply ? "قرب عرض تعليمي" : "—"}</strong></article>
+    </div>
+    <p class="text-muted" style="font-size:11px;margin-top:12px">قراءة تعليمية فقط — ليست توصية. يمكن سؤال AZ ai عن Fibonacci + Supply/Demand.</p>
+    <button class="preset-btn" type="button" onclick="closePickDrawer();openAzAi();">اسأل AZ ai</button>`;
+}
+function closePickDrawer() {
+  const drawer = document.getElementById("pickDrawer");
+  if (drawer) {
+    drawer.classList.remove("active");
+    drawer.hidden = true;
+  }
+}
+
+
+function mountProfileNotificationPanel() {
+  const mount = document.getElementById("profileNotificationMount");
+  const panel = document.getElementById("notificationCategoryPanel");
+  const settingsCard = panel?.closest(".admin-settings-card");
+  if (!mount || !panel) return;
+  // Clone visual matrix into profile for regular users (admin keeps original).
+  if (!mount.dataset.ready) {
+    const clone = panel.cloneNode(true);
+    clone.id = "notificationCategoryPanelProfile";
+    // Keep original input ids only once — move the real panel into profile for everyone,
+    // leave a short note in admin settings.
+    mount.innerHTML = "";
+    if (settingsCard) {
+      const note = document.createElement("div");
+      note.className = "text-muted";
+      note.style.padding = "8px 0";
+      note.textContent = "تفضيلات الإشعارات نُقلت إلى تبويب «الحساب» لجميع المستخدمين.";
+      settingsCard.appendChild(note);
+    }
+    mount.appendChild(panel);
+    const upgradeHint = document.createElement("div");
+    upgradeHint.style.marginTop = "14px";
+    upgradeHint.innerHTML = `<button class="btn-upgrade" type="button" onclick="openUpgradeModal()">طلب ترقية الاشتراك</button>`;
+    mount.appendChild(upgradeHint);
+    mount.dataset.ready = "1";
+  }
+}
+
+function applyRoleNav(profile) {
+  const isAdmin = profile?.role === "admin";
+  const adminBtn = document.getElementById("adminTabBtn");
+  const marketerBtn = document.getElementById("marketerTabBtn");
+  if (adminBtn) adminBtn.classList.toggle("hidden", !isAdmin);
+  if (marketerBtn) marketerBtn.classList.toggle("hidden", !isAdmin);
+  // Regular users: profile area (notifications + upgrade) stays visible via tab-profile
+  const profileBtn = document.getElementById("profileTabBtn");
+  if (profileBtn) profileBtn.classList.remove("hidden");
+  if (!isAdmin) {
+    const active = document.querySelector(".tab-btn.active")?.dataset?.tab;
+    if (active === "admin" || active === "marketer") switchTab("stocks");
+  }
+}
+
 async function initApp(user, profile) {
   currentUser = user;
   currentProfile = profile;
@@ -1296,8 +1390,10 @@ async function initApp(user, profile) {
     .toUpperCase();
   const displayNameInput = document.getElementById("displayNameInput");
   if (displayNameInput) displayNameInput.value = profile.name || "";
+  const displayNameInputProfile = document.getElementById("displayNameInputProfile");
+  if (displayNameInputProfile) displayNameInputProfile.value = profile.name || "";
+  applyRoleNav(profile);
   if (profile.role === "admin") {
-    document.getElementById("adminTabBtn").classList.remove("hidden");
     const broadcastCard = document.getElementById("ownerBroadcastCard");
     if (broadcastCard) broadcastCard.style.display = "block";
     refreshAdminData();
@@ -1884,17 +1980,20 @@ function updateTrial() {
     btn.style.display = "none";
     return;
   }
-  if (!currentProfile.trial_end) {
-    b.textContent = "بانتظار التفعيل";
+  const endRaw = currentProfile.expires_at || currentProfile.trial_end;
+  if (!endRaw) {
+    b.textContent = currentProfile.subscription_status === "expired" ? "منتهي" : "بانتظار التفعيل";
     b.classList.add("expired");
-    btn.style.display = "none";
+    btn.style.display = "inline-block";
+    btn.textContent = "طلب ترقية";
     return;
   }
-  const diff = new Date(currentProfile.trial_end).getTime() - Date.now();
-  if (diff <= 0) {
+  const diff = new Date(endRaw).getTime() - Date.now();
+  if (diff <= 0 || currentProfile.subscription_status === "expired") {
     b.textContent = "منتهي";
     b.classList.add("expired");
     btn.style.display = "inline-block";
+    btn.textContent = "تجديد الاشتراك";
   } else {
     const d = Math.ceil(diff / 86400000);
     b.textContent = d + " يوم متبقي";
@@ -1914,17 +2013,24 @@ const SUBSCRIPTION_PLANS = {
   monthly: {
     name: "شهر واحد",
     days: 30,
-    amount: 499,
-    oldAmount: 713,
-    discount: 30,
+    amount: 299,
+    oldAmount: 499,
+    discount: 40,
   },
   quarterly: {
     name: "ثلاثة أشهر",
     days: 90,
-    amount: 1399,
-    oldAmount: 2332,
-    discount: 40,
+    amount: 899,
+    oldAmount: 1399,
+    discount: 35,
   },
+};
+const BANK_PAYMENT_FALLBACK = {
+  bank: "مصرف الراجحي / Al Rajhi Bank",
+  beneficiary: "عبدالعزيز محمد",
+  accountName: "عبدالعزيز محمد",
+  accountNumber: "226000010006086106666",
+  iban: "SA0480000226608016106666",
 };
 async function selectSubscriptionPlan(planCode) {
   const plan = SUBSCRIPTION_PLANS[planCode];
@@ -1932,45 +2038,103 @@ async function selectSubscriptionPlan(planCode) {
     toast("سجّل الدخول أولًا لاختيار الباقة", "warn");
     return;
   }
-  const { data, error } = await sb.functions.invoke("get-payment-details");
-  if (error || !data?.iban) {
-    toast("تعذر تحميل بيانات التحويل؛ حاول لاحقًا", "error");
-    return;
-  }
+  let data = null;
+  try {
+    const res = await sb.functions.invoke("get-payment-details");
+    data = res?.data;
+  } catch (_) {}
+  data = data?.iban ? data : BANK_PAYMENT_FALLBACK;
   const modal = document.getElementById("upgradeModal");
   const box = modal?.querySelector(".modal-box");
   if (!box) return;
   box.innerHTML = `<h2>${escapeHtml(plan.name)} — ${plan.amount} ريال</h2>
-      <div class="sub">السعر السابق ${plan.oldAmount} ريال — خصم ${plan.discount}% — التفعيل بعد تحقق المسؤول من وصول المبلغ.</div>
-      <div class="pay-option"><div class="pay-title">🏦 ${escapeHtml(data.bank)}</div><div class="pay-desc">المستفيد: ${escapeHtml(data.beneficiary)}</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="paymentIban" readonly value="${escapeHtml(data.iban)}" style="flex:1;font-family:var(--font-mono);direction:ltr"><button class="btn-modal btn-modal-confirm" onclick="copyPaymentIban()">نسخ الآيبان</button></div></div>
-      <div class="pay-option"><label class="pay-desc">رقم العملية أو مرجع التحويل (اختياري)</label><input id="transferReference" placeholder="أدخل رقم العملية" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;background:rgba(255,255,255,.04);color:inherit;border:1px solid var(--border)"></div>
-      <button class="btn-modal btn-modal-confirm" onclick="submitManualTransferOrder('${planCode}')">إرسال طلب المراجعة</button>
-      <button class="btn-modal btn-modal-cancel" onclick="closeUpgradeModal()">إلغاء</button>`;
+      <div class="sub">حوّل المبلغ ثم ارفع إيصال التحويل. يتم التفعيل تلقائياً بعد قراءة المبلغ والمرجع عبر OCR — بدون موافقة إدارية.</div>
+      <div class="pay-option"><div class="pay-title">🏦 ${escapeHtml(data.bank || BANK_PAYMENT_FALLBACK.bank)}</div>
+      <div class="pay-desc">اسم الحساب: <strong>${escapeHtml(data.accountName || data.beneficiary || BANK_PAYMENT_FALLBACK.accountName)}</strong></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="paymentAccountNumber" readonly value="${escapeHtml(data.accountNumber || BANK_PAYMENT_FALLBACK.accountNumber)}" style="flex:1;font-family:var(--font-mono);direction:ltr"><button class="btn-modal btn-modal-confirm" type="button" onclick="copyPaymentField('paymentAccountNumber','رقم الحساب')">نسخ رقم الحساب</button></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="paymentIban" readonly value="${escapeHtml(data.iban || BANK_PAYMENT_FALLBACK.iban)}" style="flex:1;font-family:var(--font-mono);direction:ltr"><button class="btn-modal btn-modal-confirm" type="button" onclick="copyPaymentField('paymentIban','الآيبان')">نسخ الآيبان</button></div></div>
+      <div class="pay-option"><label class="pay-desc">مرجع التحويل (إن لم يُستخرج تلقائياً)</label><input id="transferReference" placeholder="رقم العملية / المرجع" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;background:rgba(255,255,255,.04);color:inherit;border:1px solid var(--border)"></div>
+      <div class="pay-option"><label class="pay-desc">رفع إيصال التحويل (صورة)</label><input id="receiptFile" type="file" accept="image/*,application/pdf" style="width:100%;margin-top:8px"></div>
+      <button class="btn-modal btn-modal-confirm" type="button" onclick="submitReceiptActivation('${planCode}')">رفع الإيصال وتفعيل الاشتراك</button>
+      <button class="btn-modal btn-modal-cancel" type="button" onclick="closeUpgradeModal()">إلغاء</button>`;
 }
-async function copyPaymentIban() {
-  const input = document.getElementById("paymentIban");
+async function copyPaymentField(inputId, label) {
+  const input = document.getElementById(inputId);
   if (!input) return;
   await navigator.clipboard.writeText(input.value);
-  toast("تم نسخ الآيبان", "success");
+  toast("تم نسخ " + (label || "القيمة"), "success");
 }
-async function submitManualTransferOrder(planCode) {
+async function copyPaymentIban() {
+  return copyPaymentField("paymentIban", "الآيبان");
+}
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function submitReceiptActivation(planCode) {
   const plan = SUBSCRIPTION_PLANS[planCode];
   if (!plan || !currentUser) return;
-  const transferReference =
-    document.getElementById("transferReference")?.value?.trim() || null;
-  const { error } = await sb.from("manual_transfer_orders").insert({
-    user_id: currentUser.id,
-    plan_code: planCode,
-    amount_sar: plan.amount,
-    transfer_reference: transferReference,
-  });
-  if (error) {
-    toast("تعذر إرسال طلب التحويل: " + error.message, "error");
+  const file = document.getElementById("receiptFile")?.files?.[0];
+  const transferReference = document.getElementById("transferReference")?.value?.trim() || null;
+  if (!file && !transferReference) {
+    toast("ارفع صورة الإيصال أو أدخل مرجع التحويل", "warn");
     return;
   }
-  toast("تم استلام طلب التحويل — بانتظار مراجعة المسؤول", "success");
-  closeUpgradeModal();
+  toast("جارٍ التحقق من الإيصال…", "info");
+  let receiptPath = null;
+  let receiptBase64 = null;
+  let mimeType = file?.type || "image/jpeg";
+  try {
+    if (file) {
+      receiptBase64 = await fileToBase64(file);
+      const path = `${currentUser.id}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g, "_")}`;
+      const { error: upErr } = await sb.storage.from("receipts").upload(path, file, { upsert: false });
+      if (!upErr) receiptPath = path;
+    }
+    const { data, error } = await sb.functions.invoke("verify-payment-receipt", {
+      body: {
+        planCode,
+        receiptBase64,
+        mimeType,
+        receiptPath,
+        manualReference: transferReference,
+        manualAmount: plan.amount,
+      },
+    });
+    if (error) throw error;
+    if (data?.error === "duplicate_reference") {
+      toast(data.message || "مرجع التحويل مستخدم مسبقاً", "error");
+      return;
+    }
+    if (data?.error === "wrong_amount" || data?.error === "plan_amount_mismatch") {
+      toast(data.message || "المبلغ غير مطابق (299 أو 899 فقط)", "error");
+      return;
+    }
+    if (!data?.ok) {
+      toast(data?.message || data?.error || "تعذر التفعيل", "error");
+      return;
+    }
+    if (currentProfile) {
+      currentProfile.subscription_status = "active";
+      currentProfile.expires_at = data?.result?.expires_at || data?.expires_at || currentProfile.expires_at;
+      currentProfile.trial_end = currentProfile.expires_at || currentProfile.trial_end;
+      currentProfile.approved = true;
+    }
+    updateTrial();
+    toast("✅ تم تفعيل الاشتراك تلقائياً — " + (data.days || plan.days) + " يوماً", "success");
+    closeUpgradeModal();
+  } catch (e) {
+    console.error(e);
+    toast("تعذر تفعيل الاشتراك: " + (e?.message || "خطأ"), "error");
+  }
 }
 
 // ===== ADMIN (Supabase) =====
@@ -2101,24 +2265,66 @@ async function loadMySupportTickets() {
   if (!tb || !currentUser) return;
   const { data, error } = await sb
     .from("support_tickets")
-    .select("*")
+    .select("id,subject,message,priority,status,admin_reply,replied_at,created_at,updated_at")
     .eq("user_id", currentUser.id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(50);
   if (error) {
-    tb.innerHTML = `<tr><td colspan="5" class="text-muted">تعذر تحميل التذاكر</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="6" class="text-muted">تعذر تحميل التذاكر: ${escapeHtml(error.message)}. نفّذ sql/support_tickets_rls_migration.sql</td></tr>`;
     return;
   }
+  const ids = (data || []).map((t) => t.id);
+  let repliesByTicket = {};
+  if (ids.length) {
+    const { data: replies } = await sb
+      .from("support_ticket_replies")
+      .select("id,ticket_id,body,is_admin,created_at")
+      .in("ticket_id", ids)
+      .order("created_at", { ascending: true });
+    (replies || []).forEach((r) => {
+      (repliesByTicket[r.ticket_id] ||= []).push(r);
+    });
+  }
   if (!data?.length) {
-    tb.innerHTML =
-      '<tr><td colspan="5" class="text-muted" style="padding:20px;text-align:center;">لا توجد تذاكر حتى الآن</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" class="text-muted">لا توجد تذاكر بعد</td></tr>';
     return;
   }
   tb.innerHTML = data
-    .map(
-      (t) =>
-        `<tr><td>${new Date(t.created_at).toLocaleString("ar-SA")}</td><td>${escapeHtml(t.subject)}<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.message))}</div></td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td style="white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.admin_reply) || "بانتظار رد المسؤول")}</td></tr>`,
-    )
+    .map((t) => {
+      const hist = (repliesByTicket[t.id] || [])
+        .map(
+          (r) =>
+            `<div class="ticket-hist-item"><small>${new Date(r.created_at).toLocaleString("ar-SA")} · ${r.is_admin ? "المسؤول" : "أنت"}</small><div>${escapeHtml(normalizeDbText(r.body))}</div></div>`,
+        )
+        .join("");
+      const adminBit = t.admin_reply
+        ? `<div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.admin_reply))}</div>`
+        : '<span class="text-muted">—</span>';
+      return `<tr><td>${new Date(t.created_at).toLocaleDateString("ar-SA")}</td><td><strong>${escapeHtml(t.subject)}</strong><div class="text-muted" style="font-size:11px;white-space:pre-wrap;">${escapeHtml(normalizeDbText(t.message))}</div>${hist ? `<details style="margin-top:6px"><summary>سجل المحادثة</summary>${hist}</details>` : ""}</td><td>${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || t.priority)}</td><td>${ticketBadge(t.status)}</td><td>${adminBit}</td><td><button class="admin-btn" onclick="openTicketDrawer('${t.id}')">تفاصيل</button></td></tr>`;
+    })
     .join("");
+}
+async function openTicketDrawer(ticketId) {
+  const { data: t } = await sb.from("support_tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!t) return;
+  const { data: replies } = await sb
+    .from("support_ticket_replies")
+    .select("*")
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: true });
+  const drawer = document.getElementById("pickDrawer") || document.getElementById("ticketDrawer");
+  const body = document.getElementById("pickDrawerBody") || document.getElementById("ticketDrawerBody");
+  if (!drawer || !body) {
+    toast(`${t.subject} — ${TICKET_STATUS_LABEL[t.status] || t.status}`, "info");
+    return;
+  }
+  body.innerHTML = `<h3>${escapeHtml(t.subject)}</h3>
+    <p class="text-muted">${ticketBadge(t.status)} · ${escapeHtml(TICKET_PRIORITY_LABEL[t.priority] || "")}</p>
+    <p style="white-space:pre-wrap">${escapeHtml(normalizeDbText(t.message))}</p>
+    <div class="section-title">السجل</div>
+    ${(replies || []).map((r) => `<article class="glass" style="padding:10px;margin:8px 0"><small>${new Date(r.created_at).toLocaleString("ar-SA")} · ${r.is_admin ? "المسؤول" : "أنت"}</small><div>${escapeHtml(normalizeDbText(r.body))}</div></article>`).join("") || "<p class=text-muted>لا ردود بعد</p>"}`;
+  drawer.classList.add("active");
+  drawer.hidden = false;
 }
 async function refreshSupportTickets() {
   const tb = document.getElementById("adminTicketsBody");
@@ -3800,6 +4006,7 @@ const PREMIUM_PAGE_TITLES = {
   indicators: "التحليل الفني",
   course: "الدورة التعليمية",
   marketer: "المسوق الذكي",
+  profile: "الحساب والإشعارات",
   support: "الدعم والتذاكر",
   admin: "لوحة الإدارة",
 };
@@ -4318,7 +4525,7 @@ function switchTab(id) {
   renderInAppNotificationCenter();
 }
 
-// ===== INDICATORS (Fib / SMC / ATR — still overlaid on the decorative chart above, unchanged logic) =====
+// ===== INDICATORS (Fib / SMC / ATR) — overlays on interactive OHLC chart (static cosmetic chart removed) =====
 let indicatorState = {
   fib: { active: false, settings: {} },
   lux: { active: false, settings: {} },
@@ -4685,31 +4892,95 @@ function applyLuxAlgoSMC(data) {
     }
   }
 }
-function initIndicatorChart() {
+function computeSMA(closes, period) {
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    sum += closes[i];
+    if (i >= period) sum -= closes[i - period];
+    if (i >= period - 1) out.push(sum / period);
+    else out.push(null);
+  }
+  return out;
+}
+function computeRSI(closes, period = 14) {
+  const out = new Array(closes.length).fill(null);
+  if (closes.length <= period) return out;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) gains += d; else losses -= d;
+  }
+  let avgGain = gains / period, avgLoss = losses / period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const gain = d > 0 ? d : 0, loss = d < 0 ? -d : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return out;
+}
+function computeMACD(closes, fast = 12, slow = 26, signal = 9) {
+  const ema = (period) => {
+    const k = 2 / (period + 1);
+    const out = [];
+    let prev = null;
+    for (let i = 0; i < closes.length; i++) {
+      prev = prev == null ? closes[i] : closes[i] * k + prev * (1 - k);
+      out.push(prev);
+    }
+    return out;
+  };
+  const ef = ema(fast), es = ema(slow);
+  const macd = ef.map((v, i) => v - es[i]);
+  const k = 2 / (signal + 1);
+  const sig = [];
+  let prev = null;
+  for (let i = 0; i < macd.length; i++) {
+    prev = prev == null ? macd[i] : macd[i] * k + prev * (1 - k);
+    sig.push(prev);
+  }
+  return { macd, signal: sig, hist: macd.map((v, i) => v - sig[i]) };
+}
+async function loadInteractiveOhlcChart(symbol) {
   const box = document.getElementById("chartBoxIndicators");
   const cont = document.getElementById("chartContainerIndicators");
-  if (!box || !cont || box.clientWidth === 0) return;
+  const status = document.getElementById("analysisChartStatus");
+  if (!box || !cont) return;
+  const sym = String(symbol || document.getElementById("analysisTickerInput")?.value || "")
+    .trim()
+    .toUpperCase();
+  if (!sym) {
+    toast("أدخل رمز سهم للرسم التفاعلي", "warn");
+    return;
+  }
+  if (status) status.textContent = "جارٍ تحميل OHLC لـ " + sym + "…";
   if (window.indicatorChart) {
     window.indicatorChart.remove();
     window.indicatorChart = null;
   }
+  box.style.height = "420px";
+  const { data, error } = await sb.functions.invoke("fetch-ohlc", { body: { symbol: sym, range: "6mo" } });
+  if (error || !data?.bars?.length) {
+    if (status) status.textContent = "تعذر تحميل البيانات";
+    toast("تعذر جلب شموع " + sym, "error");
+    return;
+  }
+  const bars = data.bars;
   window.indicatorChart = LightweightCharts.createChart(cont, {
     width: cont.clientWidth,
-    height: cont.clientHeight,
+    height: 420,
     layout: { background: { color: "transparent" }, textColor: "#6b7280" },
     grid: {
       vertLines: { color: "rgba(255,255,255,0.03)" },
       horzLines: { color: "rgba(255,255,255,0.03)" },
     },
-    timeScale: { timeVisible: true, borderColor: "rgba(255,255,255,0.06)" },
+    timeScale: { timeVisible: false, borderColor: "rgba(255,255,255,0.06)" },
     rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
-    crosshair: {
-      mode: 1,
-      vertLine: { color: "#00f0ff", width: 1, style: 2 },
-      horzLine: { color: "#00f0ff", width: 1, style: 2 },
-    },
   });
-  const series = window.indicatorChart.addCandlestickSeries({
+  const candle = window.indicatorChart.addCandlestickSeries({
     upColor: "#00e676",
     downColor: "#ff1744",
     borderUpColor: "#00e676",
@@ -4717,30 +4988,46 @@ function initIndicatorChart() {
     wickUpColor: "#00e676",
     wickDownColor: "#ff1744",
   });
-  const data = [];
-  let v = 100;
-  for (let i = 60; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const o = v + (Math.random() - 0.5) * 3;
-    const c = o + (Math.random() - 0.5) * 4;
-    const h = Math.max(o, c) + Math.random() * 2;
-    const l = Math.min(o, c) - Math.random() * 2;
-    v = c;
-    data.push({
-      time: d.toISOString().split("T")[0],
-      open: +o.toFixed(2),
-      high: +h.toFixed(2),
-      low: +l.toFixed(2),
-      close: +c.toFixed(2),
-    });
-  }
-  series.setData(data);
-  window.indicatorChart.timeScale().fitContent();
-  window.addEventListener("resize", () => {
-    if (window.indicatorChart && cont)
-      window.indicatorChart.resize(cont.clientWidth, cont.clientHeight);
+  candle.setData(bars.map((b) => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close })));
+  const closes = bars.map((b) => b.close);
+  const sma20 = computeSMA(closes, 20);
+  const sma50 = computeSMA(closes, 50);
+  const ma20 = window.indicatorChart.addLineSeries({ color: "#00f0ff", lineWidth: 2, title: "MA20" });
+  const ma50 = window.indicatorChart.addLineSeries({ color: "#ffd700", lineWidth: 2, title: "MA50" });
+  ma20.setData(bars.map((b, i) => (sma20[i] == null ? null : { time: b.time, value: +sma20[i].toFixed(4) })).filter(Boolean));
+  ma50.setData(bars.map((b, i) => (sma50[i] == null ? null : { time: b.time, value: +sma50[i].toFixed(4) })).filter(Boolean));
+  const rsiVals = computeRSI(closes, 14);
+  const rsiSeries = window.indicatorChart.addLineSeries({
+    color: "#b829dd",
+    lineWidth: 2,
+    title: "RSI14",
+    priceScaleId: "rsi",
   });
+  window.indicatorChart.priceScale("rsi").applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
+  rsiSeries.setData(bars.map((b, i) => (rsiVals[i] == null ? null : { time: b.time, value: +rsiVals[i].toFixed(2) })).filter(Boolean));
+  const { macd, signal } = computeMACD(closes);
+  const macdSeries = window.indicatorChart.addLineSeries({ color: "#2196f3", lineWidth: 1, title: "MACD", priceScaleId: "macd" });
+  const sigSeries = window.indicatorChart.addLineSeries({ color: "#ff9100", lineWidth: 1, title: "Signal", priceScaleId: "macd" });
+  window.indicatorChart.priceScale("macd").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+  macdSeries.setData(bars.map((b, i) => ({ time: b.time, value: +macd[i].toFixed(4) })));
+  sigSeries.setData(bars.map((b, i) => ({ time: b.time, value: +signal[i].toFixed(4) })));
+  window.indicatorChart.timeScale().fitContent();
+  window._indicatorCandleSeries = candle;
+  if (status) status.textContent = `${sym} · ${bars.length} شمعة · ${data.source || "live"} · RSI/MA/MACD`;
+  toast("تم تحميل رسم " + sym, "success");
+}
+function initIndicatorChart() {
+  const box = document.getElementById("chartBoxIndicators");
+  const cont = document.getElementById("chartContainerIndicators");
+  if (!box || !cont) return;
+  // No static/cosmetic random candles — wait for ticker search.
+  if (window.indicatorChart) {
+    window.indicatorChart.remove();
+    window.indicatorChart = null;
+  }
+  cont.innerHTML = '<div class="chart-empty-state" style="height:100%;display:grid;place-items:center;text-align:center;padding:24px;color:var(--text-muted)"><div><strong>ابحث عن رمز سهم</strong><p>أدخل رمزاً مثل AAPL ثم حمّل الشموع الحقيقية مع RSI / MA / MACD.</p></div></div>';
+  const status = document.getElementById("analysisChartStatus");
+  if (status) status.textContent = "بانتظار اختيار رمز";
 }
 const EXCLUDED_SECTOR_RE =
   /financial|finance|bank|banc|insurance|insur|capital|credit|mortgage|broker|asset management|investment|reinsurance|real estate|property|properties|reit|healthcare|health care|biotech|biotechnology|pharma|therapeutic|medical|energy|oil|gas|petroleum|coal|solar|utilities/i;
@@ -6123,7 +6410,9 @@ async function runWeeklyScan() {
       const gradeBadgeClass = `badge-${String(assessment.dataGrade || "D").toLowerCase()}`;
       const reason = sigEsc(s.aiReason || weeklyReason(s));
       const gold = !watchOnly && i === 0;
-      return `<article class="pick-card${gold ? " pick-card-gold" : ""}${watchOnly ? " pick-card-watch" : ""}" title="${sigEsc(`${watchOnly ? "متابعة" : "ترشيح"}: ${reason}`)}">
+      const glow = !watchOnly && Number(s?.bestEntryScore || 0) >= 3 ? " pick-glow-entry" : (Number(s?.rsi14 || s?.rsi || 0) >= 70 ? " pick-glow-exit" : "");
+      const demandSupply = Number(s?.price) && Number(s?.sma50) && Number(s.price) <= Number(s.sma50) * 1.02 ? "طلب" : (Number(s?.rsi14 || s?.rsi || 0) >= 65 ? "عرض" : "—");
+      return `<article class="pick-card${gold ? " pick-card-gold" : ""}${watchOnly ? " pick-card-watch" : ""}${glow}" data-symbol="${sigEsc(s.symbol)}" onclick="openPickDrawer('${String(s.symbol).replace(/'/g, "")}')" title="${sigEsc(`${watchOnly ? "متابعة" : "ترشيح"}: ${reason}`)}">
         <header>
           <span class="pick-rank">${gold ? "↑" : i + 1}</span>
           <strong class="pick-sym">${sigEsc(s.symbol)}</strong>
@@ -6133,6 +6422,8 @@ async function runWeeklyScan() {
         <div class="pick-metrics">
           <div><small>التقييم</small><b class="${ratingClass}">${assessment.score.toFixed(1)}/10</b> <span class="badge ${gradeBadgeClass} rating-grade-badge">${assessment.dataGrade}</span></div>
           <div><small>السعر</small><b class="font-mono">$${Number(s.price).toFixed(2)}</b></div>
+          <div><small>Demand/Supply</small><b>${demandSupply}</b></div>
+          <div><small>دخول</small><b class="font-mono">${sigEsc(entryText)}</b></div>
           <div><small>المنطقة</small><b>${sigEsc(entryText)}</b></div>
         </div>
         <p class="pick-reason">${reason}</p>
@@ -6687,7 +6978,7 @@ async function openSignalChart(symbol) {
 // ===== EDUCATION, SIMULATION CONSENT & 60-DAY TRIAL =====
 const TRIAL_DAYS = 30;
 function ensureEducationConsent() {
-  // بعد موافقة الحساب مرة واحدة لا نعرض الإقرار في تسجيلات الدخول اللاحقة.
+  // disclaimer_accepted once per account — never re-show after DB/local accept.
   const localKey = `az_education_consent_${currentUser?.id || "guest"}`;
   const raw = localStorage.getItem(localKey);
   let localAccepted = false;
@@ -6697,8 +6988,8 @@ function ensureEducationConsent() {
     localAccepted = raw === "accepted";
   }
   const profileAccepted =
-    currentProfile?.age_confirmed === true &&
-    !!currentProfile?.education_consent_at;
+    currentProfile?.disclaimer_accepted === true ||
+    (currentProfile?.age_confirmed === true && !!currentProfile?.education_consent_at);
   if (localAccepted || profileAccepted) return true;
   const modal = document.getElementById("educationDisclaimerModal");
   if (modal) modal.classList.add("active");
@@ -6726,11 +7017,18 @@ async function acceptEducationConsent() {
     const consentAt = new Date().toISOString();
     const { error: consentError } = await sb
       .from("profiles")
-      .update({ age_confirmed: true, education_consent_at: consentAt })
+      .update({
+        age_confirmed: true,
+        education_consent_at: consentAt,
+        disclaimer_accepted: true,
+        disclaimer_accepted_at: consentAt,
+      })
       .eq("id", currentUser.id);
     if (!consentError && currentProfile) {
       currentProfile.age_confirmed = true;
       currentProfile.education_consent_at = consentAt;
+      currentProfile.disclaimer_accepted = true;
+      currentProfile.disclaimer_accepted_at = consentAt;
     }
   }
   document
@@ -7085,11 +7383,15 @@ async function syncVirtualTraderFromServer() {
   const sharedTrades = !sharedTradesRes.error && Array.isArray(sharedTradesRes.data) ? sharedTradesRes.data : [];
   const userPositions = !userPositionsRes.error && Array.isArray(userPositionsRes.data) ? userPositionsRes.data : [];
   const userTrades = !userTradesRes.error && Array.isArray(userTradesRes.data) ? userTradesRes.data : [];
-  const positionsData = sharedPositions.length ? sharedPositions : userPositions;
-  const tradesData = sharedTrades.length ? sharedTrades : userTrades;
-  const portfolio = (sharedPortfolioRes.data && !sharedPortfolioRes.error && !sharedPositionsRes.error)
+  // Shared tables are the single source of truth (scanner/marketer engines write here).
+  // Per-user virtual_* tables are legacy fallback only when shared is completely empty/erroring.
+  const sharedOk = !sharedPortfolioRes.error && sharedPortfolioRes.data;
+  const positionsData = sharedOk || sharedPositions.length ? sharedPositions : userPositions;
+  const tradesData = sharedOk || sharedTrades.length ? sharedTrades : userTrades;
+  const portfolio = sharedOk
     ? sharedPortfolioRes.data
     : (userPortfolioRes.data || sharedPortfolioRes.data || { cash: VIRTUAL_STARTING_CASH });
+  // Flag: do not drive Home "watched stocks" universe from this sync path (removed from Home UI).
   if (sharedPortfolioRes.error && userPortfolioRes.error && sharedPositionsRes.error && userPositionsRes.error && sharedTradesRes.error && userTradesRes.error) {
     console.warn("تعذر مزامنة جداول المحاكي:", sharedPortfolioRes.error || userPortfolioRes.error);
     return;

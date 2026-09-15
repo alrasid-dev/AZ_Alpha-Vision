@@ -32,8 +32,8 @@ function pickStyle({ event, postedToday = 0, lastStyle = null }) {
 
 const TRENDING_HASHTAG_POOL = {
   management: ['#الإدارة_الذكية', '#ريادة_الأعمال', '#تطوير_الأعمال', '#الإنتاجية'],
-  finance_ar: ['#أسواق_المال', '#تحليل_فني', '#الأسهم_الأمريكية', '#استثمار'],
-  finance_en: ['#StockMarket', '#FinTok', '#Investing', '#MarketNews'],
+  finance_ar: ['#أسواق_المال', '#تحليل_فني', '#الأسهم_الأمريكية', '#السوق_الأمريكي', '#استثمار'],
+  finance_en: ['#StockMarket', '#FinTok', '#Investing', '#MarketNews', '#USMarkets'],
   brand: ['#AZAlphaVision'],
 };
 
@@ -66,10 +66,12 @@ function smartHashtags({ event, style, dayIndex = 0 }) {
   const secondary = pool[(dayIndex + 1) % pool.length];
   // وسم الهوية #AZAlphaVision يبقى مضموناً دائماً في الناتج؛ سابقاً كان القص عند 3 وسوم
   // يُسقطه بصمت كلما وُجد وسم رمز سهم (لأن الترتيب [رمز، موضوع1، موضوع2، هوية] يقصّه القص).
-  const topicTags = [...new Set([rotated, secondary])].filter(Boolean);
-  const tags = [symbolTag, ...topicTags].filter(Boolean).slice(0, 3);
+  const topicTags = [...new Set([rotated, secondary, '#السوق_الأمريكي'])].filter(Boolean);
+  // Always prefer ticker hashtag (#AAPL) + US market tag + brand
+  const tags = [symbolTag, ...topicTags].filter(Boolean);
   if (!tags.includes(TRENDING_HASHTAG_POOL.brand[0])) tags.push(TRENDING_HASHTAG_POOL.brand[0]);
-  return [...new Set(tags)].join(' ');
+  // Cap at 5 to leave room for CTA/link weight on X
+  return [...new Set(tags)].slice(0, 5).join(' ');
 }
 
 module.exports = { STYLES, pickStyle, smartHashtags, hashtagForSymbol };

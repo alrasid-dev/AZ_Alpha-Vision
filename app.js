@@ -1434,6 +1434,11 @@ async function initApp(user, profile) {
     loadMarketPulse();
     loadWatchlist();
     if (typeof loadUserPortfolio === "function") loadUserPortfolio();
+    // تحديث mark-to-market للمحاكي مع نبض الأسعار (~60ث في الجلسة)
+    if (typeof refreshVirtualPositionQuotes === "function")
+      refreshVirtualPositionQuotes({ render: true }).then((r) => {
+        if (r?.ok) setHomeSyncStamp(new Date().toLocaleTimeString("ar-SA"), "ok");
+      });
   }, liveRefreshMs());
   if (stockTableTimer) clearInterval(stockTableTimer);
   stockTableTimer = setInterval(() => runScanner(), liveRefreshMs());
@@ -5350,85 +5355,94 @@ async function fetchPrice(sym) {
 }
 // ===== LIVE STOCKS TAB (now: live_quotes for price, market_technicals for signal context) =====
 async function runScanner() {
-  document.getElementById("lastUpdate").textContent = "جاري التحديث...";
+  setHomeSyncStamp("جاري التحديث...", "pending");
   const tb = document.getElementById("stockTableBody");
-  tb.innerHTML = tableSkeleton(7, 4);
+  try {
+    if (tb) tb.innerHTML = tableSkeleton(7, 4);
 
-  const { data: liveRows } = await sb
-    .from("live_quotes")
-    .select("*")
-    .limit(5000);
-  const universe = await fetchUniverse();
-  const universeMap = Object.fromEntries(universe.map((r) => [r.symbol, r]));
-  const liveMap = Object.fromEntries(
-    (liveRows || []).map((r) => [r.symbol, r]),
-  );
+    const { data: liveRows, error: liveErr } = await sb
+      .from("live_quotes")
+      .select("*")
+      .limit(5000);
+    if (liveErr) throw liveErr;
+    const universe = await fetchUniverse();
+    const universeMap = Object.fromEntries(universe.map((r) => [r.symbol, r]));
+    const liveMap = Object.fromEntries(
+      (liveRows || []).map((r) => [r.symbol, r]),
+    );
 
-  const results = universe.map((base) => {
-    const sym = String(base.symbol || "").toUpperCase();
-    const live = liveMap[sym];
-    if (!base) return null;
-    if (!isCommonStockRow(base)) return null;
-    const price = live?.price ?? base?.price ?? null;
-    if (
-      price == null ||
-      price < GENERAL_MARKET_RULE.minPrice ||
-      price > GENERAL_MARKET_RULE.maxPrice
-    )
-      return null;
-    const change = live?.change_pct ?? base?.change ?? null;
-    const volume = Number(live?.volume || 0) || Number(base?.volume || 0) || Number(base?.avgVolume || 0) || 0;
-    if (price == null) return null;
-    return {
-      symbol: sym,
-      price,
-      change: change ?? 0,
-      volume,
-      rsi: base?.rsi ?? null,
-      sma50: base?.sma50 ?? null,
-      sma200: base?.sma200 ?? null,
-      sector: classifySector(base),
-    };
-  }).filter(Boolean);
+    const results = universe.map((base) => {
+      const sym = String(base.symbol || "").toUpperCase();
+      const live = liveMap[sym];
+      if (!base) return null;
+      if (!isCommonStockRow(base)) return null;
+      const price = live?.price ?? base?.price ?? null;
+      if (
+        price == null ||
+        price < GENERAL_MARKET_RULE.minPrice ||
+        price > GENERAL_MARKET_RULE.maxPrice
+      )
+        return null;
+      const change = live?.change_pct ?? base?.change ?? null;
+      const volume = Number(live?.volume || 0) || Number(base?.volume || 0) || Number(base?.avgVolume || 0) || 0;
+      if (price == null) return null;
+      return {
+        symbol: sym,
+        price,
+        change: change ?? 0,
+        volume,
+        rsi: base?.rsi ?? null,
+        sma50: base?.sma50 ?? null,
+        sma200: base?.sma200 ?? null,
+        sector: classifySector(base),
+      };
+    }).filter(Boolean);
 
-  let html = "";
-  results.forEach((d) => {
-    let sig = "متابعة",
-      cls = "badge-hold";
-    if (d.rsi != null && d.rsi < 30 && d.change > 0) {
-      sig = "شراء قوي";
-      cls = "badge-strong-buy";
-    } else if (d.rsi != null && d.rsi > 70 && d.change < 0) {
-      sig = "بيع قوي";
-      cls = "badge-strong-sell";
-    } else if (
-      d.sma50 != null &&
-      d.sma200 != null &&
-      d.price > d.sma50 &&
-      d.price > d.sma200 &&
-      d.change > 2
-    ) {
-      sig = "دخول";
-      cls = "badge-buy";
-    } else if (
-      d.sma50 != null &&
-      d.sma200 != null &&
-      d.price < d.sma50 &&
-      d.price < d.sma200 &&
-      d.change < -2
-    ) {
-      sig = "خروج";
-      cls = "badge-sell";
-    }
-    const vf = formatShareVolume(d.volume);
-    const rsiTxt = d.rsi != null ? d.rsi.toFixed(1) : "—";
-    html += `<tr><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${d.change >= 0 ? "text-green" : "text-red"}">${d.change >= 0 ? "+" : ""}${d.change.toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td class="font-mono">${rsiTxt}</td><td><span class="badge ${cls}">${sig}</span></td><td><span style="color:var(--accent-cyan);cursor:pointer;font-size:16px;" onclick="quickAdd('${d.symbol}',${d.price})">+</span></td></tr>`;
-  });
-  tb.innerHTML =
-    html ||
-    '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">لا بيانات بعد — تحقق أن Actions البيانات عملت مرة واحدة على الأقل</td></tr>';
-  document.getElementById("lastUpdate").textContent =
-    new Date().toLocaleTimeString("ar-SA");
+    let html = "";
+    results.forEach((d) => {
+      let sig = "متابعة",
+        cls = "badge-hold";
+      if (d.rsi != null && d.rsi < 30 && d.change > 0) {
+        sig = "شراء قوي";
+        cls = "badge-strong-buy";
+      } else if (d.rsi != null && d.rsi > 70 && d.change < 0) {
+        sig = "بيع قوي";
+        cls = "badge-strong-sell";
+      } else if (
+        d.sma50 != null &&
+        d.sma200 != null &&
+        d.price > d.sma50 &&
+        d.price > d.sma200 &&
+        d.change > 2
+      ) {
+        sig = "دخول";
+        cls = "badge-buy";
+      } else if (
+        d.sma50 != null &&
+        d.sma200 != null &&
+        d.price < d.sma50 &&
+        d.price < d.sma200 &&
+        d.change < -2
+      ) {
+        sig = "خروج";
+        cls = "badge-sell";
+      }
+      const vf = formatShareVolume(d.volume);
+      const rsiTxt = d.rsi != null ? d.rsi.toFixed(1) : "—";
+      html += `<tr><td><div class="sym">${d.symbol}</div></td><td class="font-mono">$${d.price.toFixed(2)}</td><td class="font-mono ${d.change >= 0 ? "text-green" : "text-red"}">${d.change >= 0 ? "+" : ""}${d.change.toFixed(2)}%</td><td class="font-mono text-muted">${vf}</td><td class="font-mono">${rsiTxt}</td><td><span class="badge ${cls}">${sig}</span></td><td><span style="color:var(--accent-cyan);cursor:pointer;font-size:16px;" onclick="quickAdd('${d.symbol}',${d.price})">+</span></td></tr>`;
+    });
+    if (tb)
+      tb.innerHTML =
+        html ||
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">لا بيانات بعد — تحقق أن Actions البيانات عملت مرة واحدة على الأقل</td></tr>';
+    setHomeSyncStamp(new Date().toLocaleTimeString("ar-SA"), "ok");
+  } catch (error) {
+    console.warn("تعذر تحديث جدول الأسهم الحي:", error);
+    if (tb)
+      tb.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:30px;">تعذر التحديث — أعد المحاولة لاحقاً</td></tr>';
+    setHomeSyncStamp("تعذر التحديث", "error");
+  }
 }
 
 let signalRealtimeChannel = null;
@@ -7355,6 +7369,8 @@ let virtualTrader = {
 };
 let virtualTraderTimer = null;
 let virtualTraderLoaded = false;
+/** أحدث أسعار حية لمراكز المحاكي (live_quotes / technicals) — لتقييم السوق الفوري */
+const virtualLiveQuoteCache = new Map();
 function virtualTraderKey() {
   return `az_virtual_trader_${currentUser?.id || "guest"}`;
 }
@@ -7379,69 +7395,88 @@ function loadVirtualTrader() {
 }
 async function syncVirtualTraderFromServer() {
   if (!currentUser?.id || !sb) return;
-  const [sharedPortfolioRes, sharedPositionsRes, sharedTradesRes, userPortfolioRes, userPositionsRes, userTradesRes, runRes] = await Promise.all([
-    sb.from("shared_virtual_portfolios").select("*").eq("simulation_id", "global").maybeSingle(),
-    sb.from("shared_virtual_positions").select("*").eq("simulation_id", "global").order("updated_at", { ascending: false }),
-    sb.from("shared_virtual_trades").select("*").eq("simulation_id", "global").order("created_at", { ascending: false }).limit(100),
-    sb.from("virtual_portfolios").select("*").eq("user_id", currentUser.id).maybeSingle(),
-    sb.from("virtual_positions").select("*").eq("user_id", currentUser.id).order("updated_at", { ascending: false }),
-    sb.from("virtual_trades").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(100),
-    sb.from("virtual_trader_runs").select("started_at,status,market_open,candidate_count,entry_candidates,near_entries,blocked_by_plan,blocked_by_price,run_note").order("started_at", { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  const sharedPositions = !sharedPositionsRes.error && Array.isArray(sharedPositionsRes.data) ? sharedPositionsRes.data : [];
-  const sharedTrades = !sharedTradesRes.error && Array.isArray(sharedTradesRes.data) ? sharedTradesRes.data : [];
-  const userPositions = !userPositionsRes.error && Array.isArray(userPositionsRes.data) ? userPositionsRes.data : [];
-  const userTrades = !userTradesRes.error && Array.isArray(userTradesRes.data) ? userTradesRes.data : [];
-  // Shared tables are the single source of truth (scanner/marketer engines write here).
-  // Per-user virtual_* tables are legacy fallback only when shared is completely empty/erroring.
-  const sharedOk = !sharedPortfolioRes.error && sharedPortfolioRes.data;
-  const positionsData = sharedOk || sharedPositions.length ? sharedPositions : userPositions;
-  const tradesData = sharedOk || sharedTrades.length ? sharedTrades : userTrades;
-  const portfolio = sharedOk
-    ? sharedPortfolioRes.data
-    : (userPortfolioRes.data || sharedPortfolioRes.data || { cash: VIRTUAL_STARTING_CASH });
-  // Flag: do not drive Home "watched stocks" universe from this sync path (removed from Home UI).
-  if (sharedPortfolioRes.error && userPortfolioRes.error && sharedPositionsRes.error && userPositionsRes.error && sharedTradesRes.error && userTradesRes.error) {
-    console.warn("تعذر مزامنة جداول المحاكي:", sharedPortfolioRes.error || userPortfolioRes.error);
-    return;
+  setHomeSyncStamp("جاري التحديث...", "pending");
+  try {
+    const [sharedPortfolioRes, sharedPositionsRes, sharedTradesRes, userPortfolioRes, userPositionsRes, userTradesRes, runRes] = await Promise.all([
+      sb.from("shared_virtual_portfolios").select("*").eq("simulation_id", "global").maybeSingle(),
+      sb.from("shared_virtual_positions").select("*").eq("simulation_id", "global").order("updated_at", { ascending: false }),
+      sb.from("shared_virtual_trades").select("*").eq("simulation_id", "global").order("created_at", { ascending: false }).limit(100),
+      sb.from("virtual_portfolios").select("*").eq("user_id", currentUser.id).maybeSingle(),
+      sb.from("virtual_positions").select("*").eq("user_id", currentUser.id).order("updated_at", { ascending: false }),
+      sb.from("virtual_trades").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(100),
+      sb.from("virtual_trader_runs").select("started_at,status,market_open,candidate_count,entry_candidates,near_entries,blocked_by_plan,blocked_by_price,run_note").order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const sharedPositions = !sharedPositionsRes.error && Array.isArray(sharedPositionsRes.data) ? sharedPositionsRes.data : [];
+    const sharedTrades = !sharedTradesRes.error && Array.isArray(sharedTradesRes.data) ? sharedTradesRes.data : [];
+    const userPositions = !userPositionsRes.error && Array.isArray(userPositionsRes.data) ? userPositionsRes.data : [];
+    const userTrades = !userTradesRes.error && Array.isArray(userTradesRes.data) ? userTradesRes.data : [];
+    // Shared tables are the single source of truth (scanner/marketer engines write here).
+    // Per-user virtual_* tables are legacy fallback only when shared is completely empty/erroring.
+    const sharedOk = !sharedPortfolioRes.error && sharedPortfolioRes.data;
+    const positionsData = sharedOk || sharedPositions.length ? sharedPositions : userPositions;
+    const tradesData = sharedOk || sharedTrades.length ? sharedTrades : userTrades;
+    const portfolio = sharedOk
+      ? sharedPortfolioRes.data
+      : (userPortfolioRes.data || sharedPortfolioRes.data || { cash: VIRTUAL_STARTING_CASH });
+    // Flag: do not drive Home "watched stocks" universe from this sync path (removed from Home UI).
+    if (sharedPortfolioRes.error && userPortfolioRes.error && sharedPositionsRes.error && userPositionsRes.error && sharedTradesRes.error && userTradesRes.error) {
+      console.warn("تعذر مزامنة جداول المحاكي:", sharedPortfolioRes.error || userPortfolioRes.error);
+      setHomeSyncStamp("تعذر مزامنة المحاكي", "error");
+      return;
+    }
+    const positions = Object.fromEntries(
+      positionsData.map((p) => {
+        const sym = String(p.symbol).toUpperCase();
+        const entry = Number(p.entry_price);
+        const rawLast = p.last_price == null ? null : Number(p.last_price);
+        const hasDbLast = Number.isFinite(rawLast) && rawLast > 0;
+        const cached = virtualLiveQuoteCache.get(sym);
+        const lastPrice = cached || (hasDbLast ? rawLast : entry);
+        return [sym, {
+          symbol: sym,
+          qty: Number(p.qty),
+          entryPrice: entry,
+          lastPrice: Number(lastPrice),
+          priceFromMarket: Boolean(cached) || hasDbLast,
+          tier: p.entry_tier || p.tier || "Entry",
+          reason: p.reason || "",
+          enteredAt: p.entered_at,
+        }];
+      }),
+    );
+    const trades = tradesData.map((t) => ({
+      id: t.id,
+      symbol: t.symbol,
+      action: t.action,
+      qty: Number(t.qty),
+      price: Number(t.price),
+      entryPrice: t.entry_price == null ? null : Number(t.entry_price),
+      tier: t.tier || t.entry_tier || "Entry",
+      pnl: t.pnl == null ? null : Number(t.pnl),
+      reason: t.reason || "",
+      at: t.created_at,
+    }));
+    const runInfo = runRes.error ? null : runRes.data;
+    virtualTraderLoaded = true;
+    const hydrated = Object.keys(positions).length
+      ? positions
+      : openPositionsFromTrades(trades);
+    virtualTrader = {
+      cash: Number(portfolio.cash ?? VIRTUAL_STARTING_CASH),
+      positions: hydrated,
+      trades,
+      startedAt: portfolio.created_at || null,
+      lastRun: trades[0]?.at || runInfo?.started_at || null,
+      runInfo,
+    };
+    // تقييم السوق فوراً من live_quotes حتى لا يبقى الربح العائم صفراً بانتظار الماسح
+    await refreshVirtualPositionQuotes({ render: false });
+    renderVirtualTrader();
+    setHomeSyncStamp(new Date().toLocaleTimeString("ar-SA"), "ok");
+  } catch (error) {
+    console.warn("تعذر مزامنة المحاكي:", error);
+    setHomeSyncStamp("تعذر مزامنة المحاكي", "error");
   }
-  const positions = Object.fromEntries(
-    positionsData.map((p) => [String(p.symbol).toUpperCase(), {
-      symbol: p.symbol,
-      qty: Number(p.qty),
-      entryPrice: Number(p.entry_price),
-      lastPrice: Number(p.last_price || p.entry_price),
-      tier: p.entry_tier || p.tier || "Entry",
-      reason: p.reason || "",
-      enteredAt: p.entered_at,
-    }]),
-  );
-  const trades = tradesData.map((t) => ({
-    id: t.id,
-    symbol: t.symbol,
-    action: t.action,
-    qty: Number(t.qty),
-    price: Number(t.price),
-    entryPrice: t.entry_price == null ? null : Number(t.entry_price),
-    tier: t.tier || t.entry_tier || "Entry",
-    pnl: t.pnl == null ? null : Number(t.pnl),
-    reason: t.reason || "",
-    at: t.created_at,
-  }));
-  const runInfo = runRes.error ? null : runRes.data;
-  virtualTraderLoaded = true;
-  const hydrated = Object.keys(positions).length
-    ? positions
-    : openPositionsFromTrades(trades);
-  virtualTrader = {
-    cash: Number(portfolio.cash ?? VIRTUAL_STARTING_CASH),
-    positions: hydrated,
-    trades,
-    startedAt: portfolio.created_at || null,
-    lastRun: trades[0]?.at || runInfo?.started_at || null,
-    runInfo,
-  };
-  renderVirtualTrader();
 }
 function openPositionsFromTrades(trades) {
   const book = new Map();
@@ -7567,20 +7602,86 @@ function virtualRealizedPnl() {
     .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
 }
 function markVirtualPositionsFromMarket() {
+  const live = new Map(virtualLiveQuoteCache);
   const rows = [
     ...(Array.isArray(SIGNALS_CACHE) ? SIGNALS_CACHE : []),
     ...(Array.isArray(screenerResults) ? screenerResults : []),
   ];
-  const live = new Map();
   for (const row of rows) {
     const sym = String(row?.symbol || "").toUpperCase();
     const price = virtualPrice(row);
-    if (sym && price) live.set(sym, price);
+    if (sym && price && !live.has(sym)) live.set(sym, price);
   }
   Object.values(virtualTrader.positions || {}).forEach((p) => {
-    const quote = live.get(String(p.symbol || "").toUpperCase());
-    if (quote) p.lastPrice = quote;
+    const sym = String(p.symbol || "").toUpperCase();
+    const quote = live.get(sym);
+    if (quote) {
+      p.lastPrice = quote;
+      p.priceFromMarket = true;
+    }
   });
+}
+function setHomeSyncStamp(message, kind = "ok") {
+  const el = document.getElementById("lastUpdate");
+  const mode = document.getElementById("homeSyncMode");
+  if (el) {
+    if (kind === "pending") {
+      el.textContent = message || "جاري التحديث...";
+      el.dataset.syncKind = "pending";
+    } else if (kind === "error") {
+      el.textContent = message || "تعذر التحديث";
+      el.dataset.syncKind = "error";
+    } else {
+      el.textContent = message || new Date().toLocaleTimeString("ar-SA");
+      el.dataset.syncKind = "ok";
+    }
+  }
+  if (mode) {
+    mode.textContent =
+      kind === "pending" ? "جاري المزامنة" : kind === "error" ? "فشل التحديث" : "تحديث خلفي";
+  }
+}
+/** جلب أسعار المراكز المفتوحة من live_quotes (+ technicals احتياطي) وتحديث الربح العائم فوراً */
+async function refreshVirtualPositionQuotes({ render = true } = {}) {
+  const symbols = Object.keys(virtualTrader?.positions || {}).map((s) =>
+    String(s).toUpperCase(),
+  );
+  if (!symbols.length || !sb) {
+    markVirtualPositionsFromMarket();
+    if (render) renderVirtualTrader();
+    return { ok: true, count: 0 };
+  }
+  try {
+    const [{ data: quotes, error: qErr }, { data: tech, error: tErr }] =
+      await Promise.all([
+        sb.from("live_quotes").select("symbol,price").in("symbol", symbols),
+        sb
+          .from("market_technicals")
+          .select("symbol,price")
+          .in("symbol", symbols),
+      ]);
+    if (qErr) console.warn("VT live_quotes:", qErr.message || qErr);
+    if (tErr) console.warn("VT market_technicals:", tErr.message || tErr);
+    for (const row of tech || []) {
+      const sym = String(row?.symbol || "").toUpperCase();
+      const price = Number(row?.price);
+      if (sym && Number.isFinite(price) && price > 0)
+        virtualLiveQuoteCache.set(sym, price);
+    }
+    // live_quotes لها الأولوية على technicals
+    for (const row of quotes || []) {
+      const sym = String(row?.symbol || "").toUpperCase();
+      const price = Number(row?.price);
+      if (sym && Number.isFinite(price) && price > 0)
+        virtualLiveQuoteCache.set(sym, price);
+    }
+    markVirtualPositionsFromMarket();
+    if (render) renderVirtualTrader();
+    return { ok: true, count: symbols.filter((s) => virtualLiveQuoteCache.has(s)).length };
+  } catch (error) {
+    console.warn("تعذر تحديث أسعار مراكز المحاكي:", error);
+    return { ok: false, error };
+  }
 }
 function virtualUnrealizedPnl() {
   markVirtualPositionsFromMarket();
@@ -7759,10 +7860,11 @@ function virtualGrade(row) {
 function virtualBuyEligible(row) {
   return ["A", "B"].includes(virtualGrade(row));
 }
-function runVirtualTrader(mode = "manual") {
+async function runVirtualTrader(mode = "manual") {
   // التشغيل والتنفيذ في Supabase/GitHub Actions فقط؛ هذه الدالة تحدّث العرض ولا تنفذ أوامر.
-  syncVirtualTraderFromServer();
   if (mode === "manual") toast("جارٍ مزامنة حالة المحاكي من الخلفية", "info");
+  await syncVirtualTraderFromServer();
+  await refreshVirtualPositionQuotes({ render: true });
 }
 function resetVirtualTrader() {
   toast(
@@ -7794,16 +7896,24 @@ function movementSign(value) {
   return n > 0 ? "+" : "";
 }
 function renderVirtualTrader() {
-  const invested = Object.values(virtualTrader.positions).reduce(
+  markVirtualPositionsFromMarket();
+  const positionsList = Object.values(virtualTrader.positions || {});
+  const invested = positionsList.reduce(
     (sum, p) => sum + Number(p.qty) * Number(p.entryPrice),
     0,
   );
-  const unrealized = virtualUnrealizedPnl();
-  const sells = virtualTrader.trades.filter((t) => t.action === "sell");
-  const realized = virtualRealizedPnl();
-  const pnl = realized + unrealized;
-  const equity = VIRTUAL_STARTING_CASH + pnl;
+  const marketValue = positionsList.reduce(
+    (sum, p) => sum + Number(p.qty) * Number(p.lastPrice || p.entryPrice || 0),
+    0,
+  );
+  const cashRemaining = Number(virtualTrader.cash || 0);
+  // حقوق الملكية = النقد + القيمة السوقية للمراكز المفتوحة (mark-to-market)
+  const equity = cashRemaining + marketValue;
+  const pnl = equity - VIRTUAL_STARTING_CASH;
   const returnPct = (pnl / VIRTUAL_STARTING_CASH) * 100;
+  const unrealized = marketValue - invested;
+  const sells = (virtualTrader.trades || []).filter((t) => t.action === "sell");
+  const realized = virtualRealizedPnl();
   const winRate = sells.length
     ? (sells.filter((t) => Number(t.pnl) > 0).length / sells.length) * 100
     : null;
@@ -7811,8 +7921,7 @@ function renderVirtualTrader() {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
   };
-  const cashRemaining = Number(virtualTrader.cash || 0);
-  // رأس المال في الواجهة = النقد المتبقي بعد الشراء (shared_virtual_portfolios.cash) لا رأس المال الابتدائي.
+  // رأس المال (نقد) في الواجهة = النقد المتبقي؛ قيمة المحفظة = equity الكامل
   set("vtCash", `$${cashRemaining.toFixed(2)}`);
   set("vtEquity", `$${cashRemaining.toFixed(2)}`);
   set("vtMarkValue", `$${equity.toFixed(2)}`);
@@ -7830,19 +7939,25 @@ function renderVirtualTrader() {
     `${movementSign(unrealized)}$${unrealized.toFixed(2)}`,
   );
   set("vtWinRate", winRate == null ? "—" : `${winRate.toFixed(1)}%`);
-  set("vtOpenPositions", String(Object.keys(virtualTrader.positions).length));
+  set("vtOpenPositions", String(positionsList.length));
   const posBody = document.getElementById("virtualPositionsBody");
   if (posBody) {
-    const positions = Object.values(virtualTrader.positions);
-    posBody.innerHTML = positions.length
-      ? positions
+    posBody.innerHTML = positionsList.length
+      ? positionsList
           .map((p) => {
             const last = Number(p.lastPrice || p.entryPrice);
             const upnl = (last - Number(p.entryPrice)) * Number(p.qty);
             const pct = Number(p.entryPrice)
               ? (last / Number(p.entryPrice) - 1) * 100
               : 0;
-            return `<tr title="${escapeHtml(p.reason || "")}"><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${movementClass(upnl)}">${movementSign(upnl)}$${upnl.toFixed(2)}</td><td class="${movementClass(pct)}">${movementSign(pct)}${pct.toFixed(2)}%</td><td>${escapeHtml(p.tier)}</td></tr>`;
+            const priced = p.priceFromMarket || virtualLiveQuoteCache.has(String(p.symbol || "").toUpperCase());
+            const upnlTxt = priced
+              ? `${movementSign(upnl)}$${upnl.toFixed(2)}`
+              : "—";
+            const pctTxt = priced
+              ? `${movementSign(pct)}${pct.toFixed(2)}%`
+              : "—";
+            return `<tr title="${escapeHtml(p.reason || "")}"><td class="font-mono">${escapeHtml(p.symbol)}</td><td>${p.qty}</td><td>$${Number(p.entryPrice).toFixed(2)}</td><td>$${last.toFixed(2)}</td><td class="${priced ? movementClass(upnl) : "text-neutral"}">${upnlTxt}</td><td class="${priced ? movementClass(pct) : "text-neutral"}">${pctTxt}</td><td>${escapeHtml(p.tier)}</td></tr>`;
           })
           .join("")
       : '<tr><td colspan="7" class="empty-cell text-muted" style="text-align:center;padding:28px;">لا توجد مراكز مفتوحة حاليًا</td></tr>';
@@ -7853,22 +7968,36 @@ function renderVirtualTrader() {
       ? virtualTrader.trades
           .slice(0, 20)
           .map((t) => {
-            const pos = virtualTrader.positions[String(t.symbol || "").toUpperCase()];
-            const pnlValue =
-              t.action === "buy"
-                ? pos
-                  ? (Number(pos.lastPrice || pos.entryPrice) - Number(pos.entryPrice)) *
-                    Number(t.qty)
-                  : 0
-                : t.pnl == null
-                  ? null
-                  : Number(t.pnl);
-            const pct =
-              t.action === "sell" && t.entryPrice
-                ? (Number(t.price) / Number(t.entryPrice) - 1) * 100
-                : t.action === "buy" && pos && Number(pos.entryPrice)
-                  ? (Number(pos.lastPrice || pos.entryPrice) / Number(pos.entryPrice) - 1) * 100
-                  : 0;
+            const sym = String(t.symbol || "").toUpperCase();
+            const pos = virtualTrader.positions[sym];
+            let pnlValue = null;
+            let pct = null;
+            if (t.action === "buy") {
+              if (pos) {
+                const entry = Number(pos.entryPrice);
+                const last = Number(pos.lastPrice || entry);
+                const priced =
+                  pos.priceFromMarket ||
+                  virtualLiveQuoteCache.has(sym) ||
+                  (Number.isFinite(last) &&
+                    Number.isFinite(entry) &&
+                    entry > 0 &&
+                    Math.abs(last - entry) > 1e-9);
+                if (priced && entry > 0) {
+                  pnlValue = (last - entry) * Number(t.qty);
+                  pct = (last / entry - 1) * 100;
+                }
+              }
+            } else if (t.pnl == null) {
+              pnlValue = null;
+              pct = null;
+            } else {
+              pnlValue = Number(t.pnl);
+              pct =
+                t.entryPrice && Number(t.entryPrice)
+                  ? (Number(t.price) / Number(t.entryPrice) - 1) * 100
+                  : null;
+            }
             const pnlClass =
               pnlValue == null ? "text-neutral" : movementClass(pnlValue);
             const pctClass = pct == null ? "text-neutral" : movementClass(pct);

@@ -769,6 +769,15 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
 .home-virtual-trader{margin-top:18px}
 @media(max-width:760px){.user-portfolio-form{grid-template-columns:1fr}#userPortfolioPnlStrip{grid-template-columns:1fr!important}}#userPortfolioPnlStrip article{padding:8px;border:1px solid rgba(180,202,222,.12);border-radius:8px;background:#0d141d}#userPortfolioPnlStrip strong{display:block;margin-top:6px;font-size:16px}
 </style>
+
+<style id="az-refactor-extras">
+.pick-glow-entry{box-shadow:0 0 0 1px rgba(0,230,118,.45),0 0 24px rgba(0,230,118,.18)!important;border-color:rgba(0,230,118,.5)!important}
+.pick-glow-exit{box-shadow:0 0 0 1px rgba(255,23,68,.4),0 0 24px rgba(255,23,68,.15)!important;border-color:rgba(255,23,68,.45)!important}
+.pick-card{cursor:pointer}
+.notif-matrix .admin-setting-actions{padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.02)}
+#analysisTickerInput{direction:ltr}
+</style>
+
 </head>
 <body>
     <div class="bg-mesh"></div>
@@ -1040,23 +1049,31 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
         </div>
     </div>
 
+    
+    <div id="pickDrawer" class="modal-overlay" hidden>
+      <div class="modal-box" style="max-width:520px;max-height:90vh;overflow:auto">
+        <div id="pickDrawerBody"></div>
+        <button class="btn-modal btn-modal-cancel" type="button" onclick="closePickDrawer()">إغلاق</button>
+      </div>
+    </div>
+
     <div id="upgradeModal" class="modal-overlay">
         <div class="modal-box">
             <h2>اختر باقتك التعليمية</h2>
-            <div class="sub">اختر الباقة، ثم ادفع بالتحويل البنكي المؤقت. لا تُخزن بيانات البطاقة داخل AZ Alpha Vision.</div>
+            <div class="sub">تحويل بنكي ثم رفع الإيصال — التفعيل تلقائي عبر OCR (بدون موافقة إدارية). لا تُخزن بيانات بطاقة.</div>
                 <div class="pay-option">
-                    <div class="pay-title">شهر واحد — <s>713 ريال</s> <strong>499 ريال</strong> <span class="trial-pill">خصم 30%</span></div>
-                    <div class="pay-desc">وصول تعليمي لمدة 30 يومًا.</div>
-                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('monthly')">اختيار الباقة الشهرية</button>
+                    <div class="pay-title">شهر واحد — <s>499 ريال</s> <strong>299 ريال</strong> <span class="trial-pill">30 يوماً</span></div>
+                    <div class="pay-desc">وصول تعليمي لمدة 30 يومًا · حساب: عبدالعزيز محمد</div>
+                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('monthly')">اختيار الباقة الشهرية (299)</button>
                 </div>
                 <div class="pay-option">
-                    <div class="pay-title">ثلاثة أشهر — <s>2332 ريال</s> <strong>1399 ريال</strong> <span class="trial-pill">خصم 40%</span></div>
-                    <div class="pay-desc">وصول تعليمي لمدة 90 يومًا.</div>
-                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('quarterly')">اختيار باقة ثلاثة أشهر</button>
+                    <div class="pay-title">ثلاثة أشهر — <s>1399 ريال</s> <strong>899 ريال</strong> <span class="trial-pill">90 يوماً</span></div>
+                    <div class="pay-desc">وصول تعليمي لمدة 90 يومًا · IBAN قابل للنسخ بعد الاختيار</div>
+                    <button class="btn-modal btn-modal-confirm" onclick="selectSubscriptionPlan('quarterly')">اختيار باقة ثلاثة أشهر (899)</button>
                 </div>
                 <div class="pay-option">
                     <div class="pay-title">🏦 التحويل البنكي</div>
-                    <div class="pay-desc">بعد اختيار الباقة ستظهر بيانات التحويل وزر نسخ الآيبان، ثم ترسل رقم العملية للمراجعة.</div>
+                    <div class="pay-desc">اسم الحساب: عبدالعزيز محمد · رقم الحساب: 226000010006086106666 · IBAN: SA0480000226608016106666</div>
                 </div>
             <button class="btn-modal btn-modal-cancel" onclick="closeUpgradeModal()">إلغاء</button>
         </div>
@@ -1127,8 +1144,9 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                 <button class="tab-btn" onclick="switchTab('signals')" data-tab="signals"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 12h3l2-6 4 12 2-6h5"/></svg></span>الماسح</button>
                 <button class="tab-btn" onclick="switchTab('picks')" data-tab="picks"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></svg></span>الترشيحات</button>
                 <button class="tab-btn" onclick="switchTab('course'); openCourse()" data-tab="course"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v16H6.5A2.5 2.5 0 0 0 4 21.5Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v16h5.5a2.5 2.5 0 0 1 2.5 2.5Z"/></svg></span>التعليم</button>
-                <button class="tab-btn" onclick="switchTab('marketer')" data-tab="marketer"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9l5-4 5 4v7"/><path d="M9 19v-4h6v4"/></svg></span>المسوق</button>
+                <button class="tab-btn hidden" id="marketerTabBtn" onclick="switchTab('marketer')" data-tab="marketer"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9l5-4 5 4v7"/><path d="M9 19v-4h6v4"/></svg></span>المسوق</button>
                 <button class="tab-btn admin hidden" id="adminTabBtn" onclick="switchTab('admin')" data-tab="admin"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg></span>الإدارة</button>
+                <button class="tab-btn" id="profileTabBtn" onclick="switchTab('profile')" data-tab="profile"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"/><path d="M4 20a8 8 0 0 1 16 0"/></svg></span>الحساب</button>
                 <button class="tab-btn tab-support-last" onclick="switchTab('support')" data-tab="support"><span class="tab-icon"><svg viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 12h8M8 16h5"/></svg></span>الدعم</button>
             </div>
 
@@ -1188,7 +1206,10 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <div class="decision-thread" aria-label="مسار الإشارة"><div class="thread-label">مسار الإشارة</div><article><span class="thread-step">01</span><div><small>الإشارة</small><strong id="overviewSignal">لا توجد إشارة دخول جديدة</strong></div></article><i></i><article><span class="thread-step">02</span><div><small>المنطقة المرجعية</small><strong id="overviewEntry">السعر المقترح</strong></div></article><i></i><article><span class="thread-step">03</span><div><small>حالة المركز</small><strong id="overviewPosition">مركز افتراضي</strong></div></article><i></i><article><span class="thread-step">04</span><div><small>المتابعة</small><strong id="overviewResult">متابعة الأداء</strong></div></article><details><summary>كيف يقرأ المحاكي الإشارة؟</summary><p>يعرض المحاكي إشارات النظام ونتائجها التعليمية، ولا يشكل توصية أو أمر تداول.</p></details></div>
                     </section>
                     <section class="market-canvas" aria-label="سوق الأسهم"><div class="canvas-head"><div><span class="eyebrow">MARKET LENS</span><h3>عدسة السوق</h3></div><div class="time-lenses"><span class="active">اليوم</span><span>الأسبوع</span><span>الشهر</span><span>منذ البداية</span></div></div><div id="marketPulseGrid" class="market-pulse-grid" aria-live="polite"><div class="market-pulse-empty">جارٍ تحميل نبض السوق من المصدر.</div></div><div id="marketDailyBrief" class="market-daily-brief">ستظهر قراءة AZ ai التعليمية بعد وصول مؤشرات السوق الفعلية.</div><div class="chart-box chart-awaiting-data" id="chartBox" hidden><div id="chartContainer" style="width:100%;height:100%;"></div></div></section>
-                    <section class="market-stream"><div class="stream-head"><div><span class="eyebrow">LIVE UNIVERSE</span><h3>الأسهم المتابعة</h3></div><button class="orbital-button small" onclick="switchTab('screener')">افتح الفلترة <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button></div><div class="market-table-wrap"><table class="data-table"><thead><tr><th>الرمز</th><th>السعر</th><th>التغيير</th><th>الحجم</th><th>RSI</th><th>الإشارة</th><th></th></tr></thead><tbody id="stockTableBody"></tbody></table></div></section>
+                    <!-- REMOVED from Home UI: Watched Stocks / LIVE UNIVERSE / الأسهم المتابعة (backend scanner still runs; stockTableBody kept hidden for compatibility) -->
+                    <section class="market-stream" hidden aria-hidden="true" data-deprecated="watched-stocks-home">
+                      <tbody id="stockTableBody"></tbody>
+                    </section>
 
                     <section id="homeVirtualTrader" class="home-virtual-trader" aria-label="المحاكي الافتراضي">
                         <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>المحاكي الافتراضي</span><small>سجل مشترك تعليمي — منفصل عن محفظتك</small><div class="line"></div></div>
@@ -1425,7 +1446,13 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                 </div>
 
                 <div id="tab-indicators" class="tab-panel hidden">
-                    <div class="chart-box" id="chartBoxIndicators" style="height:250px; margin-bottom:16px;">
+                    <div class="glass" style="padding:14px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+                      <strong>رسم تفاعلي</strong>
+                      <input id="analysisTickerInput" class="input" type="text" maxlength="10" placeholder="رمز مثل AAPL" style="width:140px;text-transform:uppercase" onkeydown="if(event.key==='Enter'){event.preventDefault();loadInteractiveOhlcChart()}">
+                      <button class="preset-btn" type="button" onclick="loadInteractiveOhlcChart()">تحميل OHLC + RSI/MA/MACD</button>
+                      <small id="analysisChartStatus" class="text-muted">بانتظار اختيار رمز — بلا شموع تجميلية</small>
+                    </div>
+                    <div class="chart-box" id="chartBoxIndicators" style="height:420px; margin-bottom:16px;">
                         <div id="chartContainerIndicators" style="width:100%;height:100%;"></div>
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -1511,6 +1538,15 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                         <section class="glass" style="padding:14px;"><h3>سجل المسوق</h3><div id="mkPostsList" class="az-marketer-list">سيظهر هنا ما سُجّل في marketing_posts عند توفر الصلاحية.</div></section>
                     </div>
                 </div>
+                                <div id="tab-profile" class="tab-panel hidden">
+                    <div class="section-title">الحساب والإشعارات <div class="line"></div></div>
+                    <div class="glass" style="padding:18px;margin-bottom:16px;">
+                        <div class="admin-settings-title">⚙️ الملف وطلب الترقية</div>
+                        <p class="text-muted" style="margin:8px 0 14px">للمستخدم العادي: إدارة الإشعارات وطلب ترقية الاشتراك فقط. لوحة الإدارة والمسوق مخفيتان.</p>
+                        <button class="btn-upgrade" type="button" onclick="openUpgradeModal()">طلب ترقية / تجديد الاشتراك (299 / 899)</button>
+                    </div>
+                    <div id="profileNotificationMount" class="glass" style="padding:18px;"></div>
+                </div>
                 <div id="tab-support" class="tab-panel hidden">
                     <div class="section-title support-title">الدعم والتذاكر <div class="line"></div></div>
                     <section class="az-contact-card" aria-label="التواصل الرسمي">
@@ -1539,7 +1575,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     </div>
                     <div class="section-title">تذاكري <div class="line"></div></div>
                     <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);">
-                        <table class="data-table"><thead><tr><th>التاريخ</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>رد المسؤول</th></tr></thead><tbody id="myTicketsBody"></tbody></table>
+                        <table class="data-table"><thead><tr><th>التاريخ</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>رد المسؤول</th><th>تفاصيل</th></tr></thead><tbody id="myTicketsBody"></tbody></table>
                     </div>
                 </div>
                 <div id="tab-admin" class="tab-panel hidden">
@@ -1571,6 +1607,8 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                                 <div class="admin-setting-actions" style="justify-content:space-between;width:100%;"><div><strong>الماسح</strong><br><small class="text-muted">إشارات الماسح العامة</small></div><label class="switch-control"><input id="prefScreenerAlerts" type="checkbox" checked onchange="saveNotificationCategoryPref('screener_alerts_enabled', this.checked)"><span></span></label></div>
                                 <div class="admin-setting-actions" style="justify-content:space-between;width:100%;"><div><strong>وضع صامت</strong><br><small class="text-muted">يظهر إشعار ملون على الهاتف بدون صوت أو اهتزاز</small></div><label class="switch-control"><input id="prefSilentMode" type="checkbox" onchange="saveNotificationCategoryPref('silent_mode', this.checked)"><span></span></label></div>
                                 <div class="admin-setting-actions" style="justify-content:space-between;width:100%;"><div><strong>أم زكي</strong><br><small class="text-muted">طراطيش كلام ثم تحقق صادق — لهجة شامية · تعليمي</small></div><label class="switch-control"><input id="prefUmZaki" type="checkbox" checked onchange="saveNotificationCategoryPref('um_zaki_enabled', this.checked)"><span></span></label></div>
+                                <div class="admin-setting-actions" style="justify-content:space-between;width:100%;"><div><strong>حكمة يومية</strong><br><small class="text-muted">عند افتتاح السوق الأمريكي</small></div><label class="switch-control"><input id="prefDailyWisdom" type="checkbox" checked onchange="saveNotificationCategoryPref('daily_wisdom_enabled', this.checked)"><span></span></label></div>
+                                <div class="admin-setting-actions" style="justify-content:space-between;width:100%;"><div><strong>ماكرو أسبوعي</strong><br><small class="text-muted">يوم الاثنين قبل الافتتاح</small></div><label class="switch-control"><input id="prefWeeklyMacro" type="checkbox" checked onchange="saveNotificationCategoryPref('weekly_macro_enabled', this.checked)"><span></span></label></div>
                             </div>
                             <small class="text-muted" style="display:block;margin-top:10px;line-height:1.7;">وضع الصامت لا يخفي الإشعار: يبقى ظاهراً وملوناً على شاشة الهاتف، لكن بدون صوت. حكمة الافتتاح وتنبيه الماكرو الاثنين يُرسلان عند تفعيل الدفع. كل التنبيهات تعليمية فقط.</small>
                         </div>

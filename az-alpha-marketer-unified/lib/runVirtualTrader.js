@@ -211,6 +211,38 @@ async function runVirtualTraderEngine(db) {
 
   const clock = getUsMarketClock();
   if (!clock.tradable) {
+    // حتى خارج الجلسة: حدّث last_price من live_quotes حتى تظهر الواجهة ربحاً عائماً صحيحاً
+    try {
+      const held = (positions || [])
+        .map((pos) => String(pos.symbol || '').toUpperCase())
+        .filter(Boolean);
+      if (held.length) {
+        const [{ data: quotes }, { data: tech }] = await Promise.all([
+          db.from('live_quotes').select('symbol,price').in('symbol', held),
+          db.from('market_technicals').select('symbol,price').in('symbol', held),
+        ]);
+        const priceMap = new Map();
+        for (const row of tech || []) {
+          if (row?.price != null) priceMap.set(String(row.symbol).toUpperCase(), Number(row.price));
+        }
+        for (const row of quotes || []) {
+          if (row?.price != null) priceMap.set(String(row.symbol).toUpperCase(), Number(row.price));
+        }
+        for (const pos of positions || []) {
+          const sym = String(pos.symbol || '').toUpperCase();
+          const px = priceMap.get(sym);
+          if (!(Number.isFinite(px) && px > 0)) continue;
+          const peak = Math.max(Number(pos.peak_price) || 0, px, Number(pos.entry_price) || 0);
+          await db
+            .from('shared_virtual_positions')
+            .update({ last_price: px, peak_price: peak, updated_at: new Date().toISOString() })
+            .eq('simulation_id', SIMULATION_ID)
+            .eq('symbol', sym);
+        }
+      }
+    } catch (mtmErr) {
+      console.warn('VT(marketer) closed-session MTM skipped:', mtmErr?.message || mtmErr);
+    }
     const note = `${clock.labelAr} — المحاكي متوقف تماماً (${positions.length} مركز مفتوح).`;
     const sameClosedRecently =
       lastRun?.status === 'closed' &&

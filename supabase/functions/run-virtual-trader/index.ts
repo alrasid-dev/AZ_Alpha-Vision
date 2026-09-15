@@ -169,6 +169,34 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!marketOpen) {
+      // Mark-to-market last_price حتى خارج الجلسة (للواجهة / السجل)
+      try {
+        const held = positions.map((pos) => pos.symbol.toUpperCase()).filter(Boolean);
+        if (held.length) {
+          const symbolFilter = held.map((s) => `"${s}"`).join(",");
+          const [liveQuotes, technicals] = await Promise.all([
+            restSelect<QuoteRow>(SUPABASE_URL, SERVICE_ROLE_KEY, `live_quotes?select=symbol,price&symbol=in.(${symbolFilter})`),
+            restSelect<TechnicalRow>(SUPABASE_URL, SERVICE_ROLE_KEY, `market_technicals?select=symbol,price,rsi14,sma50&symbol=in.(${symbolFilter})`),
+          ]);
+          const priceMap = new Map<string, number>();
+          for (const t of technicals) if (t.price != null) priceMap.set(t.symbol.toUpperCase(), Number(t.price));
+          for (const q of liveQuotes) if (q.price != null) priceMap.set(q.symbol.toUpperCase(), Number(q.price));
+          for (const pos of positions) {
+            const sym = pos.symbol.toUpperCase();
+            const px = priceMap.get(sym);
+            if (!(Number.isFinite(px) && (px as number) > 0)) continue;
+            const peak = Math.max(Number(pos.peak_price) || 0, px as number, Number(pos.entry_price) || 0);
+            await restUpdate(
+              SUPABASE_URL,
+              SERVICE_ROLE_KEY,
+              `shared_virtual_positions?simulation_id=eq.${SIMULATION_ID}&symbol=eq.${encodeURIComponent(sym)}`,
+              { last_price: px, peak_price: peak, updated_at: new Date().toISOString() },
+            );
+          }
+        }
+      } catch (mtmErr) {
+        console.warn("VT closed-session MTM skipped:", mtmErr);
+      }
       const note = `${clock.labelAr} — المحاكي متوقف تماماً (${positions.length} مركز مفتوح).`;
       await logClosedIfNeeded(note);
       return jsonResponse({
@@ -176,6 +204,7 @@ Deno.serve(async (req: Request) => {
         market_open: false,
         session: clock.session,
         message: clock.labelAr,
+        mtm_refreshed: true,
       });
     }
 

@@ -11,6 +11,35 @@ const MAX_POSITION_PCT = 0.1;
 const MAX_NEW_BUYS_PER_RUN = 3;
 const CASH_RESERVE_PCT = 0.3;
 const MIN_CASH_RESERVE = STARTING_CASH * CASH_RESERVE_PCT;
+
+async function reconcileCashFromTrades(db, cash) {
+  try {
+    const { data: ledgerTrades } = await db
+      .from('shared_virtual_trades')
+      .select('action,qty,price')
+      .eq('simulation_id', SIMULATION_ID)
+      .order('created_at', { ascending: true })
+      .limit(5000);
+    if (!ledgerTrades?.length) return cash;
+    let rebuilt = STARTING_CASH;
+    for (const t of ledgerTrades) {
+      const q = Number(t.qty) || 0;
+      const px = Number(t.price) || 0;
+      if (t.action === 'buy') rebuilt -= q * px;
+      else if (t.action === 'sell') rebuilt += q * px;
+    }
+    rebuilt = Math.max(0, Number(rebuilt.toFixed(2)));
+    if (Math.abs(rebuilt - cash) > 1) {
+      console.warn(`VT(marketer) cash reconcile: db=${cash} rebuilt=${rebuilt}`);
+      await db.from('shared_virtual_portfolios').update({ cash: rebuilt, updated_at: new Date().toISOString() }).eq('simulation_id', SIMULATION_ID);
+      return rebuilt;
+    }
+  } catch (err) {
+    console.warn('VT(marketer) reconcile skipped', err?.message || err);
+  }
+  return cash;
+}
+
 const STOP_LOSS_PCT = -8;
 const TRAILING_ACTIVATION_PCT = 20;
 const TRAILING_STOP_PCT = 7;
@@ -41,6 +70,7 @@ async function runVirtualTraderEngine(db) {
     .eq('simulation_id', SIMULATION_ID)
     .limit(1);
   let cash = portfolios?.[0] ? Number(portfolios[0].cash) : STARTING_CASH;
+  cash = await reconcileCashFromTrades(db, cash);
   if (!portfolios?.[0]) {
     await db.from('shared_virtual_portfolios').upsert(
       [{ simulation_id: SIMULATION_ID, cash: STARTING_CASH }],

@@ -4,6 +4,7 @@
 // يراقب إشارات screener_signals لحظة بلحظة: إشارة دخول قوية ← شراء تلقائي فوري،
 // إشارة/شرط خروج حقيقي على مركز مفتوح ← بيع تلقائي فوري + حساب الربح/الخسارة وتحديث المحفظة.
 // محاكاة تعليمية بالكامل — لا أموال حقيقية ولا تنفيذ فعلي في أي وسيط.
+// Balance sync: shared_virtual_* is the single source of truth (50k / 10% / 30% reserve / session gates).
 
 import {
   CORS_HEADERS,
@@ -132,6 +133,40 @@ Deno.serve(async (req: Request) => {
       SERVICE_ROLE_KEY,
       `shared_virtual_positions?select=*&simulation_id=eq.${SIMULATION_ID}`,
     );
+
+    // Reconcile cash vs trade ledger when desynced (stuck balance / orphan opens).
+    // Policy: STARTING_CASH + sum(sell proceeds - buy costs) should match portfolio.cash.
+    try {
+      const ledgerTrades = await restSelect<{ action: string; qty: number; price: number }>(
+        SUPABASE_URL,
+        SERVICE_ROLE_KEY,
+        `shared_virtual_trades?select=action,qty,price&simulation_id=eq.${SIMULATION_ID}&order=created_at.asc&limit=5000`,
+      );
+      if (ledgerTrades.length) {
+        let rebuilt = STARTING_CASH;
+        for (const t of ledgerTrades) {
+          const q = Number(t.qty) || 0;
+          const px = Number(t.price) || 0;
+          if (t.action === "buy") rebuilt -= q * px;
+          else if (t.action === "sell") rebuilt += q * px;
+        }
+        rebuilt = Math.max(0, Number(rebuilt.toFixed(2)));
+        const drift = Math.abs(rebuilt - cash);
+        // Only repair large drift (> $1) to avoid noisy float churn.
+        if (drift > 1) {
+          console.warn(`VT cash reconcile: db=${cash} rebuilt=${rebuilt} drift=${drift}`);
+          cash = rebuilt;
+          await restUpdate(
+            SUPABASE_URL,
+            SERVICE_ROLE_KEY,
+            `shared_virtual_portfolios?simulation_id=eq.${SIMULATION_ID}`,
+            { cash, updated_at: new Date().toISOString() },
+          );
+        }
+      }
+    } catch (reconErr) {
+      console.warn("VT cash reconcile skipped:", reconErr);
+    }
 
     if (!marketOpen) {
       const note = `${clock.labelAr} — المحاكي متوقف تماماً (${positions.length} مركز مفتوح).`;

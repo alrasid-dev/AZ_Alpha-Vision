@@ -12,6 +12,132 @@ const MAX_NEW_BUYS_PER_RUN = 3;
 const CASH_RESERVE_PCT = 0.3;
 const MIN_CASH_RESERVE = STARTING_CASH * CASH_RESERVE_PCT;
 
+
+const webpush = (() => {
+  try {
+    return require('web-push');
+  } catch {
+    return null;
+  }
+})();
+
+function configureVapid() {
+  if (!webpush) return false;
+  const pub =
+    process.env.VAPID_PUBLIC_KEY ||
+    'BNk6hCs1rlvB-_8NSo0cxXNLR964XlRSwVE6THODXYwST84y8OMfzY_EsIkwnpTzQV8c4XY_whs4C1SBaphooIM';
+  const priv = process.env.VAPID_PRIVATE_KEY || '';
+  const subject = process.env.VAPID_SUBJECT || 'mailto:azalphavision2026@gmail.com';
+  if (!priv) return false;
+  webpush.setVapidDetails(subject, pub, priv);
+  return true;
+}
+
+/** إشعار فوري لفئة simulator_alerts بعد كل شراء/بيع — يحترم silent_mode. */
+async function sendSimulatorTradePushes(db, trades, sessionLabelAr) {
+  if (!trades?.length) return { sent: 0, failed: 0, skipped: 0 };
+  if (!configureVapid()) {
+    console.warn('VT(marketer): VAPID_PRIVATE_KEY غير معرّف — تخطي دفع المحاكي');
+    return { sent: 0, failed: 0, skipped: 0 };
+  }
+  const { data: devices, error: dErr } = await db
+    .from('notification_push_devices')
+    .select('id,user_id,endpoint,push_subscription')
+    .eq('push_enabled', true);
+  if (dErr) {
+    console.warn('VT(marketer) devices:', dErr.message);
+    return { sent: 0, failed: 0, skipped: 0 };
+  }
+  if (!devices?.length) return { sent: 0, failed: 0, skipped: 0 };
+
+  const userIds = [...new Set(devices.map((d) => d.user_id).filter(Boolean))];
+  const prefsByUser = new Map();
+  if (userIds.length) {
+    const { data: prefsRows } = await db
+      .from('notification_subscriptions')
+      .select('user_id,simulator_alerts_enabled,silent_mode')
+      .in('user_id', userIds);
+    for (const row of prefsRows || []) {
+      prefsByUser.set(row.user_id, {
+        simulator_alerts_enabled: row.simulator_alerts_enabled !== false,
+        silent_mode: Boolean(row.silent_mode),
+      });
+    }
+  }
+
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const t of trades.slice(0, 8)) {
+    const sym = String(t.symbol || '').toUpperCase();
+    const isBuy = t.action === 'buy';
+    const qty = Number(t.qty) || 0;
+    const px = Number(t.price) || 0;
+    const title = isBuy
+      ? `🤖 المحاكي · شراء تعليمي ${sym}`
+      : `🤖 المحاكي · بيع تعليمي ${sym}`;
+    const pnlBit =
+      !isBuy && t.pnl != null
+        ? ` · نتيجة المحاكاة ${Number(t.pnl) >= 0 ? '+' : ''}${Number(t.pnl).toFixed(2)}$`
+        : '';
+    const body = isBuy
+      ? `اشترى المحاكي ${qty} سهمًا من ${sym} عند $${px.toFixed(2)} في جلسة ${sessionLabelAr}. محفظة تعليمية مشتركة فقط — ليست توصية ولا تنفيذًا حقيقيًا.`
+      : `باع المحاكي ${qty} سهمًا من ${sym} عند $${px.toFixed(2)}${pnlBit} في جلسة ${sessionLabelAr}. تعليمي فقط — راجع السجل في الرئيسية.`;
+    const payload = {
+      title,
+      body,
+      url: './#home',
+      tag: `az-sim-${t.action}-${sym}-${Date.now()}`,
+      direction: isBuy ? 'up' : Number(t.pnl || 0) >= 0 ? 'up' : 'down',
+      alertType: 'simulator',
+    };
+
+    const byUser = new Map();
+    for (const d of devices) {
+      if (!d.user_id || !d.push_subscription?.endpoint) continue;
+      if (!byUser.has(d.user_id)) byUser.set(d.user_id, []);
+      byUser.get(d.user_id).push(d);
+    }
+    for (const [userId, userDevices] of byUser) {
+      const prefs = prefsByUser.get(userId) || {
+        simulator_alerts_enabled: true,
+        silent_mode: false,
+      };
+      if (!prefs.simulator_alerts_enabled) {
+        skipped += userDevices.length;
+        continue;
+      }
+      const silent = prefs.silent_mode;
+      await Promise.all(
+        userDevices.map(async (device) => {
+          try {
+            await webpush.sendNotification(
+              device.push_subscription,
+              JSON.stringify({ ...payload, silent }),
+            );
+            sent += 1;
+          } catch (err) {
+            failed += 1;
+            const status = err?.statusCode || err?.status;
+            if (status === 404 || status === 410) {
+              try {
+                await db
+                  .from('notification_push_devices')
+                  .update({ push_enabled: false })
+                  .eq('id', device.id);
+              } catch (_) {
+                /* ignore prune errors */
+              }
+            }
+          }
+        }),
+      );
+    }
+  }
+  return { sent, failed, skipped };
+}
+
+
 async function reconcileCashFromTrades(db, cash) {
   try {
     const { data: ledgerTrades } = await db
@@ -304,6 +430,19 @@ async function runVirtualTraderEngine(db) {
     run_note: runNote,
   });
 
+  const sessionAr =
+    clock.session === 'premarket'
+      ? 'ما قبل التداول'
+      : clock.session === 'afterhours'
+        ? 'بعد الإغلاق'
+        : 'الجلسة الرسمية';
+  let pushStats = { sent: 0, failed: 0, skipped: 0 };
+  try {
+    pushStats = await sendSimulatorTradePushes(db, trades, sessionAr);
+  } catch (err) {
+    console.warn('VT(marketer) push error:', err?.message || err);
+  }
+
   return {
     ok: true,
     market_open: true,
@@ -312,6 +451,9 @@ async function runVirtualTraderEngine(db) {
     sold: soldSymbols.size,
     candidates: candidates.length,
     cash_remaining: Number(cash.toFixed(2)),
+    push_sent: pushStats.sent,
+    push_failed: pushStats.failed,
+    push_skipped: pushStats.skipped,
     run_note: runNote,
   };
 }

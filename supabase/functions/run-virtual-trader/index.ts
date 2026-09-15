@@ -389,43 +389,56 @@ Deno.serve(async (req: Request) => {
       run_note: runNote,
     });
 
-    if (trades.length && clock.tradable) {
-      const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
-      const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
-      const sessionAr =
-        clock.session === "premarket"
-          ? "ما قبل التداول"
-          : clock.session === "afterhours"
-            ? "بعد الإغلاق"
-            : "الجلسة الرسمية";
-      for (const t of trades.slice(0, 8)) {
-        const sym = String(t.symbol || "").toUpperCase();
-        const isBuy = t.action === "buy";
-        const px = Number(t.price);
-        const title = isBuy
-          ? `🤖 المحاكي · شراء ${sym}`
-          : `🤖 المحاكي · بيع ${sym}`;
-        const pnlBit =
-          !isBuy && t.pnl != null
-            ? ` · نتيجة تعليمية ${Number(t.pnl) >= 0 ? "+" : ""}${Number(t.pnl).toFixed(2)}$`
-            : "";
-        const body =
-          `${isBuy ? "تنفيذ شراء" : "تنفيذ بيع"} تعليمي @ $${px.toFixed(2)}${pnlBit} · جلسة ${sessionAr}. تعليمي فقط — ليست صفقة حقيقية.`;
-        await sendCategorizedPush(
-          SUPABASE_URL,
-          SERVICE_ROLE_KEY,
-          devices,
-          prefsMap,
-          "simulator",
-          {
-            title,
-            body,
-            url: "./#home",
-            tag: `az-sim-${t.action}-${sym}-${Date.now()}`,
-            direction: isBuy ? "up" : Number(t.pnl || 0) >= 0 ? "up" : "down",
-            alertType: "trade",
-          },
-        );
+    // إشعار فوري بعد كل شراء/بيع — فئة simulator_alerts مع احترام silent_mode والتفضيلات.
+    let pushSent = 0;
+    let pushFailed = 0;
+    let pushSkipped = 0;
+    if (trades.length) {
+      try {
+        const devices = await fetchActiveDevices(SUPABASE_URL, SERVICE_ROLE_KEY);
+        const prefsMap = await loadNotificationPrefs(SUPABASE_URL, SERVICE_ROLE_KEY);
+        const sessionAr =
+          clock.session === "premarket"
+            ? "ما قبل التداول"
+            : clock.session === "afterhours"
+              ? "بعد الإغلاق"
+              : "الجلسة الرسمية";
+        for (const t of trades.slice(0, 8)) {
+          const sym = String(t.symbol || "").toUpperCase();
+          const isBuy = t.action === "buy";
+          const qty = Number(t.qty) || 0;
+          const px = Number(t.price) || 0;
+          const title = isBuy
+            ? `🤖 المحاكي · شراء تعليمي ${sym}`
+            : `🤖 المحاكي · بيع تعليمي ${sym}`;
+          const pnlBit =
+            !isBuy && t.pnl != null
+              ? ` · نتيجة المحاكاة ${Number(t.pnl) >= 0 ? "+" : ""}${Number(t.pnl).toFixed(2)}$`
+              : "";
+          const body = isBuy
+            ? `اشترى المحاكي ${qty} سهمًا من ${sym} عند $${px.toFixed(2)} في جلسة ${sessionAr}. محفظة تعليمية مشتركة فقط — ليست توصية ولا تنفيذًا حقيقيًا.`
+            : `باع المحاكي ${qty} سهمًا من ${sym} عند $${px.toFixed(2)}${pnlBit} في جلسة ${sessionAr}. تعليمي فقط — راجع السجل في الرئيسية.`;
+          const result = await sendCategorizedPush(
+            SUPABASE_URL,
+            SERVICE_ROLE_KEY,
+            devices,
+            prefsMap,
+            "simulator",
+            {
+              title,
+              body,
+              url: "./#home",
+              tag: `az-sim-${t.action}-${sym}-${Date.now()}`,
+              direction: isBuy ? "up" : Number(t.pnl || 0) >= 0 ? "up" : "down",
+              alertType: "simulator",
+            },
+          );
+          pushSent += result.sent;
+          pushFailed += result.failed;
+          pushSkipped += result.skipped;
+        }
+      } catch (pushErr) {
+        console.warn("VT simulator push skipped:", pushErr);
       }
     }
 
@@ -438,6 +451,9 @@ Deno.serve(async (req: Request) => {
       realized_pnl: Number(realizedPnl.toFixed(2)),
       cash_remaining: Number(cash.toFixed(2)),
       candidates: candidates.length,
+      push_sent: pushSent,
+      push_failed: pushFailed,
+      push_skipped: pushSkipped,
       run_note: runNote,
     });
   } catch (err) {

@@ -5079,9 +5079,16 @@ function isCommonStockRow(row) {
 // إشارات screener_signals تأتي من مجمّع خلفي تحقق من NYSE/NASDAQ؛ قد تتأخر حقول الإثراء في الجلسة.
 // لا نسقط الإشارة الصحيحة لمجرد أن جدول الأساسيات لم يُحدّث في اللحظة نفسها.
 function isStoredSignalCommonStock(row) {
+  // حارس خفيف لإشارات screener_signals: المحرك الخلفي سبق أن صفّاها.
+  // لا نسقط الإشارة بسبب قطاع/سعر من جدول الأساسيات (كان يصفّر «أفضل ترشيحات»).
   const symbol = String(row?.symbol || "")
     .trim()
     .toUpperCase();
+  if (!symbol || EXCLUDED_SYMBOLS.has(symbol) || /[.\-\^]/.test(symbol))
+    return false;
+  if (!/^[A-Z]{1,5}$/.test(symbol)) return false;
+  if (row?.halt === true || row?.is_halted === true || row?.tradable === false)
+    return false;
   const text = [
     row?.industry,
     row?.company,
@@ -5095,20 +5102,23 @@ function isStoredSignalCommonStock(row) {
   ]
     .map((v) => String(v || "").toLowerCase())
     .join(" ");
-  const price = Number(row?.price || 0);
-  if (!symbol || EXCLUDED_SYMBOLS.has(symbol) || /[.\-\^]/.test(symbol))
-    return false;
-  if (row?.halt === true || row?.is_halted === true || row?.tradable === false)
-    return false;
   if (/halt|suspend|delist|otc|pink|inactive|non[- ]?tradable/.test(text))
     return false;
-  if (NON_COMMON_INSTRUMENT_RE.test(text) || EXCLUDED_SECTOR_RE.test(text))
+  // استبعاد أدوات غير أسهم عادية فقط (ETF/warrant…) — بدون فلتر قطاعات عنيف
+  if (NON_COMMON_INSTRUMENT_RE.test(text)) return false;
+  const exchange = String(row?.exchange || "").trim().toUpperCase();
+  if (
+    exchange &&
+    !GENERAL_MARKET_RULE.exchanges.has(exchange) &&
+    !["NMS", "NYQ", "XNAS", "XNYS", "NASDAQ", "NYSE"].includes(exchange)
+  ) {
     return false;
-  if (row?.exchange) return isCommonStockRow(row);
-  return (
-    price >= GENERAL_MARKET_RULE.minPrice &&
-    price <= GENERAL_MARKET_RULE.maxPrice
-  );
+  }
+  const price = Number(row?.price || 0);
+  // السعر اختياري هنا: إن وُجد وكان شاذاً جداً نتخطى، وإلا نُبقي الإشارة
+  if (Number.isFinite(price) && price > 0 && (price < 1 || price > 5000))
+    return false;
+  return true;
 }
 
 // حارس مستوحى من SMC: بنية صاعدة أو ارتداد قريب من المتوسط، مع منع مطاردة السعر.
@@ -6338,8 +6348,19 @@ async function runWeeklyScan() {
       );
 
     // «متابعة» ناتجة من مطابقة جزئية للقوالب: ظاهرة للتعلم ولا تصلح تلقائيًا للدخول أو التداول.
-    const actionable = candidates.filter((item) => !item.tiers.has("مراقبة"));
-    const monitoring = candidates.filter((item) => item.tiers.has("مراقبة"));
+    let actionable = candidates.filter(
+      (item) =>
+        !item.tiers.has("مراقبة") ||
+        Number(item.bestEntryScore || 0) >= 2 ||
+        [...item.tiers].some((t) => ["دخول", "مؤكد", "صريح"].includes(t)),
+    );
+    // إن لم يبقَ مرشح دخول بعد الفلتر لكن توجد إشارات حقيقية في screener_signals — اعرض أقوى النتائج بدل صفر وهمي.
+    if (!actionable.length && candidates.length) {
+      actionable = candidates.filter((item) => Number(item.bestEntryScore || 0) > 0);
+    }
+    const monitoring = candidates.filter(
+      (item) => item.tiers.has("مراقبة") && !actionable.includes(item),
+    );
     const top = actionable.slice(0, 7);
     const watch = [...actionable.slice(7), ...monitoring].slice(0, 7);
     tb.innerHTML = "";
@@ -6460,21 +6481,9 @@ async function runWeeklyScan() {
 async function updateSitePerformance() {
   let picks = LocalCache.getPicks();
   if (!picks) return;
-  // الترشيحات القديمة بلا exchange/industry غير موثوقة؛ تُمسح بدل عرض رموز أدوات مالية.
-  if (
-    picks.some(
-      (p) =>
-        !["NYSE", "NASDAQ"].includes(String(p.exchange || "").toUpperCase()),
-    )
-  ) {
-    LocalCache.setPicks([]);
-    renderSignalGridPicks();
-    document.getElementById("sitePicksCount").textContent = "0";
-    document.getElementById("sitePicksDesc").textContent =
-      "تم حذف ترشيحات قديمة غير موثوقة؛ شغّل مسح الأسبوع لإنشاء قائمة جديدة.";
-    return;
-  }
-  picks = picks.filter((p) => isCommonStockRow(p));
+  // لا تمسح الترشيحات لمجرد غياب exchange من الكاش — ذلك كان يصفّر «أفضل ترشيحات» بعد كل مسح.
+  // حارس خفيف فقط لاستبعاد الأدوات غير العادية/المتوقفة.
+  picks = picks.filter((p) => isStoredSignalCommonStock(p));
   LocalCache.setPicks(picks);
   renderSignalGridPicks();
   document.getElementById("sitePicksCount").textContent = picks.length;
@@ -7802,10 +7811,17 @@ function renderVirtualTrader() {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
   };
-  set("vtCash", `$${Number(virtualTrader.cash || 0).toFixed(2)}`);
-  set("vtEquity", `$${VIRTUAL_STARTING_CASH.toFixed(2)}`);
+  const cashRemaining = Number(virtualTrader.cash || 0);
+  // رأس المال في الواجهة = النقد المتبقي بعد الشراء (shared_virtual_portfolios.cash) لا رأس المال الابتدائي.
+  set("vtCash", `$${cashRemaining.toFixed(2)}`);
+  set("vtEquity", `$${cashRemaining.toFixed(2)}`);
   set("vtMarkValue", `$${equity.toFixed(2)}`);
   set("vtInvested", `$${invested.toFixed(2)}`);
+  set("vtStartingCapital", `$${VIRTUAL_STARTING_CASH.toFixed(2)}`);
+  const homeCashLabel = document.getElementById("homeVirtualCashLabel");
+  if (homeCashLabel) {
+    homeCashLabel.textContent = `رأس المال (نقد متاح): $${cashRemaining.toFixed(2)} · مستثمر $${invested.toFixed(2)} · قيمة $${equity.toFixed(2)}`;
+  }
   set("vtPnl", `${movementSign(pnl)}$${pnl.toFixed(2)}`);
   set("vtReturnPct", `${movementSign(returnPct)}${returnPct.toFixed(2)}%`);
   set("vtRealizedPnl", `${movementSign(realized)}$${realized.toFixed(2)}`);
@@ -7891,7 +7907,8 @@ function syncOverviewMetrics() {
     const target = document.getElementById(targetId);
     if (target) target.textContent = source?.textContent || fallback;
   };
-  copy("vtEquity", "overviewEquity", "$50,000.00");
+  // overview «رأس المال» = النقد المتبقي (vtCash/vtEquity بعد الإصلاح)
+  copy("vtCash", "overviewEquity", document.getElementById("vtEquity")?.textContent || "$0.00");
   copy("vtPnl", "overviewPnl", "$0.00");
   copy("vtReturnPct", "overviewReturn", "0.00%");
   copy("vtOpenPositions", "overviewPositions", "0");

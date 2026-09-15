@@ -1099,9 +1099,10 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
             <div class="watchlist-scroll" id="watchlistContainer"></div>
 <div class="stats-block sidebar-global-stats">
                 <h4>محفظة المحاكي — 50,000$</h4>
-                <div class="stat-row"><span>النقد المتاح</span><span class="val text-cyan" id="vtCash">$50,000.00</span></div>
+                <div class="stat-row"><span>رأس المال (نقد متاح)</span><span class="val text-cyan" id="vtCash">$50,000.00</span></div>
                 <div class="stat-row"><span>المستثمر محاكيًا</span><span class="val" id="vtInvested">$0.00</span></div>
                 <div class="stat-row"><span>رأس المال</span><span class="val" id="vtEquity">$50,000.00</span></div>
+                <div class="stat-row"><span>قيمة المحفظة</span><span class="val" id="vtMarkValue">$50,000.00</span></div>
                 <div class="stat-row"><span>الربح/الخسارة الإجمالي</span><span class="val" id="vtPnl">$0.00</span></div>
                 <div class="stat-row"><span>العائد الإجمالي</span><span class="val" id="vtReturnPct">0.00%</span></div>
                 <div class="stat-row"><span>ربح محقق من مبيعات</span><span class="val" id="vtRealizedPnl">$0.00</span></div>
@@ -1190,9 +1191,9 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                                 <div class="orbit-dot dot-b"></div>
                                 <div class="orbit-core">
                                     <div class="orbit-gold-mark" title="السهم الذهبي">↑</div>
-                                    <small>رأس المال</small>
+                                    <small>رأس المال (نقد)</small>
                                     <strong id="overviewEquity">$50,000.00</strong>
-                                    <span id="orbitGoldTicker">ثابت $50,000</span>
+                                    <span id="orbitGoldTicker">بانتظار السهم الذهبي</span>
                                     <div class="orbit-live-row" aria-live="polite">
                                         <b id="orbitMarketPulse" class="orbit-pulse">●</b>
                                         <em id="orbitAlertCount">0 تنبيه</em>
@@ -1214,7 +1215,7 @@ body{background:var(--sg-bg)!important;color:var(--sg-text);font-family:var(--fo
                     <section id="homeVirtualTrader" class="home-virtual-trader" aria-label="المحاكي الافتراضي">
                         <div class="section-title virtual-trader-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6"/></svg></span><span>المحاكي الافتراضي</span><small>سجل مشترك تعليمي — منفصل عن محفظتك</small><div class="line"></div></div>
                         <div class="glass" style="padding:16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
-                            <div><strong>رأس المال الافتراضي: $50,000</strong><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
+                            <div><strong id="homeVirtualCashLabel">رأس المال (نقد متاح): $50,000.00</strong><div class="text-muted" style="font-size:11px;margin-top:4px;">رأس المال الابتدائي التعليمي: $50,000 — العرض يتبع النقد المتبقي بعد الشراء</div><div id="virtualTraderStatus" class="text-muted" style="font-size:11px;margin-top:6px;">لم تبدأ المتابعة الآلية بعد</div></div>
                             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                                 <div class="text-muted" style="font-size:11px;line-height:1.8;max-width:280px;">حد تقريباً 10% لكل فرصة، واحتياطي نقدي نحو 30% للفرص الذهبية. وقف -8% ووقف متحرك 7% بعد +20%.</div>
                                 <button type="button" class="preset-btn" onclick="runVirtualTrader('manual')">🔄 مزامنة الآن</button>

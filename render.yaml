@@ -28,3 +28,9 @@ services:
         sync: false
       - key: GEMINI_TEXT_MODEL
         value: gemini-2.5-flash
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
